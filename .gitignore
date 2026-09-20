@@ -1,0 +1,49 @@
+### Gradle ###
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/**/build/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/**/out/
+
+.run/
+
+### CSO dev server (gradle runServer) ###
+run/
+run-server.log
+
+### 本地工作数据：含本机绝对路径与开发日志，不推送 ###
+.workbuddy-ai/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.eclipse/
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/**/bin/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Minecraft Modding ###
+run/
+!**/src/**/run/
+**/src/generated/**/.cache/
+repo/
+!**/src/**/repo/
+
+.workbuddy-ai/

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "tqk114514.chunkstorageoptimizer.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "refmap": "chunkstorageoptimizer.refmap.json",
+  "mixins": [
+    "RegionFileStorageMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
