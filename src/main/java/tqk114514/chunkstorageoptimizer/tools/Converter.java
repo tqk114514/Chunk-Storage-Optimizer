@@ -80,6 +80,7 @@ public final class Converter {
             case "ab" -> ab(dir, grid, level);
             case "amp" -> amp(dir, level);
             case "walcost" -> walCost(dir, level);
+            case "count" -> count(dir);
             case "convert" -> convert(dir, to, grid, level);
             default -> usage();
         }
@@ -490,6 +491,42 @@ public final class Converter {
         int span = Math.max(1, chunks.size() - count);
         int from = (round * count) % span;
         return groupByBucket(chunks.subList(from, Math.min(from + count, chunks.size())), grid, true);
+    }
+
+    // ------------------------------------------------------------------ census
+
+    /**
+     * Read-only census of a directory: how many chunks it holds and the average chunk size.
+     *
+     * <p>Exists because comparing two saves by file size alone is meaningless unless they hold the
+     * same chunks. This never writes anything.
+     */
+    private static void count(Path dir) throws IOException {
+        List<Path> mcaFiles = listFiles(dir, ".mca");
+        if (!mcaFiles.isEmpty()) {
+            int chunks = 0;
+            long bytes = 0;
+            for (Path file : mcaFiles) {
+                chunks += AnvilRegionFile.read(file).size();
+                bytes += Files.size(file);
+            }
+            System.out.printf("anvil (.mca) : %d files, %d chunks, %s   avg %d B/chunk%n",
+                mcaFiles.size(), chunks, human(bytes), chunks == 0 ? 0 : bytes / chunks);
+        }
+        List<Path> csoFiles = listFiles(dir, ".cso");
+        if (!csoFiles.isEmpty()) {
+            int chunks = 0;
+            long bytes = 0;
+            for (Path file : csoFiles) {
+                chunks += readCso(file).size();
+                bytes += Files.size(file);
+            }
+            System.out.printf("cso   (.cso) : %d files, %d chunks, %s   avg %d B/chunk%n",
+                csoFiles.size(), chunks, human(bytes), chunks == 0 ? 0 : bytes / chunks);
+        }
+        if (mcaFiles.isEmpty() && csoFiles.isEmpty()) {
+            System.out.println("No .mca or .cso files in " + dir);
+        }
     }
 
     // ------------------------------------------------------------------ convert
