@@ -25,8 +25,8 @@ import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
  * against any world folder on disk.
  *
  * <pre>
- *   bench   &lt;regionDir&gt; [--grid 8] [--level 3]         // report sizes, change nothing
- *   convert &lt;regionDir&gt; --to cso [--grid 8] [--level 3] // write .cso next to each .mca
+ *   bench   &lt;regionDir&gt; [--grid 16] [--level 3]         // report sizes, change nothing
+ *   convert &lt;regionDir&gt; --to cso [--grid 16] [--level 3] // write .cso next to each .mca
  *   convert &lt;regionDir&gt; --to mca                        // write .mca next to each .cso
  * </pre>
  *
@@ -44,7 +44,8 @@ public final class Converter {
         }
         String command = args[0];
         Path dir = null;
-        int grid = 8;
+        // Matches Config.GRID's default so an unparameterized run reports what the mod ships.
+        int grid = 16;
         int level = 3;
         String to = "cso";
 
@@ -55,7 +56,7 @@ public final class Converter {
             String arg = args[i];
             if (arg.startsWith("--") && i + 1 < args.length) {
                 switch (arg) {
-                    case "--grid" -> grid = parseInt(args[++i], 8);
+                    case "--grid" -> grid = parseInt(args[++i], 16);
                     case "--level" -> level = parseInt(args[++i], 3);
                     case "--to" -> to = args[++i];
                     case "--dir" -> dir = Path.of(args[++i]);
@@ -98,9 +99,9 @@ public final class Converter {
         System.out.println("""
             Chunk Storage Optimizer — converter
 
-              bench   --dir <regionDir> [--grid 8] [--level 3]
-              ab      --dir <regionDir> [--grid 8] [--level 3]   // write+read timing vs vanilla
-              convert --dir <regionDir> --to cso [--grid 8] [--level 3]
+              bench   --dir <regionDir> [--grid 16] [--level 3]
+              ab      --dir <regionDir> [--grid 16] [--level 3]   // write+read timing vs vanilla
+              convert --dir <regionDir> --to cso [--grid 16] [--level 3]
               convert --dir <regionDir> --to mca
 
             The directory must be one argument — save folders usually contain spaces.
