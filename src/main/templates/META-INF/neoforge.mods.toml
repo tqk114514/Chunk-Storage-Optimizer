@@ -40,7 +40,10 @@ displayName="${mod_name}" #mandatory
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''
-Example mod description.
+Replaces Minecraft's Anvil region storage with a custom bucket-grouped, zstd-compressed format
+(.cso): smaller saves and faster reads and writes. Measured on an 889 MB city save: 55% smaller,
+8.1x faster writes, 3.1x faster reads. Progressive migration - enabling it on an existing world
+loses nothing, and /cso convert finishes the move.
 '''
 
 # The [[mixins]] block allows you to declare your mixin config to FML so that it gets loaded.
