@@ -1,5 +1,17 @@
 {
   "chunkstorageoptimizer.configuration.title": "Chunk Storage Optimizer Configs",
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "Chunk Storage Optimizer Configs",
-  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Chunk Storage Optimizer Configs"
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Chunk Storage Optimizer Configs",
+
+  "chunkstorageoptimizer.configuration.enabled": "Enabled",
+  "chunkstorageoptimizer.configuration.grid": "Bucket Grid",
+  "chunkstorageoptimizer.configuration.compression": "Compression",
+  "chunkstorageoptimizer.configuration.zstdLevel": "zstd Level",
+  "chunkstorageoptimizer.configuration.cachedBuckets": "Cached Buckets",
+  "chunkstorageoptimizer.configuration.verifyCrc": "Verify CRC",
+  "chunkstorageoptimizer.configuration.fallbackToMca": "Fall Back To .mca",
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "Compaction Min Bytes",
+  "chunkstorageoptimizer.configuration.compactionRatio": "Compaction Ratio",
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "Batch Max Chunks",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "Batch Max Delay (ms)"
 }
