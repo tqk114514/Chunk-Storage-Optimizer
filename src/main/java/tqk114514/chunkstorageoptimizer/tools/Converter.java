@@ -48,6 +48,7 @@ public final class Converter {
         int grid = 16;
         int level = 3;
         String to = "cso";
+        String from = "auto";
 
         // The directory is the first non-option argument, or --dir. Real save folders often contain
         // spaces ("Los Perrito"), so the path MUST arrive as one argument — the csoTool Gradle task
@@ -59,6 +60,7 @@ public final class Converter {
                     case "--grid" -> grid = parseInt(args[++i], 16);
                     case "--level" -> level = parseInt(args[++i], 3);
                     case "--to" -> to = args[++i];
+                    case "--from" -> from = args[++i];
                     case "--dir" -> dir = Path.of(args[++i]);
                     default -> { /* unknown option: ignore rather than crash */ }
                 }
@@ -77,10 +79,10 @@ public final class Converter {
             return;
         }
         switch (command) {
-            case "bench" -> bench(dir, grid, level);
-            case "ab" -> ab(dir, grid, level);
-            case "amp" -> amp(dir, level);
-            case "walcost" -> walCost(dir, level);
+            case "bench" -> bench(dir, grid, level, from);
+            case "ab" -> ab(dir, grid, level, from);
+            case "amp" -> amp(dir, level, from);
+            case "walcost" -> walCost(dir, level, from);
             case "count" -> count(dir);
             case "convert" -> convert(dir, to, grid, level);
             default -> usage();
@@ -101,19 +103,99 @@ public final class Converter {
 
               bench   --dir <regionDir> [--grid 16] [--level 3]
               ab      --dir <regionDir> [--grid 16] [--level 3]   // write+read timing vs vanilla
+              amp     --dir <regionDir> [--level 3]               // write volume per grid size
+              walcost --dir <regionDir> [--level 3]               // cost of the write-ahead log
+              count   --dir <regionDir>                           // chunk census, changes nothing
               convert --dir <regionDir> --to cso [--grid 16] [--level 3]
               convert --dir <regionDir> --to mca
+
+            bench/ab/amp/walcost read whichever format is in the directory; force one with
+            --from mca|cso. A save that has already been converted is still measurable.
 
             The directory must be one argument — save folders usually contain spaces.
             """);
     }
 
+    // ------------------------------------------------------------------ corpus
+
+    /**
+     * A directory's benchmark corpus: the chunks it holds, as raw NBT bytes.
+     *
+     * @param kind        which format supplied the corpus, {@code mca} or {@code cso}
+     * @param byFile      non-empty region files and their chunks, in filename order
+     * @param onDiskBytes bytes those files occupy right now
+     * @param totalFiles  how many candidate files the directory held before {@code maxFiles} cut in
+     */
+    record Corpus(
+        String kind,
+        Map<Path, List<AnvilRegionFile.Chunk>> byFile,
+        long onDiskBytes,
+        int totalFiles
+    ) {
+        boolean fromAnvil() {
+            return "mca".equals(kind);
+        }
+    }
+
+    /**
+     * Loads the corpus from whichever format is present.
+     *
+     * <p>Anvil wins when both exist: it is the baseline every comparison is expressed against, and
+     * its bytes are what vanilla actually wrote. Rebuilding Anvil bytes from {@code .cso} uses our
+     * own writer, which is not byte-identical to vanilla's, so that number is an estimate and the
+     * callers say so.
+     *
+     * @param from      {@code auto}, {@code mca} or {@code cso}
+     * @param maxFiles  cap on files loaded, or 0 for all of them — a whole city save would not fit
+     *                  in the heap once decompressed
+     */
+    static Corpus corpus(Path dir, String from, int maxFiles) throws IOException {
+        List<Path> anvil = listFiles(dir, ".mca");
+        String kind = switch (from) {
+            case "mca" -> "mca";
+            case "cso" -> "cso";
+            default -> anvil.isEmpty() ? "cso" : "mca";
+        };
+        List<Path> candidates = "cso".equals(kind) ? listFiles(dir, ".cso") : anvil;
+        Map<Path, List<AnvilRegionFile.Chunk>> byFile = new LinkedHashMap<>();
+        long onDisk = 0;
+        for (Path source : candidates) {
+            if (maxFiles > 0 && byFile.size() >= maxFiles) {
+                break;
+            }
+            List<AnvilRegionFile.Chunk> chunks = "cso".equals(kind)
+                ? readCso(source) : AnvilRegionFile.read(source);
+            if (!chunks.isEmpty()) {
+                byFile.put(source, chunks);
+                onDisk += Files.size(source);
+            }
+        }
+        return new Corpus(kind, byFile, onDisk, candidates.size());
+    }
+
+    private static void reportSource(Corpus corpus, Path dir) {
+        System.out.printf("source       : .%s in %s (%d of %d files, %d chunks)%n",
+            corpus.kind(), dir, corpus.byFile().size(), corpus.totalFiles(),
+            corpus.byFile().values().stream().mapToInt(List::size).sum());
+    }
+
+    /** The first non-empty region file, or null after reporting that the directory has none. */
+    private static Map.Entry<Path, List<AnvilRegionFile.Chunk>> firstFile(Path dir, String from)
+        throws IOException {
+        Corpus corpus = corpus(dir, from, 1);
+        if (corpus.byFile().isEmpty()) {
+            System.out.println("No readable region files in " + dir);
+            return null;
+        }
+        return corpus.byFile().entrySet().iterator().next();
+    }
+
     // ------------------------------------------------------------------ bench
 
-    private static void bench(Path dir, int grid, int level) throws IOException {
-        List<Path> sources = listFiles(dir, ".mca");
-        if (sources.isEmpty()) {
-            System.out.println("No .mca files in " + dir);
+    private static void bench(Path dir, int grid, int level, String from) throws IOException {
+        Corpus corpus = corpus(dir, from, 0);
+        if (corpus.byFile().isEmpty()) {
+            System.out.println("No readable region files in " + dir);
             return;
         }
         Path scratch = Files.createTempDirectory("cso-bench");
@@ -123,16 +205,22 @@ public final class Converter {
             long chunkCount = 0;
             long startedAt = System.nanoTime();
 
-            for (Path source : sources) {
-                List<AnvilRegionFile.Chunk> chunks = AnvilRegionFile.read(source);
-                if (chunks.isEmpty()) {
-                    continue;
-                }
-                Path target = scratch.resolve(swapExtension(source.getFileName().toString(), ".cso"));
+            for (Map.Entry<Path, List<AnvilRegionFile.Chunk>> entry : corpus.byFile().entrySet()) {
+                List<AnvilRegionFile.Chunk> chunks = entry.getValue();
+                String name = entry.getKey().getFileName().toString();
+                Path target = scratch.resolve(swapExtension(name, ".cso"));
                 writeCso(target, chunks, grid, level);
-                anvilTotal += Files.size(source);
                 csoTotal += Files.size(target);
                 chunkCount += chunks.size();
+                // From .mca the baseline is the real file; from .cso it has to be rebuilt, and our
+                // writer is only an approximation of what vanilla would have produced.
+                if (corpus.fromAnvil()) {
+                    anvilTotal += Files.size(entry.getKey());
+                } else {
+                    Path rebuilt = scratch.resolve(swapExtension(name, ".mca"));
+                    AnvilRegionFile.write(rebuilt, chunks);
+                    anvilTotal += Files.size(rebuilt);
+                }
             }
 
             long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
@@ -141,9 +229,13 @@ public final class Converter {
                 return;
             }
             double saved = 100.0 * (1.0 - (double) csoTotal / anvilTotal);
-            System.out.printf("region files : %d%n", sources.size());
+            reportSource(corpus, dir);
             System.out.printf("chunks       : %d%n", chunkCount);
-            System.out.printf("anvil (.mca) : %s (%d bytes)%n", human(anvilTotal), anvilTotal);
+            if (!corpus.fromAnvil()) {
+                System.out.printf("cso on disk  : %s (as written)%n", human(corpus.onDiskBytes()));
+            }
+            System.out.printf("anvil (.mca) : %s (%d bytes)%s%n", human(anvilTotal), anvilTotal,
+                corpus.fromAnvil() ? "" : "  [rebuilt by this tool — an estimate]");
             System.out.printf("cso  (grid=%d, zstd L%d): %s (%d bytes)%n", grid, level, human(csoTotal), csoTotal);
             System.out.printf("saved        : %.1f%%  (ratio %.2fx)%n", saved, (double) anvilTotal / csoTotal);
             System.out.printf("convert time : %d ms%n", elapsedMs);
@@ -156,30 +248,20 @@ public final class Converter {
 
     /**
      * Times both formats doing the same job — write every chunk, then read every chunk back —
-     * using real chunks taken from {@code .mca} files. Synthetic filler would compress
+     * using real chunks taken from the save's own region files. Synthetic filler would compress
      * unrealistically well and make both formats look better than they are.
      */
-    private static void ab(Path dir, int grid, int level) throws IOException {
+    private static void ab(Path dir, int grid, int level, String from) throws IOException {
         // A full save is hundreds of MB; decompressed it would not fit in the heap. A slice of
         // region files is representative enough and keeps this runnable against real worlds.
-        int maxFiles = 8;
-        List<Path> all = listFiles(dir, ".mca");
-        Map<Path, List<AnvilRegionFile.Chunk>> inputs = new LinkedHashMap<>();
-        for (Path source : all) {
-            if (inputs.size() >= maxFiles) {
-                break;
-            }
-            List<AnvilRegionFile.Chunk> chunks = AnvilRegionFile.read(source);
-            if (!chunks.isEmpty()) {
-                inputs.put(source, chunks);
-            }
-        }
+        Corpus corpus = corpus(dir, from, 8);
+        Map<Path, List<AnvilRegionFile.Chunk>> inputs = corpus.byFile();
         if (inputs.isEmpty()) {
-            System.out.println("No readable .mca chunks in " + dir);
+            System.out.println("No readable region files in " + dir);
             return;
         }
-        if (all.size() > maxFiles) {
-            System.out.println("(using " + maxFiles + " of " + all.size()
+        if (corpus.totalFiles() > inputs.size()) {
+            System.out.println("(using " + inputs.size() + " of " + corpus.totalFiles()
                 + " region files — the whole save would not fit in memory)");
         }
         int totalChunks = inputs.values().stream().mapToInt(List::size).sum();
@@ -247,7 +329,10 @@ public final class Converter {
     private static long timeWriteAnvil(Map<Path, List<AnvilRegionFile.Chunk>> inputs, Path dir) throws IOException {
         long started = System.nanoTime();
         for (Map.Entry<Path, List<AnvilRegionFile.Chunk>> entry : inputs.entrySet()) {
-            AnvilRegionFile.write(dir.resolve(entry.getKey().getFileName().toString()), entry.getValue());
+            // Named from the corpus extension, which is not always .mca: writing Anvil bytes into
+            // a file called r.0.0.cso would make the read pass below find nothing to read.
+            String name = swapExtension(entry.getKey().getFileName().toString(), ".mca");
+            AnvilRegionFile.write(dir.resolve(name), entry.getValue());
         }
         return System.nanoTime() - started;
     }
@@ -316,18 +401,13 @@ public final class Converter {
      * <p>This is the number that decides the default grid. Compression ratio barely moves with grid
      * (already measured), so write amplification is the trade that actually matters.
      */
-    private static void amp(Path dir, int level) throws IOException {
-        List<Path> files = listFiles(dir, ".mca");
-        if (files.isEmpty()) {
-            System.out.println("No .mca files in " + dir);
+    private static void amp(Path dir, int level, String from) throws IOException {
+        Map.Entry<Path, List<AnvilRegionFile.Chunk>> source = firstFile(dir, from);
+        if (source == null) {
             return;
         }
-        List<AnvilRegionFile.Chunk> chunks = AnvilRegionFile.read(files.get(0));
-        if (chunks.isEmpty()) {
-            System.out.println("No readable chunks in " + files.get(0).getFileName());
-            return;
-        }
-        System.out.println("source : " + files.get(0).getFileName() + " (" + chunks.size() + " chunks)");
+        List<AnvilRegionFile.Chunk> chunks = source.getValue();
+        System.out.println("source : " + source.getKey().getFileName() + " (" + chunks.size() + " chunks)");
         System.out.println("churn  : 64 chunks rewritten per round, 6 rounds, sequential window");
         System.out.println();
         System.out.println("logical = raw chunk bytes the game asked to save");
@@ -424,21 +504,16 @@ public final class Converter {
      * write before the log may be discarded. That is not free, so it is measured rather than
      * assumed — especially since this format's whole justification is being fast at writing.
      */
-    private static void walCost(Path dir, int level) throws IOException {
-        List<Path> files = listFiles(dir, ".mca");
-        if (files.isEmpty()) {
-            System.out.println("No .mca files in " + dir);
+    private static void walCost(Path dir, int level, String from) throws IOException {
+        Map.Entry<Path, List<AnvilRegionFile.Chunk>> source = firstFile(dir, from);
+        if (source == null) {
             return;
         }
-        List<AnvilRegionFile.Chunk> chunks = AnvilRegionFile.read(files.get(0));
-        if (chunks.isEmpty()) {
-            System.out.println("No readable chunks in " + files.get(0).getFileName());
-            return;
-        }
+        List<AnvilRegionFile.Chunk> chunks = source.getValue();
         int grid = 16;
         int rounds = 20;
         int batchSize = 32;
-        System.out.println("source: " + files.get(0).getFileName() + "  grid=" + grid
+        System.out.println("source: " + source.getKey().getFileName() + "  grid=" + grid
             + "  " + batchSize + " chunks/batch  " + rounds + " batches (median)");
 
         long[] without = new long[rounds];
