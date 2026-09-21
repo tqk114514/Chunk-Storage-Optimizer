@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -85,6 +86,40 @@ class ConverterTest {
 
         assertTrue(corpus.byFile().isEmpty());
         assertEquals(0, corpus.onDiskBytes());
+    }
+
+    @Test
+    void estimateWeighsEveryGridOnAnvilInput(@TempDir Path dir) throws IOException {
+        writeAnvil(dir, "r.0.0.mca", chunks(300, 500));
+        writeAnvil(dir, "r.0.1.mca", chunks(120, 500));
+
+        Converter.Estimate estimate = Converter.estimate(dir, "auto", 8, new int[] {1, 8, 16, 32});
+
+        assertEquals("mca", estimate.kind());
+        assertEquals(2, estimate.filesSampled());
+        assertEquals(2, estimate.totalFiles());
+        assertEquals(420, estimate.chunks());
+        assertTrue(estimate.currentBytes() > 0);
+        assertEquals(Set.of(1, 8, 16, 32), estimate.bytesByGrid().keySet());
+        // The whole point of the grid knob: a bigger bucket shares more compression context.
+        assertTrue(estimate.bytesByGrid().get(1) < estimate.bytesByGrid().get(32),
+            "expected grid 1 to beat grid 32, got " + estimate.bytesByGrid());
+    }
+
+    @Test
+    void estimateRunsOnAConvertedDirectory(@TempDir Path dir) throws IOException {
+        writeCso(dir, "r.0.0.cso", chunks(200, 500));
+
+        Converter.Estimate estimate = Converter.estimate(dir, "auto", 4, new int[] {16});
+
+        assertEquals("cso", estimate.kind());
+        assertEquals(200, estimate.chunks());
+        assertEquals(1, estimate.bytesByGrid().size());
+    }
+
+    @Test
+    void estimateOnAnEmptyDirectoryReportsNothing(@TempDir Path dir) throws IOException {
+        assertEquals(0, Converter.estimate(dir, "auto", 4, new int[] {16}).filesSampled());
     }
 
     @Test

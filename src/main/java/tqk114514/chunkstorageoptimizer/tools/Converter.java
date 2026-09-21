@@ -605,6 +605,58 @@ public final class Converter {
         }
     }
 
+    // ------------------------------------------------------------------ estimate
+
+    /**
+     * What a directory's chunks would weigh at several bucket grids, measured on a sample.
+     *
+     * @param filesSampled how many region files the sample covers
+     * @param totalFiles   how many the directory holds
+     * @param kind         {@code mca} or {@code cso}, whichever format supplied the sample
+     * @param currentBytes bytes those sampled files occupy right now
+     * @param bytesByGrid  grid -> bytes the same chunks need when rewritten at that grid
+     */
+    public record Estimate(
+        int filesSampled,
+        int totalFiles,
+        String kind,
+        int chunks,
+        long currentBytes,
+        Map<Integer, Long> bytesByGrid
+    ) {
+    }
+
+    /** Rewrites a sample of {@code dir} into a scratch folder at each grid and weighs the result. */
+    public static Estimate estimate(Path dir, String from, int maxFiles, int[] grids) throws IOException {
+        Corpus corpus = corpus(dir, from, maxFiles);
+        if (corpus.byFile().isEmpty()) {
+            return new Estimate(0, 0, from, 0, 0L, Map.of());
+        }
+        int chunks = 0;
+        long current = 0;
+        for (Map.Entry<Path, List<AnvilRegionFile.Chunk>> entry : corpus.byFile().entrySet()) {
+            chunks += entry.getValue().size();
+            current += Files.size(entry.getKey());
+        }
+        Map<Integer, Long> byGrid = new LinkedHashMap<>();
+        Path scratch = Files.createTempDirectory("cso-estimate");
+        try {
+            for (int grid : grids) {
+                long total = 0;
+                for (Map.Entry<Path, List<AnvilRegionFile.Chunk>> entry : corpus.byFile().entrySet()) {
+                    Path target = scratch.resolve(swapExtension(entry.getKey().getFileName().toString(), ".cso"));
+                    Files.deleteIfExists(target);
+                    writeCso(target, entry.getValue(), grid, 3);
+                    total += Files.size(target);
+                }
+                byGrid.put(grid, total);
+            }
+        } finally {
+            deleteRecursively(scratch);
+        }
+        return new Estimate(corpus.byFile().size(), corpus.totalFiles(), corpus.kind(), chunks, current, byGrid);
+    }
+
     // ------------------------------------------------------------------ convert
 
     private static void convert(Path dir, String target, int grid, int level) throws IOException {
