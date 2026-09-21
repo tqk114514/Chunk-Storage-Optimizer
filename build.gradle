@@ -114,7 +114,8 @@ configurations {
 
 dependencies {
     // zstd via zstd-jni. jarJar() bundles it into our mod jar as a nested jar, which NeoForge
-    // loads at runtime. NOTE: nested-jar native extraction is a known risk — see ZstdSmokeTest.
+    // loads at runtime. NOTE: nested-jar native extraction is a known risk, so the mixin probes
+    // zstd once at startup (RegionFileStorageMixin.cso$zstdUsable) and falls back to Anvil.
     implementation(jarJar("com.github.luben:zstd-jni:1.5.6-3"))
 
     // Tests cover the format layer, which is deliberately free of Minecraft dependencies.

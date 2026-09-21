@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * CSO region file format constants and index math.
  *
- * <p>Layout: {@code [FileHeader 128B][BucketTable N*24B][data blocks...]}.
+ * <p>Layout: {@code [FileHeader 128B][BucketTable A N*32B][BucketTable B N*32B][data blocks...]}.
  * All multi-byte integers are little-endian.
  */
 public final class CsoFormat {

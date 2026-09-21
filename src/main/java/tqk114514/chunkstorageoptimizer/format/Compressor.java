@@ -35,9 +35,6 @@ public interface Compressor {
 
 /**
  * zstd via zstd-jni.
- *
- * <p>TODO(perf): reuse {@code ZstdCompressCtx}/{@code ZstdDecompressCtx} per thread instead of the
- * static helpers, which allocate a native context on every call. Correctness first, then measure.
  */
 final class ZstdCompressor implements Compressor {
     private final int level;
