@@ -123,28 +123,26 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 不启动游戏即可对磁盘上的存档操作。工具只搬运 NBT 字节、不解析它们。
 
 ```bash
-GRADLE_BIN=$(ls -d ~/.gradle/wrapper/dists/gradle-9.1.0-bin/*/gradle-9.1.0/bin/gradle | head -1)
-
 # 只报告体积对比，不改动任何文件
-"$GRADLE_BIN" csoTool -PcsoArgs="bench --grid 16 --level 3" -PcsoDir="<存档>/dimensions/minecraft/overworld/region"
+./gradlew csoTool -PcsoArgs="bench --grid 16 --level 3" -PcsoDir="<存档>/dimensions/minecraft/overworld/region"
 
 # 转换（原文件保留）
-"$GRADLE_BIN" csoTool -PcsoArgs="convert --to cso --grid 16" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="convert --to cso --grid 16" -PcsoDir="<目录>"
 
 # 反向转换：.cso -> .mca
-"$GRADLE_BIN" csoTool -PcsoArgs="convert --to mca" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="convert --to mca" -PcsoDir="<目录>"
 
 # 读写速度对比（多轮取中位数）
-"$GRADLE_BIN" csoTool -PcsoArgs="ab --grid 16 --level 3" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="ab --grid 16 --level 3" -PcsoDir="<目录>"
 
 # 各 grid 的写入量对比
-"$GRADLE_BIN" csoTool -PcsoArgs="amp --level 3" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="amp --level 3" -PcsoDir="<目录>"
 
 # 预写日志带来的写入开销
-"$GRADLE_BIN" csoTool -PcsoArgs="walcost --level 3" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="walcost --level 3" -PcsoDir="<目录>"
 
 # 统计目录内的区块总数与平均区块大小（只读，常用于对照实验前确认两边一致）
-"$GRADLE_BIN" csoTool -PcsoArgs="count" -PcsoDir="<目录>"
+./gradlew csoTool -PcsoArgs="count" -PcsoDir="<目录>"
 ```
 
 > 做「两个存档比大小」这类对照时，务必先用 `count` 确认两边区块数一致。
@@ -285,18 +283,17 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 ## 从源码构建
 
 ```bash
-GRADLE_BIN=$(ls -d ~/.gradle/wrapper/dists/gradle-9.1.0-bin/*/gradle-9.1.0/bin/gradle | head -1)
-"$GRADLE_BIN" build
+./gradlew build
 ```
 
 构建产物在 `build/libs/`。单元测试覆盖格式层，该层不依赖 Minecraft，可独立运行：
 
 ```bash
-"$GRADLE_BIN" test
+./gradlew test
 ```
 
 启动开发服务器：
 
 ```bash
-"$GRADLE_BIN" runServer
+./gradlew runServer
 ```
