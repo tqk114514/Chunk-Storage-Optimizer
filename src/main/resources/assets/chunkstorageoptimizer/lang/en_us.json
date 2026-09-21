@@ -1,13 +1,5 @@
 {
-  "itemGroup.chunkstorageoptimizer": "Example Mod Tab",
-  "block.chunkstorageoptimizer.example_block": "Example Block",
-  "item.chunkstorageoptimizer.example_item": "Example Item",
-
   "chunkstorageoptimizer.configuration.title": "Chunk Storage Optimizer Configs",
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "Chunk Storage Optimizer Configs",
-  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Chunk Storage Optimizer Configs",
-  "chunkstorageoptimizer.configuration.items": "Item List",
-  "chunkstorageoptimizer.configuration.logDirtBlock": "Log Dirt Block",
-  "chunkstorageoptimizer.configuration.magicNumberIntroduction": "Magic Number Text",
-  "chunkstorageoptimizer.configuration.magicNumber": "Magic Number"
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Chunk Storage Optimizer Configs"
 }
