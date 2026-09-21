@@ -745,25 +745,4 @@ public final class Converter {
             throw e.getCause();
         }
     }
-
-    private static String opt(String[] args, String key, String fallback) {
-        for (int i = 0; i < args.length - 1; i++) {
-            if (args[i].equals(key)) {
-                return args[i + 1];
-            }
-        }
-        return fallback;
-    }
-
-    private static int optInt(String[] args, String key, int fallback) {
-        String value = opt(args, key, null);
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
 }
