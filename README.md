@@ -63,6 +63,10 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 `config/chunkstorageoptimizer-common.toml`：
 
+> 生成的 toml 里**没有注释**：NeoForge 只会把代码里的 comment 写进文件，而选项说明需要按语言
+> 各出一份，所以它们放在语言文件里。含义见下表，或游戏内 **Mods → 选中本 mod → Config**
+> 界面（简中 / 繁中 TW / 繁中 HK 均有）。
+
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 总开关。关闭后使用原版 Anvil 存储，不会改动任何已有文件 |

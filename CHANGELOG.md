@@ -20,6 +20,13 @@
   without `--grid` measured grid 8, so those numbers did not describe what an active world writes.
 - **The client no longer writes the player name to the log at startup.**
 
+### Changed
+- **The generated config file no longer carries `#` comments.** The option descriptions moved into
+  the language files so the in-game config screen can show them in your language — a code comment
+  has to pick exactly one. Read what an option does in **Mods → Config** (hover an entry for the
+  full text) or in the README table. **If you edit `chunkstorageoptimizer-common.toml` by hand,
+  the hints beside each key are gone**; the key names, defaults and allowed values are unchanged.
+
 ## [1.0.0] - 2026-09-20
 
 ### What's New
