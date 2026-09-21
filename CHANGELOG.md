@@ -3,13 +3,15 @@
 ## [1.0.1] - 2026-09-22
 
 ### Added
-- **Simplified and Traditional Chinese translations** for the in-game config screen
-  (Mods → Chunk Storage Optimizer → Config). Entry labels now read 分桶网格边长 /
-  分桶網格邊長 instead of a raw translation key.
+- **Chinese translations for the in-game config screen** (Mods → Chunk Storage Optimizer →
+  Config): Simplified, Traditional (TW) and Traditional (HK). Both the option names and the
+  descriptions shown when you hover over them are translated.
 - **A logo and a real description** for the Mods screen entry, which previously carried the
   modding-template placeholder text.
 
 ### Fixed
+- **The `compression` option accepted any text.** Typing anything else saved without complaint and
+  silently behaved as `zstd`. It is now restricted to `zstd` and `none`.
 - **A misplaced region file is rejected instead of silently misread.** If a `.cso` file is renamed
   or copied so that its name no longer matches the region it holds, the game now refuses to open it
   and says why. Previously its chunks answered for the wrong coordinates, which looks like a
