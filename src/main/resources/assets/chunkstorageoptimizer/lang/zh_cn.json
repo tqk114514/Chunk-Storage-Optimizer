@@ -4,14 +4,35 @@
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "区块存储优化 配置",
 
   "chunkstorageoptimizer.configuration.enabled": "启用",
+  "chunkstorageoptimizer.configuration.enabled.tooltip": "总开关。关闭后使用原版 Anvil 存档，不会改动任何已有文件；但只存在于 .cso 里的进度对原版不可见。",
+
   "chunkstorageoptimizer.configuration.grid": "分桶网格边长",
+  "chunkstorageoptimizer.configuration.grid.tooltip": "一个 32×32 的 region 被切成 grid × grid 个桶。网格越大 = 桶越小 = 写放大越低、压缩率越差。只对新建的 region 文件生效，已有文件保持自己出生时的 grid。实测（889 MB 城市存档）：16 相比 8 大约把写入量和写入耗时都减半，代价是多占约 7.5% 空间；32 反而比 16 更差——每桶只剩 1 个区块，失去跨区块共享压缩上下文的收益。取值：1 = 整个 region 一个桶（压缩最好、写入代价最高，适合冷存档/归档）；8 = 每桶 16 个区块；16 = 每桶 4 个区块（默认，写入代价最低）。",
+
   "chunkstorageoptimizer.configuration.compression": "压缩算法",
+  "chunkstorageoptimizer.configuration.compression.tooltip": "压缩算法：zstd 或 none。",
+
   "chunkstorageoptimizer.configuration.zstdLevel": "zstd 等级",
+  "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "热写入路径使用的 zstd 等级。3 是默认的折中；等级越高压缩越好、写入越慢。",
+
   "chunkstorageoptimizer.configuration.cachedBuckets": "缓存桶数量",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "每个 region 文件在内存里缓存的已解压桶数量。越大越能降低玩家附近的读放大，代价是堆内存。一个桶最多装 (32/grid)^2 个区块；grid=8 时是 16 个。",
+
   "chunkstorageoptimizer.configuration.verifyCrc": "校验 CRC32",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "读取时校验桶的 CRC32，用来发现损坏，而不是静默返回垃圾数据或空区块。除非在做基准测试，否则保持开启。",
+
   "chunkstorageoptimizer.configuration.fallbackToMca": "回退读取 .mca",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "当 .cso 里没有该区块时，回退去读同名的 .mca。这让本 mod 可以安全地启用在已有存档上：已保存的数据不会丢，新写入逐步迁移到新格式。",
+
   "chunkstorageoptimizer.configuration.compactionMinBytes": "整理触发下限（字节）",
+  "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "触发空间整理所需的最小浪费字节数。",
+
   "chunkstorageoptimizer.configuration.compactionRatio": "整理触发比例",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "触发整理的浪费/存活数据比（0.25 = 25% 浪费）。",
+
   "chunkstorageoptimizer.configuration.batchMaxChunks": "批处理区块数",
-  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批处理最长延迟（毫秒）"
+  "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "写一个区块意味着重压它所在的整个桶，所以写入先在内存暂存、再按桶合并落盘：同一个桶里的 N 个区块只压一次，不是 N 次。这里设置攒够多少个区块就提前落盘。设为 1 关闭批处理。",
+
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批处理最长延迟（毫秒）",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "暂存写入在内存里的最长停留时间，超时即强制落盘。它决定进程死亡时最多丢多少。自动保存无论如何都会刷盘。"
 }

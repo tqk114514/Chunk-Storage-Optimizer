@@ -19,16 +19,16 @@
   "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "每個 region 檔案在記憶體中快取的已解壓桶數量。越大越能降低玩家附近的讀放大，代價是堆記憶體。一個桶最多裝 (32/grid)^2 個區塊；grid=8 時是 16 個。",
 
   "chunkstorageoptimizer.configuration.verifyCrc": "驗證 CRC32",
-  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "讀取時驗證桶的 CRC32，用來發現損壞，而不是靜默回傳垃圾資料或空區塊。除非在做基準測試，否則請保持開啟。",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "讀取時驗證桶的 CRC32，用來發現損壞，而不是靜默回傳垃圾數據或空區塊。除非在做基準測試，否則請保持開啟。",
 
   "chunkstorageoptimizer.configuration.fallbackToMca": "回退讀取 .mca",
-  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "當 .cso 裡沒有該區塊時，回退去讀同名的 .mca。這讓本 mod 可以安全地啟用於既有存檔：已儲存的資料不會遺失，新寫入逐步遷移到新格式。",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "當 .cso 裡沒有該區塊時，回退去讀同名的 .mca。這讓本 mod 可以安全地啟用於既有存檔：已儲存的數據不會遺失，新寫入逐步遷移到新格式。",
 
   "chunkstorageoptimizer.configuration.compactionMinBytes": "整理觸發下限（位元組）",
   "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "觸發空間整理所需的最小浪費位元組數。",
 
   "chunkstorageoptimizer.configuration.compactionRatio": "整理觸發比例",
-  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "觸發整理的浪費/存活資料比（0.25 = 25% 浪費）。",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "觸發整理的浪費/存活數據比（0.25 = 25% 浪費）。",
 
   "chunkstorageoptimizer.configuration.batchMaxChunks": "批次處理區塊數",
   "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "寫入一個區塊意味著重壓它所在的整個桶，所以寫入先在記憶體暫存、再按桶合併寫入磁碟：同一個桶裡的 N 個區塊只壓縮一次，而不是 N 次。這裡設定攢夠多少個區塊就提前寫入磁碟。設為 1 可關閉批次處理。",
