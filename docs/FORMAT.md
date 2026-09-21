@@ -20,7 +20,8 @@ Chunk Storage Optimizer 的自有区块存储格式。**不与原版 Anvil 兼�
 
 **非目标**
 
-- 与原版 Anvil 的双向兼容（用户已明确放弃，转换工具搁置）。
+- 与原版 Anvil **同时**读写同一份数据。一次性转换工具已经实现（游戏内 `/cso convert`、
+  离线 `csoTool convert`），但它是搬运而非运行时兼容。
 - 与 MCA Selector 等外部工具兼容（本格式下它们本就不可用）。
 
 ---
@@ -64,7 +65,7 @@ Chunk Storage Optimizer 的自有区块存储格式。**不与原版 Anvil 兼�
 | 10 | 2 | `grid` | bucket 网格边长，取值 1/2/4/8/16/32，且必须能整除 32 |
 | 12 | 1 | `compression` | `0`=none，`1`=zstd |
 | 13 | 1 | `level` | 压缩等级（zstd 1..22） |
-| 14 | 2 | `flags` | bit0：`dataCrcEnabled` |
+| 14 | 2 | `flags` | v1 **恒为 0**，读取时必须忽略（`bit0` 预留给 `dataCrcEnabled`） |
 | 16 | 4 | `bucketCount` | = `grid * grid` |
 | 20 | 4 | `headerCrc` | 对偏移 0..20（20 字节）计算的 CRC32 |
 | 24 | 4 | `regionX` | 冗余记录，用于检测文件错位 |
@@ -106,8 +107,9 @@ bucket 表存**两份同构副本**。表 `t` 中第 `i` 项的偏移 = `128 + (
 - 崩在写表项中途 → 该份表项自检失败 → 回退到另一份 → 读到上一版本
 - 写表项完成 → 读到新版本
 
-结论：**会丢最近一次写入，不会产生不可解析的文件**。这是刻意的选择——宁可丢几秒进度，
-也不要一个打不开的世界。
+结论：**双表保证文件始终可解析**，已落盘的最后一批由 §13 的 WAL 保证不丢。仍在内存暂存队列
+里的区块（最多 `batchMaxChunks` 个或 `batchMaxDelayMs` 毫秒）崩溃即丢——这是刻意的选择，
+宁可丢几秒进度，也不要一个打不开的世界。
 
 ---
 
@@ -205,15 +207,17 @@ bucket 解压后可能达数 MB，缓存容量必须设上限并在配置中可�
 
 ---
 
-## 10. 迁移与回退（无转换工具前提下）
+## 10. 迁移与回退
 
 启用 mod 后：
 
-- **读**：先查 `.cso`；若该 region 无 `.cso` 文件或其中无该区块，**回退读同名 `.mca`**（原版解析器）。
+- **读**：先查内存暂存队列，再查 `.cso`；若该 region 无 `.cso` 文件或其中无该区块，
+  **回退读同名 `.mca`**（原版解析器）。
 - **写**：始终写 `.cso`。
-- **删除**：同时清 `.cso` 中的条目与 `.mca` 中的条目。
+- **删除**：只清 `.cso` 中的条目，不动 `.mca`。被删除的区块若在同名 `.mca` 里还留着旧字节，
+  读回退会让它重新出现——所以一旦开始用本 mod，建议尽快跑一次 `/cso convert cso prune`。
 
-效果：已探索区域的数据不会丢（仍从 `.mca` 读），新产生的写入走新格式。用户不需要转换工具即可渐进迁移。
+效果：已探索区域的数据不会丢（仍从 `.mca` 读），新产生的写入走新格式。不做任何操作即可完成渐进迁移；要立刻收尾用 `/cso convert cso prune`。
 
 ⚠️ **卸载语义**：卸载 mod 后，`.cso` 里的新增进度对原版不可见。这是激进路线的固有代价，必须在 README 与首次启动日志中明示。
 
@@ -225,33 +229,44 @@ bucket 解压后可能达数 MB，缓存容量必须设上限并在配置中可�
 
 - magic 不匹配、formatVersion 不支持
 - header CRC 校验失败
+- header 记录的 `regionX`/`regionZ` 与文件名不符（文件被改名或复制错位）
 - bucket CRC 或 `rawLength` 校验失败
 - `grid` 非法（非 2 的幂、不能整除 32）
 - 解析出的 offset/length 越界
 
 理由：区块存储层的静默失败 = 地形被重新生成 = 不可逆的存档损坏。**响亮地失败比安静地出错好。**
 
-启动时若检测到 C2ME 且其 `ioSystem.replaceImpl` 为 `true`，**拒绝加载**并给出明确提示（该配置会让 C2ME 绕过本 mod 直接读写 `.mca`，与已有的 `.cso` 混用会造成存档割裂）。
+**唯一的例外是启动阶段的环境不可用**：检测到 C2ME、或 zstd native 库加载失败、或存储层初始化抛异常时，
+本 mod 通过 `CsoRuntime.disable()` 停用自有格式、整个会话退回原版 Anvil，并在日志里说明原因。
+这些情况都不涉及已写入的数据，退回是安全的；而 C2ME 之所以要拦，是它的 `ioSystem.replaceImpl`
+会绕过本 mod 直接读写 `.mca`，与本 mod 写出的 `.cso` 混用造成存档割裂。要同时使用两者，需自行把
+`config/c2me.toml` 的 `ioSystem.replaceImpl` 设为 `false` 并承担风险。
 
 ---
 
 ## 12. 配置项（NeoForge COMMON config）
 
+键名与默认值以 `Config.java` 为准：
+
 | 键 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 总开关 |
+| `grid` | `16` | bucket 网格边长，1–32 的 2 的幂（非法值向下取整）。只对新建文件生效，已有文件保持自己的 grid |
 | `compression` | `zstd` | `zstd` / `none` |
 | `zstdLevel` | `3` | 1..22，热写入路径等级 |
-| `grid` | `8` | bucket 网格边长。越大 = bucket 越小 = 写放大越低、压缩率越低 |
-| `bucketCacheSize` | `4` | 每个 region 文件缓存的解压 bucket 数 |
-| `compactionWastedRatio` | `0.25` | 触发 compaction 的浪费比例 |
-| `compactionMinWastedBytes` | `4194304` | 触发 compaction 的最小浪费字节数 |
-| `readFallbackToMca` | `true` | 无 `.cso` 数据时回退读 `.mca` |
+| `cachedBuckets` | `4` | 每个 region 文件缓存的解压 bucket 数（0..64）。越大 = 读放大越低、堆占用越高 |
 | `verifyCrc` | `true` | 读取时校验 CRC32 |
+| `fallbackToMca` | `true` | `.cso` 中无该区块时回退读同名 `.mca` |
+| `compactionMinBytes` | `4194304` | 触发 compaction 的最小浪费字节数 |
+| `compactionRatio` | `0.25` | 触发 compaction 的浪费/存活比 |
+| `batchMaxChunks` | `16` | 攒够多少个区块变更后提前落盘，`1` 关闭批处理 |
+| `batchMaxDelayMs` | `5000` | 暂存写入的最长停留时间，超时即落盘 |
+
+> 已存在的配置文件**不会**被新默认值覆盖，升级 mod 后需手动改。
 
 ---
 
-## 12. WAL（预写日志）
+## 13. WAL（预写日志）
 
 文件：`r.X.Z.cso.wal`，与主文件同目录，**仅在一次批处理进行期间存在**。
 
@@ -290,11 +305,13 @@ crc32               u32      覆盖前面所有字节（小端）
 
 实测（32 区块/批，889 MB 城市存档）：每批 6 ms → 8 ms，**慢约 22%**。
 
-## 13. 已知限制
+## 14. 已知限制
 
-- **写放大**：写 1 个区块需要重写整个 bucket。grid=8 时 bucket 为 16 个区块，实测前估算写放大约为原版的 5–8 倍。必须配合 IOWorker 层的批处理才能落到可接受区间。
-- **崩溃一致性（已缓解，未根治）**：双表 + 表项自检 + 不复用旧空间，保证崩溃后文件**始终可解析**，
-  代价是可能丢失最后一次写入。做到「一次都不丢」需要 WAL 或每次写后 fsync，两者都会显著
-  拖慢写入，当前未采用。
+- **写放大**：写 1 个区块需要重写整个 bucket。实测（同一 region 文件每轮重写 64 个区块、共 6 轮）
+  落盘量 grid=16 为 0.95 MB、grid=8 为 1.73 MB、grid=1 为 14.46 MB，所以默认值取写放最低的 16。
+  再配合 `CsoStorage` 的按 bucket 批处理，同一 bucket 一批只压缩一次。
+- **崩溃一致性**：双表 + 表项自检 + 不复用旧空间保证文件**始终可解析**，§13 的 WAL 保证
+  已提交落盘的批次不丢。仍会丢的是**尚未 flush 的内存暂存队列**——上限为 `batchMaxChunks`
+  个区块或 `batchMaxDelayMs` 毫秒。要把这一层也保住就得每次区块保存都强制刷盘，代价见 §13。
 - **稀疏 region**：`grid=1` 时单个 bucket 达 1024 个区块，重写代价极高，只适合冷存档/归档场景。
-- 首次实现不包含：后台重压（冷 bucket 用高等级重压）、zstd 字典训练。
+- 未实现：后台重压（冷 bucket 用高等级重压）、zstd 字典训练。
