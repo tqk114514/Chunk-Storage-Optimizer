@@ -1,0 +1,17 @@
+{
+  "chunkstorageoptimizer.configuration.title": "区块存储优化 配置",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "区块存储优化 配置",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "区块存储优化 配置",
+
+  "chunkstorageoptimizer.configuration.enabled": "启用",
+  "chunkstorageoptimizer.configuration.grid": "分桶网格边长",
+  "chunkstorageoptimizer.configuration.compression": "压缩算法",
+  "chunkstorageoptimizer.configuration.zstdLevel": "zstd 等级",
+  "chunkstorageoptimizer.configuration.cachedBuckets": "缓存桶数量",
+  "chunkstorageoptimizer.configuration.verifyCrc": "校验 CRC32",
+  "chunkstorageoptimizer.configuration.fallbackToMca": "回退读取 .mca",
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "整理触发下限（字节）",
+  "chunkstorageoptimizer.configuration.compactionRatio": "整理触发比例",
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "批处理区块数",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批处理最长延迟（毫秒）"
+}

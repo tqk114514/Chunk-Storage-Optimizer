@@ -1,0 +1,17 @@
+{
+  "chunkstorageoptimizer.configuration.title": "區塊儲存優化 設定",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "區塊儲存優化 設定",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "區塊儲存優化 設定",
+
+  "chunkstorageoptimizer.configuration.enabled": "啟用",
+  "chunkstorageoptimizer.configuration.grid": "分桶網格邊長",
+  "chunkstorageoptimizer.configuration.compression": "壓縮演算法",
+  "chunkstorageoptimizer.configuration.zstdLevel": "zstd 等級",
+  "chunkstorageoptimizer.configuration.cachedBuckets": "快取桶數量",
+  "chunkstorageoptimizer.configuration.verifyCrc": "校驗 CRC32",
+  "chunkstorageoptimizer.configuration.fallbackToMca": "回退讀取 .mca",
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "整理觸發下限（位元組）",
+  "chunkstorageoptimizer.configuration.compactionRatio": "整理觸發比例",
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "批次處理區塊數",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批次處理最長延遲（毫秒）"
+}
