@@ -275,7 +275,7 @@ grid=16、zstd L3。
 - 空闲空间由 bucket 表反推，文件中不存 free list
 - bucket 表存**两份**，每项自带序号与自检 CRC —— 崩溃时可逐 bucket 回退
 - 一批写入先写**预写日志**（`.wal`），完成后才删除
-- 空闲超过阈值时自动整理，整理只搬移已压缩的字节，不重新压缩
+- 空闲超过阈值时自动整理，整理只搬移已压缩的字节，不重新压缩；检查发生在保存节点，不会让某个区块的写入突然背上整文件重写的开销
 
 完整规范见 [`docs/FORMAT.md`](docs/FORMAT.md)，前期调研见
 [`docs/chunk-storage-research.md`](docs/chunk-storage-research.md)。
