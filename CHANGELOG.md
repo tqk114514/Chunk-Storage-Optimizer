@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **The offline tools can measure a save that has already been converted.** `bench`, `ab`, `amp`
+  and `walcost` only looked for `.mca`, so once a world finished migrating they reported nothing at
+  all. They now read whichever format is present; when only `.cso` remains, the Anvil comparison is
+  rebuilt from the chunks and labelled as an estimate. Use `--from mca|cso` to pick explicitly.
+
 ## [1.0.1] - 2026-09-22
 
 ### Added

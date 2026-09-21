@@ -149,6 +149,11 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 ./gradlew csoTool -PcsoArgs="count" -PcsoDir="<目录>"
 ```
 
+`bench`/`ab`/`amp`/`walcost` 读目录里现成的格式：有 `.mca` 就用它（那是原版真实写出的字节），
+只剩 `.cso` 时自动改用 `.cso`——**已经转换完的存档照样能测**。此时 anvil 那一行是本工具重写出
+的估算值，输出里会标注 `[rebuilt by this tool — an estimate]`。两种格式同时存在（渐进迁移的
+常态）而你想强制读某一侧，加 `--from cso` 或 `--from mca`。
+
 > 做「两个存档比大小」这类对照时，务必先用 `count` 确认两边区块数一致。
 > 区块数不同的话，体积差里混着内容差异，数字没有意义。
 
