@@ -41,6 +41,8 @@ public final class CsoRegionFile implements Closeable {
 
     private static final System.Logger LOGGER = System.getLogger(CsoRegionFile.class.getName());
     private static final byte[] WAL_MAGIC = {'C', 'S', 'O', 'W', 'A', 'L', 0};
+    /** Stored in the header when the filename carries no region coordinates. */
+    private static final int UNKNOWN_COORD = Integer.MIN_VALUE;
 
     private final Path path;
     /**
@@ -223,6 +225,7 @@ public final class CsoRegionFile implements Closeable {
                 "Grid mismatch in " + this.path + ": file=" + fileGrid + " expected=" + this.grid
             );
         }
+        verifyRegionCoords(header);
 
         byte[] tables = new byte[this.bucketCount * BUCKET_ENTRY_SIZE * CsoFormat.TABLE_COUNT];
         readFully(ByteBuffer.wrap(tables), (long) HEADER_SIZE);
@@ -297,12 +300,36 @@ public final class CsoRegionFile implements Closeable {
         // r.<x>.<z>.cso
         String[] parts = name.split("\\.");
         if (parts.length < 4) {
-            return Integer.MIN_VALUE;
+            return UNKNOWN_COORD;
         }
         try {
             return Integer.parseInt(parts[1 + index]);
         } catch (NumberFormatException e) {
-            return Integer.MIN_VALUE;
+            return UNKNOWN_COORD;
+        }
+    }
+
+    /**
+     * Rejects a file whose header names a different region than the filename does: a renamed or
+     * misplaced region file would otherwise answer for another region's chunks, and the game cannot
+     * tell that apart from a damaged save.
+     *
+     * <p>Skipped when the filename carries no coordinates — the tooling opens scratch files like
+     * {@code plain.cso}, whose header stores the same marker.
+     */
+    private void verifyRegionCoords(byte[] header) throws CsoCorruptedException {
+        int expectedX = regionXFromPath();
+        int expectedZ = regionZFromPath();
+        if (expectedX == UNKNOWN_COORD || expectedZ == UNKNOWN_COORD) {
+            return;
+        }
+        int recordedX = CsoFormat.readInt(header, 24);
+        int recordedZ = CsoFormat.readInt(header, 28);
+        if (recordedX != expectedX || recordedZ != expectedZ) {
+            throw new CsoCorruptedException(
+                "Coordinate mismatch in " + this.path + ": header holds r." + recordedX + "." + recordedZ
+                    + " but the file is named " + this.path.getFileName()
+            );
         }
     }
 

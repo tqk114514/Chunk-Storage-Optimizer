@@ -27,8 +27,12 @@ class CsoRegionFileTest {
     private static final int LEVEL = 3;
 
     private static CsoRegionFile open(Path dir, int grid) throws IOException {
+        return openAt(dir, "r.0.0.cso", grid);
+    }
+
+    private static CsoRegionFile openAt(Path dir, String name, int grid) throws IOException {
         return CsoRegionFile.open(
-            dir.resolve("r.0.0.cso"), grid, COMPRESSION, LEVEL,
+            dir.resolve(name), grid, COMPRESSION, LEVEL,
             4,          // cached buckets
             true,       // verify CRC
             4096,       // compaction min wasted (small on purpose, to exercise it)
@@ -167,6 +171,17 @@ class CsoRegionFileTest {
             ch.write(ByteBuffer.wrap(new byte[] {'X', 'Y'}), 0L);
         }
         assertThrows(CsoCorruptedException.class, () -> open(dir, GRID));
+    }
+
+    @Test
+    void misnamedRegionFileIsRejected(@TempDir Path dir) throws IOException {
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(1, 1, chunkData(1, 300));
+        }
+        // The header records which region it belongs to, so a file that has been renamed or copied
+        // into another slot cannot quietly serve one region's chunks as another's.
+        Files.move(dir.resolve("r.0.0.cso"), dir.resolve("r.0.1.cso"));
+        assertThrows(CsoCorruptedException.class, () -> openAt(dir, "r.0.1.cso", GRID));
     }
 
     @Test
