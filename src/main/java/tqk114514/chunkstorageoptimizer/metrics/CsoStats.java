@@ -32,6 +32,12 @@ public final class CsoStats {
     private static final LongAdder IO_WRITE_BYTES = new LongAdder();
     private static final LongAdder BATCH_FLUSHES = new LongAdder();
 
+    // Totals answer "is the format helping overall"; only a distribution answers "did one save
+    // stall the server", which is the question behind a world hiccup.
+    private static final CsoLatency COMPRESS_LATENCY = new CsoLatency();
+    private static final CsoLatency DECOMPRESS_LATENCY = new CsoLatency();
+    private static final CsoLatency FLUSH_LATENCY = new CsoLatency();
+
     private CsoStats() {
     }
 
@@ -59,6 +65,7 @@ public final class CsoStats {
         DECOMPRESS_NANOS.add(nanos);
         IO_READ_BYTES.add(compressedBytes);
         RAW_BYTES_OUT.add(rawBytes);
+        DECOMPRESS_LATENCY.record(nanos);
     }
 
     public static void bucketCompressed(long nanos, int rawBytes, int compressedBytes) {
@@ -66,6 +73,7 @@ public final class CsoStats {
         COMPRESS_NANOS.add(nanos);
         RAW_BYTES_IN.add(rawBytes);
         STORED_BYTES.add(compressedBytes);
+        COMPRESS_LATENCY.record(nanos);
     }
 
     public static void compaction(long nanos) {
@@ -77,8 +85,23 @@ public final class CsoStats {
         IO_WRITE_BYTES.add(bytes);
     }
 
-    public static void batchFlushed() {
+    public static void batchFlushed(long nanos) {
         BATCH_FLUSHES.increment();
+        FLUSH_LATENCY.record(nanos);
+    }
+
+    // --- latency distributions ---
+
+    public static CsoLatency compressLatency() {
+        return COMPRESS_LATENCY;
+    }
+
+    public static CsoLatency decompressLatency() {
+        return DECOMPRESS_LATENCY;
+    }
+
+    public static CsoLatency flushLatency() {
+        return FLUSH_LATENCY;
     }
 
     // --- reporting ---
@@ -151,5 +174,8 @@ public final class CsoStats {
         }) {
             adder.reset();
         }
+        COMPRESS_LATENCY.reset();
+        DECOMPRESS_LATENCY.reset();
+        FLUSH_LATENCY.reset();
     }
 }

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.LongAdder;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -20,6 +21,7 @@ import net.minecraft.world.level.chunk.storage.RegionFile;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 
 import tqk114514.chunkstorageoptimizer.format.CsoFormat;
+import tqk114514.chunkstorageoptimizer.metrics.CsoLatency;
 import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
 import tqk114514.chunkstorageoptimizer.format.CsoRegionFile;
 
@@ -55,17 +57,56 @@ public final class CsoStorage implements AutoCloseable {
     private int pendingCount;
     private long lastFlushMillis = System.currentTimeMillis();
 
+    /** "overworld/region" style label, so /cso stats can attribute numbers to one store. */
+    private final String label;
+    private final LongAdder chunksRead = new LongAdder();
+    private final LongAdder chunksWritten = new LongAdder();
+    private final CsoLatency flushLatency = new CsoLatency();
+
     public CsoStorage(RegionStorageInfo info, Path folder, boolean sync, CsoSettings settings) {
         this.info = info;
         this.folder = folder;
         this.sync = sync;
         this.settings = settings;
+        this.label = labelOf(folder);
         CsoRegistry.add(this);
+    }
+
+    private static String labelOf(Path folder) {
+        Path parent = folder.getParent();
+        String store = folder.getFileName().toString();
+        // Save layouts nest deeper than dimensions/.../<dim>/<store>, but the two trailing names
+        // are always the interesting ones.
+        return parent == null ? store : parent.getFileName() + "/" + store;
+    }
+
+    public String label() {
+        return this.label;
+    }
+
+    public long chunksReadCount() {
+        return this.chunksRead.sum();
+    }
+
+    public long chunksWrittenCount() {
+        return this.chunksWritten.sum();
+    }
+
+    public CsoLatency flushLatency() {
+        return this.flushLatency;
+    }
+
+    /** Clears this storage's own counters; the process-wide ones live in CsoStats. */
+    public void resetStats() {
+        this.chunksRead.reset();
+        this.chunksWritten.reset();
+        this.flushLatency.reset();
     }
 
     // ------------------------------------------------------------------ api
 
     public CompoundTag read(ChunkPos pos) throws IOException {
+        this.chunksRead.increment();
         byte[] staged = staged(pos);
         if (staged != null) {
             return deserialize(staged);
@@ -90,6 +131,7 @@ public final class CsoStorage implements AutoCloseable {
     }
 
     public void write(ChunkPos pos, CompoundTag value) throws IOException {
+        this.chunksWritten.increment();
         stage(pos, value == null ? null : serialize(value));
         if (this.pendingCount >= this.settings.batchMaxChunks()
             || System.currentTimeMillis() - this.lastFlushMillis >= this.settings.batchMaxDelayMs()) {
@@ -126,21 +168,26 @@ public final class CsoStorage implements AutoCloseable {
     }
 
     public void flush() throws IOException {
-        flushPending();
-        IOException failure = null;
-        for (CsoRegionFile file : this.regions.values()) {
-            try {
-                file.flush();
-            } catch (IOException e) {
-                failure = e;
+        long startedAt = System.nanoTime();
+        try {
+            flushPending();
+            IOException failure = null;
+            for (CsoRegionFile file : this.regions.values()) {
+                try {
+                    file.flush();
+                } catch (IOException e) {
+                    failure = e;
+                }
             }
+            if (failure != null) {
+                throw failure;
+            }
+            // Housekeeping only after the batch is durable: a failed compaction must not be able to
+            // skip the forced write above.
+            compactOneFile();
+        } finally {
+            this.flushLatency.record(System.nanoTime() - startedAt);
         }
-        if (failure != null) {
-            throw failure;
-        }
-        // Housekeeping only after the batch is durable: a failed compaction must not be able to
-        // skip the forced write above.
-        compactOneFile();
     }
 
     /**
@@ -268,6 +315,7 @@ public final class CsoStorage implements AutoCloseable {
         if (this.pending.isEmpty()) {
             return;
         }
+        long startedAt = System.nanoTime();
         // Stage 1 — group by bucket and force a write-ahead log. If we die during stage 2, the
         // next open replays exactly these changes. One forced write per batch, not per bucket:
         // a finer-grained WAL would cost a forced write per chunk save and wipe out the speed
@@ -309,7 +357,7 @@ public final class CsoStorage implements AutoCloseable {
         this.pendingRegionSample.clear();
         this.pendingCount = 0;
         this.lastFlushMillis = System.currentTimeMillis();
-        CsoStats.batchFlushed();
+        CsoStats.batchFlushed(System.nanoTime() - startedAt);
     }
 
     /** Bytes currently staged but not yet written to disk. Diagnostic use. */
