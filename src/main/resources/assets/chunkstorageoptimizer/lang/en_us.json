@@ -4,14 +4,35 @@
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Chunk Storage Optimizer Configs",
 
   "chunkstorageoptimizer.configuration.enabled": "Enabled",
+  "chunkstorageoptimizer.configuration.enabled.tooltip": "Master switch. When false, the vanilla Anvil region files are used unchanged. Turning this off does NOT convert anything: existing .cso files stay on disk, and chunks stored only in them become invisible to the vanilla reader.",
+
   "chunkstorageoptimizer.configuration.grid": "Bucket Grid",
+  "chunkstorageoptimizer.configuration.grid.tooltip": "Bucket grid edge length. A 32x32 region is split into grid x grid buckets. Larger grid = smaller buckets = lower write amplification but weaker compression. Only applies to newly created region files; existing files keep their own grid. Measured on an 889 MB city save: grid 16 roughly halves write volume and write time versus grid 8, for about 7.5% more space. Grid 32 is worse than 16 - one chunk per bucket loses the benefit of sharing a compression context. 1 = the whole region is one bucket (best ratio, worst write cost; cold archives). 8 = 16 chunks per bucket. 16 = 4 chunks per bucket (default: lowest write cost).",
+
   "chunkstorageoptimizer.configuration.compression": "Compression",
+  "chunkstorageoptimizer.configuration.compression.tooltip": "Compression codec: zstd or none.",
+
   "chunkstorageoptimizer.configuration.zstdLevel": "zstd Level",
+  "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "zstd level for the hot write path. 3 is the default trade-off; higher levels compress better and write slower.",
+
   "chunkstorageoptimizer.configuration.cachedBuckets": "Cached Buckets",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Decompressed buckets kept in memory per region file. Higher values reduce read amplification near the player, at the cost of heap. A bucket holds up to (32/grid)^2 chunks; at grid=8 that is 16 chunks.",
+
   "chunkstorageoptimizer.configuration.verifyCrc": "Verify CRC",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "Verify bucket CRC32 on read. Detects corruption instead of silently returning garbage or empty chunks. Keep this on unless you are benchmarking.",
+
   "chunkstorageoptimizer.configuration.fallbackToMca": "Fall Back To .mca",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "When a chunk is absent from the .cso file, fall back to reading the legacy .mca. This makes the mod safe to enable on an existing world: nothing already saved is lost, and new writes gradually move to the new format.",
+
   "chunkstorageoptimizer.configuration.compactionMinBytes": "Compaction Min Bytes",
+  "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "Minimum wasted bytes before a region file is compacted.",
+
   "chunkstorageoptimizer.configuration.compactionRatio": "Compaction Ratio",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "Minimum wasted/live ratio before compaction (0.25 = 25% waste).",
+
   "chunkstorageoptimizer.configuration.batchMaxChunks": "Batch Max Chunks",
-  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "Batch Max Delay (ms)"
+  "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "Writing one chunk means recompressing its whole bucket, so writes are staged and flushed per bucket: N chunks in one bucket cost one compression, not N. This is how many chunks to stage before flushing early. Set to 1 to disable batching.",
+
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "Batch Max Delay (ms)",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "Maximum time staged writes may sit in memory before being forced to disk. Bounds how much is lost if the process dies. Autosave flushes regardless."
 }
