@@ -1,5 +1,6 @@
 package tqk114514.chunkstorageoptimizer;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -18,9 +19,8 @@ public final class Config {
         )
         .define("enabled", true);
 
-    // Deliberately NOT defineInList: handing NeoForge 26.1.2 an immutable List.of(...) as the
-    // allowed-value set makes it NPE inside ValueSpec.test while building the default config
-    // (ImmutableCollections$ListN.indexOf(null)). Range + snapping in settings() instead.
+    // Range rather than an allowed-value list: settings() snaps a typo down to the nearest legal
+    // power of two, so a bad grid never stops the world from loading.
     public static final ModConfigSpec.IntValue GRID = BUILDER
         .comment(
             "Bucket grid edge length. A 32x32 region is split into grid x grid buckets.",
@@ -35,9 +35,15 @@ public final class Config {
         )
         .defineInRange("grid", 16, 1, 32);
 
+    // defineInList builds its validator as `acceptableValues::contains`, and ModConfigSpec queries
+    // that with null while writing out the default config. List.of(...) throws NPE on a null query
+    // (verified: List.of("a","b").contains(null) -> NullPointerException), so the allowed set has to
+    // be a collection that answers false instead.
+    private static final List<String> COMPRESSION_VALUES = new ArrayList<>(List.of("zstd", "none"));
+
     public static final ModConfigSpec.ConfigValue<String> COMPRESSION = BUILDER
         .comment("Compression codec: zstd or none.")
-        .define("compression", "zstd");
+        .defineInList("compression", "zstd", COMPRESSION_VALUES);
 
     public static final ModConfigSpec.IntValue ZSTD_LEVEL = BUILDER
         .comment(
