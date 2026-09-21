@@ -690,8 +690,6 @@ public final class CsoRegionFile implements Closeable {
         writeBucketEntry(bucket);
         this.fileEnd = Math.max(this.fileEnd, offset + compressed.length);
         this.bucketCache.put(bucket, payload);
-
-        maybeCompact();
     }
 
     private int countChunks(byte[] payload) {
@@ -764,12 +762,22 @@ public final class CsoRegionFile implements Closeable {
         return this.fileEnd;
     }
 
-    private void maybeCompact() throws IOException {
+    /**
+     * Compacts this file if its waste has crossed both thresholds; reports whether it did.
+     *
+     * <p>Deliberately not called from the write path. Compaction rewrites the whole file, so
+     * triggering it after a bucket lands turns one chunk save into a multi-megabyte copy at the
+     * exact moment the server is busy saving chunks. Callers run it at flush time instead, where a
+     * stall costs nothing a player can feel.
+     */
+    public synchronized boolean compactIfWasted() throws IOException {
         long wasted = wastedBytes();
         long used = this.fileEnd - wasted;
-        if (wasted >= this.compactionMinWasted && wasted >= used * this.compactionWastedRatio) {
-            compact();
+        if (wasted < this.compactionMinWasted || wasted < used * this.compactionWastedRatio) {
+            return false;
         }
+        compact();
+        return true;
     }
 
     /**

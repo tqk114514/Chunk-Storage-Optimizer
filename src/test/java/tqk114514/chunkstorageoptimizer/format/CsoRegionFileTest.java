@@ -54,6 +54,17 @@ class CsoRegionFileTest {
         return out;
     }
 
+    /**
+     * Data zstd cannot shrink, so a bucket block is as long as its payload. Used where a test needs
+     * block sizes to grow strictly — compressible filler bounces around instead, and the allocator
+     * reuses a hole that happens to fit.
+     */
+    private static byte[] incompressible(int seed, int size) {
+        byte[] out = new byte[size];
+        new Random(seed).nextBytes(out);
+        return out;
+    }
+
     private static void readFully(FileChannel channel, ByteBuffer buffer, long position) throws IOException {
         long pos = position;
         while (buffer.hasRemaining()) {
@@ -111,20 +122,41 @@ class CsoRegionFileTest {
     }
 
     @Test
-    void overwriteDoesNotGrowWithoutBound(@TempDir Path dir) throws IOException {
-        long before;
+    void writesLeaveWasteForFlushToReclaim(@TempDir Path dir) throws IOException {
+        long bloated;
         try (CsoRegionFile file = open(dir, GRID)) {
-            for (int i = 0; i < 400; i++) {
-                file.writeChunk(2, 2, chunkData(i, 2000));
+            // Incompressible and strictly growing: every block is bigger than the hole the
+            // previous one left, so best-fit cannot reuse it and unreachable space piles up.
+            for (int i = 0; i < 40; i++) {
+                file.writeChunk(2, 2, incompressible(7, 1000 + i * 300));
             }
-            before = Files.size(dir.resolve("r.0.0.cso"));
-        }
-        // Rewriting one chunk 400 times must not leave 400 stale blocks behind.
-        // With compaction enabled the file stays proportional to live data.
-        assertTrue(before < 400L * 2000, "file grew to " + before + " bytes; compaction is not reclaiming space");
+            // The write path must not compact: saving one chunk would otherwise pay for rewriting
+            // the whole file at the worst possible moment.
+            assertTrue(file.wastedBytes() > 4096,
+                "expected growing rewrites to leave waste, got " + file.wastedBytes());
+            bloated = file.fileSize();
 
+            assertTrue(file.compactIfWasted(), "waste over both thresholds should be reclaimed");
+            assertTrue(file.wastedBytes() < 4096, "waste left after compaction: " + file.wastedBytes());
+            assertTrue(file.fileSize() < bloated / 2,
+                "file only shrank from " + bloated + " to " + file.fileSize());
+            assertArrayEquals(incompressible(7, 1000 + 39 * 300), file.readChunk(2, 2));
+        }
+        // And the reclaimed file is still readable after a reopen, i.e. both tables landed.
         try (CsoRegionFile file = open(dir, GRID)) {
-            assertArrayEquals(chunkData(399, 2000), file.readChunk(2, 2));
+            assertArrayEquals(incompressible(7, 1000 + 39 * 300), file.readChunk(2, 2));
+        }
+    }
+
+    @Test
+    void wasteBelowTheThresholdIsLeftAlone(@TempDir Path dir) throws IOException {
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(1, 1, chunkData(1, 2000));
+            file.writeChunk(1, 1, chunkData(2, 2000));
+            long size = file.fileSize();
+
+            assertFalse(file.compactIfWasted(), "one stale block is under the floor; rewriting the file is not worth it");
+            assertEquals(size, file.fileSize());
         }
     }
 

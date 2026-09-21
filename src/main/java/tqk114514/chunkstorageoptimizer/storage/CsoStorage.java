@@ -138,6 +138,22 @@ public final class CsoStorage implements AutoCloseable {
         if (failure != null) {
             throw failure;
         }
+        // Housekeeping only after the batch is durable: a failed compaction must not be able to
+        // skip the forced write above.
+        compactOneFile();
+    }
+
+    /**
+     * Reclaims space in at most one file per flush, coldest file first — the region map is LRU, so
+     * iterating it starts at the files nobody is touching. A save that fragmented while the server
+     * was down therefore heals across several autosaves instead of stalling one of them.
+     */
+    private void compactOneFile() throws IOException {
+        for (CsoRegionFile file : this.regions.values()) {
+            if (file.compactIfWasted()) {
+                return;
+            }
+        }
     }
 
     /** Compacts every open region file in this storage. Returns how many were processed. */
