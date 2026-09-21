@@ -2,11 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+- **`/cso report [files]`** samples your own world and says what the same chunks would weigh at
+  bucket grids 1 / 8 / 16 / 32, so choosing `grid` stops being guesswork. It runs in the background
+  and posts the table when it finishes.
+- **Latency percentiles in `/cso stats`** — p50 / p95 / max for batch writes, compression and
+  decompression, plus one line per store (which dimension, how many chunks, how long its flushes
+  take). Totals could say the format was fast on average; these say whether a single save ever
+  spiked.
+
 ### Fixed
 - **The offline tools can measure a save that has already been converted.** `bench`, `ab`, `amp`
   and `walcost` only looked for `.mca`, so once a world finished migrating they reported nothing at
   all. They now read whichever format is present; when only `.cso` remains, the Anvil comparison is
   rebuilt from the chunks and labelled as an estimate. Use `--from mca|cso` to pick explicitly.
+
+### Changed
+- **Space reclamation no longer happens in the middle of saving chunks.** It used to trigger the
+  moment a bucket landed, so one chunk save could suddenly rewrite the whole region file. It now
+  runs at save-flush time, at most one file per flush, starting with the coldest.
 
 ## [1.0.1] - 2026-09-22
 

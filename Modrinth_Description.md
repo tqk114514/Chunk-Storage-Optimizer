@@ -118,9 +118,10 @@ Requires admin permission.
 
 | Command | Description |
 |---|---|
-| `/cso stats` | Cumulative statistics: chunks read/written, compress and decompress time, cache hit rate, effective compression ratio |
+| `/cso stats` | Cumulative statistics: chunks read/written, compress and decompress time, cache hit rate, effective compression ratio, **latency percentiles** (p50 / p95 / max for batch writes, compressing and decompressing) and **one line per store**, so you can see which dimension is doing what |
 | `/cso reset` | Reset statistics |
 | `/cso compact` | Run space reclamation on all open region files |
+| `/cso report [files]` | Sample this world's directories and report what the same chunks would weigh at bucket grids 1/8/16/32 — the number you need to pick a `grid`. `files` is how many files to sample per directory (default 2, max 8). Runs in the background and posts the result when done |
 | `/cso convert cso [prune]` | Convert `.mca` → `.cso`. `prune` deletes the originals after verification |
 | `/cso convert mca [prune]` | Convert `.cso` → `.mca` and **disable this mod**. `prune` also deletes the `.cso` files |
 
