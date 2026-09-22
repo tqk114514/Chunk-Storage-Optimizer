@@ -62,6 +62,8 @@ public final class CsoStorage implements AutoCloseable {
     private final LongAdder chunksRead = new LongAdder();
     private final LongAdder chunksWritten = new LongAdder();
     private final CsoLatency flushLatency = new CsoLatency();
+    /** Reused NBT serialization buffer; see {@link #serialize}. */
+    private final ByteArrayOutputStream serializeSink = new ByteArrayOutputStream(8192);
 
     public CsoStorage(RegionStorageInfo info, Path folder, boolean sync, CsoSettings settings) {
         this.info = info;
@@ -367,12 +369,15 @@ public final class CsoStorage implements AutoCloseable {
 
     // ------------------------------------------------------------------ internals
 
-    private static byte[] serialize(CompoundTag tag) throws IOException {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream(8096);
-        try (DataOutputStream out = new DataOutputStream(bytes)) {
+    private byte[] serialize(CompoundTag tag) throws IOException {
+        // Reusing the sink matters: a fresh ByteArrayOutputStream per chunk allocates its buffer and
+        // then grows it, so every chunk write paid for two copies plus a fresh array. Only the IO
+        // worker writes here, one chunk at a time.
+        this.serializeSink.reset();
+        try (DataOutputStream out = new DataOutputStream(this.serializeSink)) {
             NbtIo.write(tag, out);
         }
-        return bytes.toByteArray();
+        return this.serializeSink.toByteArray();
     }
 
     private static CompoundTag deserialize(byte[] data) throws IOException {
