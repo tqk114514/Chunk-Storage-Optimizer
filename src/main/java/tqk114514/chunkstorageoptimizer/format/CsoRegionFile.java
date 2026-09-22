@@ -70,6 +70,13 @@ public final class CsoRegionFile implements Closeable {
 
     private long fileEnd;
     private boolean compacting;
+    /** Set by anything that puts bytes in this file; cleared by {@link #flush()}. */
+    private boolean dirty;
+    /** Reused compression destination — see {@link Compressor#compress(byte[], byte[])}. */
+    private byte[] compressScratch = new byte[0];
+    /** Reused scratch space for {@link #allocate(int)}'s extent list. */
+    private final long[][] rangePool;
+    private final List<long[]> usedRanges = new ArrayList<>();
 
     private CsoRegionFile(
         Path path,
@@ -97,6 +104,10 @@ public final class CsoRegionFile implements Closeable {
         for (int i = 0; i < this.bucketCount; i++) {
             this.entries[i] = new BucketEntry();
         }
+        this.rangePool = new long[this.bucketCount + 1][];
+        for (int i = 0; i < this.rangePool.length; i++) {
+            this.rangePool[i] = new long[2];
+        }
         this.maxCachedBuckets = maxCachedBuckets;
         this.bucketCache = new LinkedHashMap<>(16, 0.75f, true) {
             @Override
@@ -123,21 +134,29 @@ public final class CsoRegionFile implements Closeable {
         CsoFormat.validateGrid(preferredGrid);
         Compressor compressor = Compressor.create(compressionId, level);
         boolean exists = Files.isRegularFile(path) && Files.size(path) > 0;
-        // An existing file's grid always wins. Reinterpreting live data with a different bucket
-        // layout would read the wrong bytes, so the config only applies to newly created files.
-        int grid = exists ? peekGrid(path) : preferredGrid;
         FileChannel channel = FileChannel.open(
             path,
             StandardOpenOption.CREATE,
             StandardOpenOption.READ,
             StandardOpenOption.WRITE
         );
+        byte[] header = null;
+        // An existing file's grid always wins. Reinterpreting live data with a different bucket
+        // layout would read the wrong bytes, so the config only applies to newly created files.
+        int grid = preferredGrid;
+        if (exists) {
+            // One open and one header read: the grid must come off disk before this object can be
+            // built, and those same 128 bytes also carry everything readMetadata validates.
+            header = new byte[HEADER_SIZE];
+            readFullyStatic(channel, ByteBuffer.wrap(header), 0L);
+            grid = parseGrid(path, header);
+        }
         CsoRegionFile file = new CsoRegionFile(
             path, channel, grid, compressor, verifyCrc,
             maxCachedBuckets, compactionMinWasted, compactionWastedRatio
         );
         if (exists) {
-            file.readMetadata();
+            file.readMetadata(header);
         } else {
             file.writeNewFile(grid);
         }
@@ -146,29 +165,25 @@ public final class CsoRegionFile implements Closeable {
         return file;
     }
 
-    /** Reads just enough of an existing file to learn its bucket grid. */
-    private static int peekGrid(Path path) throws IOException {
-        try (FileChannel ch = FileChannel.open(path, StandardOpenOption.READ)) {
-            byte[] header = new byte[HEADER_SIZE];
-            readFullyStatic(ch, ByteBuffer.wrap(header), 0L);
-            for (int i = 0; i < CsoFormat.MAGIC_LENGTH; i++) {
-                if (header[i] != CsoFormat.MAGIC[i]) {
-                    throw new CsoCorruptedException("Bad magic in " + path + " (not a CSO region file)");
-                }
+    /** Validates the fixed part of a header and returns the bucket grid it declares. */
+    private static int parseGrid(Path path, byte[] header) throws CsoCorruptedException {
+        for (int i = 0; i < CsoFormat.MAGIC_LENGTH; i++) {
+            if (header[i] != CsoFormat.MAGIC[i]) {
+                throw new CsoCorruptedException("Bad magic in " + path + " (not a CSO region file)");
             }
-            int version = CsoFormat.readShort(header, 8);
-            if (version != CsoFormat.FORMAT_VERSION) {
-                throw new CsoCorruptedException("Unsupported CSO format version " + version + " in " + path);
-            }
-            CRC32 crc = new CRC32();
-            crc.update(header, 0, 20);
-            if ((int) crc.getValue() != CsoFormat.readInt(header, 20)) {
-                throw new CsoCorruptedException("Header CRC mismatch in " + path + " — file is damaged");
-            }
-            int grid = CsoFormat.readShort(header, 10);
-            CsoFormat.validateGrid(grid);
-            return grid;
         }
+        int version = CsoFormat.readShort(header, 8);
+        if (version != CsoFormat.FORMAT_VERSION) {
+            throw new CsoCorruptedException("Unsupported CSO format version " + version + " in " + path);
+        }
+        CRC32 crc = new CRC32();
+        crc.update(header, 0, 20);
+        if ((int) crc.getValue() != CsoFormat.readInt(header, 20)) {
+            throw new CsoCorruptedException("Header CRC mismatch in " + path + " — file is damaged");
+        }
+        int grid = CsoFormat.readShort(header, 10);
+        CsoFormat.validateGrid(grid);
+        return grid;
     }
 
     private static void readFullyStatic(FileChannel ch, ByteBuffer buf, long position) throws IOException {
@@ -191,34 +206,18 @@ public final class CsoRegionFile implements Closeable {
         writeFully(ByteBuffer.wrap(table), (long) HEADER_SIZE);
         this.fileEnd = this.dataStart;
         this.channel.truncate(this.fileEnd);
+        this.dirty = true;
     }
 
-    private void readMetadata() throws IOException {
+    /** @param header the 128 header bytes {@code open()} already read and validated */
+    private void readMetadata(byte[] header) throws IOException {
         long size = this.channel.size();
         if (size < HEADER_SIZE) {
             throw new CsoCorruptedException("File too small to be a CSO region: " + size + " bytes at " + this.path);
         }
-        byte[] header = new byte[HEADER_SIZE];
-        readFully(ByteBuffer.wrap(header), 0L);
-
-        for (int i = 0; i < CsoFormat.MAGIC_LENGTH; i++) {
-            if (header[i] != CsoFormat.MAGIC[i]) {
-                throw new CsoCorruptedException("Bad magic in " + this.path + " (not a CSO region file)");
-            }
-        }
-        int version = CsoFormat.readShort(header, 8);
-        if (version != CsoFormat.FORMAT_VERSION) {
-            throw new CsoCorruptedException("Unsupported CSO format version " + version + " in " + this.path);
-        }
-        int expectedCrc = CsoFormat.readInt(header, 20);
-        CRC32 crc = new CRC32();
-        crc.update(header, 0, 20);
-        if ((int) crc.getValue() != expectedCrc) {
-            throw new CsoCorruptedException("Header CRC mismatch in " + this.path + " — file is damaged");
-        }
-
+        // Magic, format version, header CRC and the grid's legality were all checked by open()
+        // before this object existed; re-checking them here meant a second read of the same bytes.
         int fileGrid = CsoFormat.readShort(header, 10);
-        CsoFormat.validateGrid(fileGrid);
         if (fileGrid != this.grid) {
             // Unreachable: open() reads the grid before constructing this object. Hard invariant.
             throw new CsoCorruptedException(
@@ -673,23 +672,28 @@ public final class CsoRegionFile implements Closeable {
 
     private void storeBucket(int bucket, byte[] payload) throws IOException {
         long startedAt = System.nanoTime();
-        byte[] compressed = this.compressor.compress(payload);
+        int bound = this.compressor.compressBound(payload.length);
+        if (this.compressScratch.length < bound) {
+            this.compressScratch = new byte[bound];
+        }
+        int compressedLength = this.compressor.compress(payload, this.compressScratch);
         long elapsedNanos = System.nanoTime() - startedAt;
-        long offset = allocate(compressed.length);
-        writeFully(ByteBuffer.wrap(compressed), offset);
-        CsoStats.bucketCompressed(elapsedNanos, payload.length, compressed.length);
-        CsoStats.ioWrite(compressed.length);
+        long offset = allocate(compressedLength);
+        writeFully(ByteBuffer.wrap(this.compressScratch, 0, compressedLength), offset);
+        CsoStats.bucketCompressed(elapsedNanos, payload.length, compressedLength);
+        CsoStats.ioWrite(compressedLength);
 
         BucketEntry e = this.entries[bucket];
         e.sequence = ++this.sequenceCounter;
         e.offset = offset;
-        e.compressedLength = compressed.length;
+        e.compressedLength = compressedLength;
         e.rawLength = payload.length;
         e.crc32 = (int) crc32(payload);
         e.chunkCount = countChunks(payload);
         writeBucketEntry(bucket);
-        this.fileEnd = Math.max(this.fileEnd, offset + compressed.length);
+        this.fileEnd = Math.max(this.fileEnd, offset + compressedLength);
         this.bucketCache.put(bucket, payload);
+        this.dirty = true;
     }
 
     private int countChunks(byte[] payload) {
@@ -713,11 +717,20 @@ public final class CsoRegionFile implements Closeable {
      * instead, which is the whole point of having a compaction pass.
      */
     private long allocate(int size) {
-        List<long[]> used = new ArrayList<>(this.bucketCount + 1);
-        used.add(new long[] {0L, (long) this.dataStart});
+        // The extents are collected into a pool allocated once per file. This runs on every bucket
+        // write, and at grid=1 it would otherwise create a thousand short-lived arrays per chunk.
+        List<long[]> used = this.usedRanges;
+        used.clear();
+        this.rangePool[0][0] = 0L;
+        this.rangePool[0][1] = this.dataStart;
+        used.add(this.rangePool[0]);
+        int slot = 1;
         for (BucketEntry e : this.entries) {
             if (e.offset != 0 && e.compressedLength > 0) {
-                used.add(new long[] {e.offset, e.offset + e.compressedLength});
+                long[] range = this.rangePool[slot++];
+                range[0] = e.offset;
+                range[1] = e.offset + e.compressedLength;
+                used.add(range);
             }
         }
         used.sort(Comparator.comparingLong(a -> a[0]));
@@ -855,6 +868,9 @@ public final class CsoRegionFile implements Closeable {
             }
             this.fileEnd = newEnd;
             this.channel.truncate(newEnd);
+            // The replacement itself was forced before the move; this only records that the new
+            // handle has a pending length change worth forcing with the next batch.
+            this.dirty = true;
             CsoStats.compaction(System.nanoTime() - startedAt);
             LOGGER.log(
                 System.Logger.Level.DEBUG,
@@ -892,7 +908,11 @@ public final class CsoRegionFile implements Closeable {
     // ------------------------------------------------------------------ lifecycle
 
     public synchronized void flush() throws IOException {
+        if (!this.dirty) {
+            return;
+        }
         this.channel.force(true);
+        this.dirty = false;
     }
 
     @Override
