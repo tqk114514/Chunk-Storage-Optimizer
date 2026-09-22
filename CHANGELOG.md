@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.0.2] - 2026-09-22
+
+### Added
+- **`/cso report [files]`** samples your own world and prints what the same chunks would weigh at
+  bucket grids 1 / 8 / 16 / 32, so choosing `grid` stops being guesswork. It works on a world that
+  has already been converted, runs in the background, and posts the table when it finishes.
+- **`/cso stats` now shows latency, not just totals** — p50 / p95 / max for batch writes,
+  compression and decompression, plus one line per store so you can see which dimension is doing
+  what. Totals could say the mod was fast on average; these tell you whether a single save spiked.
+
+### Changed
+- **Reclaiming space no longer happens in the middle of saving chunks.** It used to trigger the
+  moment a bucket landed, so saving one chunk could suddenly mean rewriting the whole region file.
+  It now runs at flush time, at most one file per flush, starting with the coldest.
+- **Autosave no longer re-syncs files it did not touch.** Every open region file used to be forced
+  to disk on each flush, whether or not it had changed. On a world with a couple of hundred region
+  files open that is roughly a 127 ms stall, now about 3 ms on the machine we measured.
+- **A little faster chunk loading.** Opening a region file now reads its header once instead of
+  twice through two separate handles — about 10% off the read benchmark on a real city save.
+
 ## [1.0.1] - 2026-09-22
 
 ### Added

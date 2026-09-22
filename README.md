@@ -39,7 +39,7 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 ## 安装
 
 1. 确认已安装 **NeoForge 26.1.2.71 或更高**（Minecraft 26.1.2）。
-2. 把 `chunkstorageoptimizer-1.0.1.jar` 放进 `mods/` 目录。
+2. 把 `chunkstorageoptimizer-1.0.2.jar` 放进 `mods/` 目录。
 3. 启动游戏，配置文件会生成在 `config/chunkstorageoptimizer-common.toml`。
 
 > 与 **C2ME** 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。
