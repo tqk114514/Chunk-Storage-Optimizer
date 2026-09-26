@@ -48,7 +48,7 @@ class ConverterTest {
         writeCso(dir, "r.0.0.cso", chunks(20, 400));
         writeCso(dir, "r.0.1.cso", chunks(5, 400));
 
-        Converter.Corpus corpus = Converter.corpus(dir, "auto", 0);
+        Converter.Corpus corpus = Converter.corpus(dir, "auto", Converter.ALL_FILES);
 
         assertEquals("cso", corpus.kind());
         assertEquals(2, corpus.byFile().size());
@@ -64,8 +64,8 @@ class ConverterTest {
 
         // Mid-migration is the normal state after enabling the mod. The .mca is what vanilla wrote,
         // so it is the number the comparisons are expressed against.
-        assertEquals("mca", Converter.corpus(dir, "auto", 0).kind());
-        assertEquals("cso", Converter.corpus(dir, "cso", 0).kind());
+        assertEquals("mca", Converter.corpus(dir, "auto", Converter.ALL_FILES).kind());
+        assertEquals("cso", Converter.corpus(dir, "cso", Converter.ALL_FILES).kind());
     }
 
     @Test
@@ -82,7 +82,7 @@ class ConverterTest {
 
     @Test
     void emptyDirectoryYieldsAnEmptyCorpus(@TempDir Path dir) throws IOException {
-        Converter.Corpus corpus = Converter.corpus(dir, "auto", 0);
+        Converter.Corpus corpus = Converter.corpus(dir, "auto", Converter.ALL_FILES);
 
         assertTrue(corpus.byFile().isEmpty());
         assertEquals(0, corpus.onDiskBytes());
@@ -127,7 +127,7 @@ class ConverterTest {
         List<AnvilRegionFile.Chunk> chunks = chunks(30, 900);
         writeCso(dir, "r.0.0.cso", chunks);
 
-        List<AnvilRegionFile.Chunk> read = Converter.corpus(dir, "cso", 0).byFile().get(dir.resolve("r.0.0.cso"));
+        List<AnvilRegionFile.Chunk> read = Converter.corpus(dir, "cso", Converter.ALL_FILES).byFile().get(dir.resolve("r.0.0.cso"));
 
         assertEquals(chunks.size(), read.size());
         for (AnvilRegionFile.Chunk original : chunks) {

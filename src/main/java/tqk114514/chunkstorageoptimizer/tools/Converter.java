@@ -137,6 +137,18 @@ public final class Converter {
         }
     }
 
+    /** Which format a directory should be measured from: Anvil wins when both are present. */
+    static String kindOf(Path dir, String from) throws IOException {
+        return switch (from) {
+            case "mca" -> "mca";
+            case "cso" -> "cso";
+            default -> listFiles(dir, ".mca").isEmpty() ? "cso" : "mca";
+        };
+    }
+
+    /** Passed to {@link #corpus} when the caller really does want every file in memory. */
+    static final int ALL_FILES = Integer.MAX_VALUE;
+
     /**
      * Loads the corpus from whichever format is present.
      *
@@ -146,21 +158,16 @@ public final class Converter {
      * callers say so.
      *
      * @param from      {@code auto}, {@code mca} or {@code cso}
-     * @param maxFiles  cap on files loaded, or 0 for all of them — a whole city save would not fit
-     *                  in the heap once decompressed
+     * @param maxFiles  how many files may be held at once; {@link #ALL_FILES} is deliberate, since
+     *                  a whole overworld will not fit in the heap decompressed
      */
     static Corpus corpus(Path dir, String from, int maxFiles) throws IOException {
-        List<Path> anvil = listFiles(dir, ".mca");
-        String kind = switch (from) {
-            case "mca" -> "mca";
-            case "cso" -> "cso";
-            default -> anvil.isEmpty() ? "cso" : "mca";
-        };
-        List<Path> candidates = "cso".equals(kind) ? listFiles(dir, ".cso") : anvil;
+        String kind = kindOf(dir, from);
+        List<Path> candidates = listFiles(dir, "cso".equals(kind) ? ".cso" : ".mca");
         Map<Path, List<AnvilRegionFile.Chunk>> byFile = new LinkedHashMap<>();
         long onDisk = 0;
         for (Path source : candidates) {
-            if (maxFiles > 0 && byFile.size() >= maxFiles) {
+            if (byFile.size() >= maxFiles) {
                 break;
             }
             List<AnvilRegionFile.Chunk> chunks = "cso".equals(kind)
@@ -171,12 +178,6 @@ public final class Converter {
             }
         }
         return new Corpus(kind, byFile, onDisk, candidates.size());
-    }
-
-    private static void reportSource(Corpus corpus, Path dir) {
-        System.out.printf("source       : .%s in %s (%d of %d files, %d chunks)%n",
-            corpus.kind(), dir, corpus.byFile().size(), corpus.totalFiles(),
-            corpus.byFile().values().stream().mapToInt(List::size).sum());
     }
 
     /** The first non-empty region file, or null after reporting that the directory has none. */
@@ -193,8 +194,10 @@ public final class Converter {
     // ------------------------------------------------------------------ bench
 
     private static void bench(Path dir, int grid, int level, String from) throws IOException {
-        Corpus corpus = corpus(dir, from, 0);
-        if (corpus.byFile().isEmpty()) {
+        String kind = kindOf(dir, from);
+        boolean anvil = "mca".equals(kind);
+        List<Path> files = listFiles(dir, anvil ? ".mca" : ".cso");
+        if (files.isEmpty()) {
             System.out.println("No readable region files in " + dir);
             return;
         }
@@ -202,24 +205,35 @@ public final class Converter {
         try {
             long anvilTotal = 0;
             long csoTotal = 0;
+            long liveBytes = 0;
             long chunkCount = 0;
+            int measured = 0;
             long startedAt = System.nanoTime();
 
-            for (Map.Entry<Path, List<AnvilRegionFile.Chunk>> entry : corpus.byFile().entrySet()) {
-                List<AnvilRegionFile.Chunk> chunks = entry.getValue();
-                String name = entry.getKey().getFileName().toString();
+            // One file at a time, deliberately: bench reports the directory total, and a 1.2 GB
+            // overworld does not fit in the heap once its chunks are decompressed.
+            for (Path file : files) {
+                List<AnvilRegionFile.Chunk> chunks = anvil
+                    ? AnvilRegionFile.read(file) : readCso(file);
+                if (chunks.isEmpty()) {
+                    continue;
+                }
+                measured++;
+                String name = file.getFileName().toString();
                 Path target = scratch.resolve(swapExtension(name, ".cso"));
                 writeCso(target, chunks, grid, level);
                 csoTotal += Files.size(target);
                 chunkCount += chunks.size();
-                // From .mca the baseline is the real file; from .cso it has to be rebuilt, and our
-                // writer is only an approximation of what vanilla would have produced.
-                if (corpus.fromAnvil()) {
-                    anvilTotal += Files.size(entry.getKey());
+                // From .mca the baseline is the real file vanilla wrote; from .cso it has to be
+                // rebuilt, and our writer is only an approximation of what vanilla would have done.
+                if (anvil) {
+                    anvilTotal += Files.size(file);
+                    liveBytes += Files.size(file);
                 } else {
                     Path rebuilt = scratch.resolve(swapExtension(name, ".mca"));
                     AnvilRegionFile.write(rebuilt, chunks);
                     anvilTotal += Files.size(rebuilt);
+                    liveBytes += Files.size(file);
                 }
             }
 
@@ -229,13 +243,13 @@ public final class Converter {
                 return;
             }
             double saved = 100.0 * (1.0 - (double) csoTotal / anvilTotal);
-            reportSource(corpus, dir);
-            System.out.printf("chunks       : %d%n", chunkCount);
-            if (!corpus.fromAnvil()) {
-                System.out.printf("cso on disk  : %s (as written)%n", human(corpus.onDiskBytes()));
+            System.out.printf("source       : .%s in %s (%d of %d files, %d chunks)%n",
+                kind, dir, measured, files.size(), chunkCount);
+            if (!anvil) {
+                System.out.printf("cso on disk  : %s (as written)%n", human(liveBytes));
             }
             System.out.printf("anvil (.mca) : %s (%d bytes)%s%n", human(anvilTotal), anvilTotal,
-                corpus.fromAnvil() ? "" : "  [rebuilt by this tool — an estimate]");
+                anvil ? "" : "  [rebuilt by this tool — an estimate]");
             System.out.printf("cso  (grid=%d, zstd L%d): %s (%d bytes)%n", grid, level, human(csoTotal), csoTotal);
             System.out.printf("saved        : %.1f%%  (ratio %.2fx)%n", saved, (double) anvilTotal / csoTotal);
             System.out.printf("convert time : %d ms%n", elapsedMs);
