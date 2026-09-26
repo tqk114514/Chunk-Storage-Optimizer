@@ -3,3 +3,7 @@
 # are changed when only line endings change.
 src/generated/**/.cache/* text eol=lf
 src/generated/**/*.json text eol=lf
+
+# Shell scripts must stay LF on checkout: with core.autocrlf=true git would otherwise rewrite
+# them to CRLF and bash then fails on the shebang / on every command line.
+*.sh text eol=lf
