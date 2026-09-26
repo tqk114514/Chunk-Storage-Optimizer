@@ -361,3 +361,35 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 ```bash
 ./gradlew runServer
 ```
+
+### 多版本构建
+
+`minecraft_version` 是唯一的版本开关；NeoForge 下限、写进 mod 元数据的版本范围、Java 级别
+全部从 `build.gradle` 里的 `supportedVersions` 表推导，不用手改三处：
+
+```bash
+./gradlew build -Pminecraft_version=26.2.0      # 26.1.2 / 26.2.0 已在表内
+```
+
+加一个新版本只要三步：
+
+```bash
+tools/oldest-stable-neoforge.sh 26.3.0
+# ① 把查到的最老稳定版填进 build.gradle 的 supportedVersions：'26.3.0': [neo: '...', java: 25]
+# ② 把版本号加进 .github/workflows/build.yml 的矩阵
+# ③ ./gradlew build -Pminecraft_version=26.3.0 验证
+```
+
+下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建玩家装不到，拿它当下限等于承诺一个不存在的地盘。
+顺带一个事实——**MC 26.1 没有可选项**，它的 NeoForge 只出到 beta 就被 26.1.2 取代了。
+
+版本范围是**精确单版本**（`[26.1.2]`），不是 `>=`。因为 `mixins.json` 里 `defaultRequire: 1`，
+签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前就被干净拒绝，而不是崩在玩家机器上。
+
+### 移植到其他加载器（未做，缝已留好）
+
+按实际 import 关系，换加载器需要重写的只有 4 个文件：`ChunkStorageOptimizer`（mod 入口）、
+`ChunkStorageOptimizerClient`（客户端配置界面）、`Config`（`ModConfigSpec`）、
+`commands/CsoCommands`（事件注册与权限声明）。`storage/CsoStorage` 只依赖 Minecraft 类，
+而 `format` / `metrics` / `tools` 既不依赖 Minecraft 也不依赖任何加载器——格式层能脱离游戏
+独立跑测试就是因为这条边界。所以换加载器不必动格式，也不必动存档语义。
