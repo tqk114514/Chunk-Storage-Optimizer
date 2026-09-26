@@ -42,11 +42,29 @@ format** — no content differences mixed in. (Entities: −61.3%. POI: −20.9%
 |---|---|---|
 | City world (dense builds) | 4.6 KB | 55.4% |
 | Vanilla terrain (above) | 6.89 KB | 33.0% |
+| Group survival world | 7.6 KB | 38.4% |
 | "Epic terrain" style world | 9.15 KB | 29.6% |
 
 The larger and more complex each chunk is, the less there is to gain — once a chunk is well
 past 4 KiB, vanilla's padding overhead is already a minor share, so there is less slack for a
 better codec to recover.
+
+### A 1.73 GB world a group actually plays on
+
+A friend-group survival world (vanilla + performance mods, carpet farms, 170,217 overworld chunks,
+7.6 KB per chunk). Measured on its existing Anvil files:
+
+| Store | Vanilla | This mod | Saved |
+|---|---|---|---|
+| Overworld region | 1.21 GB | 762 MB | 38.4% |
+| The End region | 239 MB | 19 MB | **92.1%** |
+| The Nether region | 110 MB | 55 MB | 49.7% |
+| Entities (all dimensions) | 56.0 MB | 9.6 MB | 82.8% |
+| POI (all dimensions) | 7.44 MB | 2.92 MB | 60.8% |
+| **Whole save** | **1.727 GB** | **889 MB** | **48.5%** |
+
+The End wins biggest because its chunks are generated but mostly empty — precisely the case where
+vanilla's 4 KiB floor per chunk costs the most.
 
 ---
 
@@ -182,9 +200,14 @@ ungenerated and **terrain would be silently regenerated**.
 vanilla storage, logging the reason. Both rewrite chunk IO, and running them together would
 split a world across two formats.
 
-**4. Gains can be slightly negative for sparse, large chunks.** With chunks near or above 4 KiB,
-vanilla's padding waste is already small while the bucket table adds fixed overhead — a Nether
-sample measured −2%. Lowering `grid` to 1 or 2 fixes this.
+**4. What decides the sign is density, not dimension.** A lightly explored Nether measured **−2%**:
+chunks near or above 4 KiB spread thin, so vanilla's padding waste is already small while the bucket
+table adds a fixed 16 KB per region file. The same dimension, worked hard (tunnels, big digs), saved
+**49.7%** in the world above. The most extreme case we found was an End `poi` folder holding 3 chunks
+across 81 region files: **−35.5% at `grid = 16`** but **+97.2% at `grid = 1`** — same bytes, only the
+table size changed. So if a dimension or store is sparse, lower `grid`. Note that `grid` applies to
+newly created files: to change an existing world's grid, convert back to `.mca`, set `grid`, and
+convert again.
 
 **5. Automatic fallback if zstd is unavailable.** If the native library cannot load, the mod
 falls back to vanilla Anvil instead of failing to start.
