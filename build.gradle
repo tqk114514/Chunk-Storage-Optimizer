@@ -32,10 +32,6 @@ repositories {
     // Add here additional repositories if required by some of the dependencies below.
 }
 
-base {
-    archivesName = mod_id
-}
-
 // One row per Minecraft version this mod ships for. `neo` is the oldest STABLE NeoForge build
 // for that Minecraft: builds carrying a "-beta" suffix are never taken as the floor, so the lower
 // bound admits only versions a player can install without a pre-release.
@@ -57,6 +53,10 @@ def javaLevel = (project.findProperty('java_level') ?: target.java) as int
 // line instead of running to infinity: an untested newer loader should refuse us, not crash.
 def versionDot = mcVersion.lastIndexOf('.')
 def neoUpper = versionDot < 0 ? mcVersion : mcVersion.substring(0, versionDot + 1) + ((mcVersion.substring(versionDot + 1) as int) + 1)
+
+// The Minecraft version goes in the file name: one mod version now yields one jar per Minecraft,
+// and identical names from different matrix rows are impossible to tell apart once uploaded.
+base.archivesName = "${mod_id}-${mcVersion}"
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(javaLevel)
 
