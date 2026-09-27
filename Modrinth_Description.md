@@ -101,7 +101,8 @@ stored as a single zstd stream containing all of its chunks:
 ## Requirements
 
 One jar per Minecraft version — select the file whose name matches the game version, e.g.
-`chunkstorageoptimizer-26.1.2-1.0.3.jar`.
+`chunkstorageoptimizer-neoforge-26.1.2-1.0.3.jar` — file names carry both the loader and the
+Minecraft version.
 
 - Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**, **1.21.4**,
   **1.21.3**, **1.21.1**, **1.21**

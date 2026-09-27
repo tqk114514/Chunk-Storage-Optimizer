@@ -1,18 +1,23 @@
-# Minecraft versions this mod ships for — one row per published jar.
+# Minecraft versions this mod ships for — one row per game version, one jar per row per loader.
 #
-#   minecraft, oldest STABLE NeoForge build, Java level, command-permission API family
+#   minecraft, Java level, command-permission API family, NeoForge floor, Fabric API, Mod Menu
 #
-# Floors are what tools/oldest-stable-neoforge.sh prints: builds with a -beta/-alpha suffix never
-# count, because a player cannot install them.
-# family picks the seam in src/version/<family>/java: 'legacy' gates commands on a numeric
-# permission level, 'modern' on the PermissionCheck tree (first shipped in 1.21.11).
+# The NeoForge floor is what tools/oldest-stable-neoforge.sh prints: builds with a -beta/-alpha
+# suffix never count, because a player cannot install them. '-' means that loader has nothing for
+# this Minecraft, so no jar is published for it from that side.
+#
+# Fabric API and Mod Menu are the versions this mod is compiled and tested against; both are
+# published per Minecraft version, and Mod Menu only exists on maven.terraformersmc.com.
+#
+# Java level comes from Mojang's own version manifest. The family selects the seam in
+# common/src/version/<family>/java: 'legacy' gates commands on a numeric permission level,
+# 'modern' on the PermissionCheck tree (first shipped in 1.21.11).
 #
 # .github/workflows/build.yml reads the first column, so this file — not a hand-copied matrix —
 # decides what gets built.
 #
-# Missing rows (both "never will exist" and "not stable yet") are tracked in
-# docs/uncovered-minecraft-versions.md; 1.21.2, 1.21.6, 1.21.7, 1.21.9 and 26.1 / 26.1.1 never got a
-# stable NeoForge build, so no floor a player could reach exists for them.
+# Rows are keyed with the loader's spelling of a two-part Minecraft version (MC 26.2 is served by
+# the 26.2.0 line); measured: a range of [26.2.0] accepts the game's own "26.2".
 #
 # One row does not use the oldest stable build. Minecraft 1.21.10 is the first line assembled with
 # NeoForge's binpatching tooling, and 21.10.63 published binpatches generated from a modified base
@@ -22,13 +27,20 @@
 # does not hit it. The floor stays at 21.10.64: separating the player-facing floor from the version
 # we compile against would add a column for one loader build. Effect: a 1.21.10 player on 21.10.63
 # is asked to update the loader.
-1.21,     21.0.143,   21, legacy
-1.21.1,   21.1.1,     21, legacy
-1.21.3,   21.3.56,    21, legacy
-1.21.4,   21.4.121,   21, legacy
-1.21.5,   21.5.74,    21, legacy
-1.21.8,   21.8.9,     21, legacy
-1.21.10,  21.10.64,   21, legacy
-1.21.11,  21.11.42,   21, modern
-26.1.2,   26.1.2.71,  25, modern
-26.2.0,   26.2.0.57,  25, modern
+#
+# 1.21.2, 1.21.6, 1.21.7 and 1.21.9 have no NeoForge floor: that loader never shipped a stable
+# build for them. They are not gaps in coverage — see docs/uncovered-minecraft-versions.md.
+1.21,     21, legacy, 21.0.143,   0.102.0+1.21,     11.0.5
+1.21.1,   21, legacy, 21.1.1,     0.116.17+1.21.1,  11.0.5
+1.21.2,   21, legacy, -,          0.106.1+1.21.2,   12.0.1
+1.21.3,   21, legacy, 21.3.56,    0.114.1+1.21.3,   12.0.1
+1.21.4,   21, legacy, 21.4.121,   0.119.4+1.21.4,   13.0.4
+1.21.5,   21, legacy, 21.5.74,    0.128.2+1.21.5,   14.0.2
+1.21.6,   21, legacy, -,          0.128.2+1.21.6,   15.0.2
+1.21.7,   21, legacy, -,          0.129.0+1.21.7,   15.0.2
+1.21.8,   21, legacy, 21.8.9,     0.136.1+1.21.8,   15.0.2
+1.21.9,   21, legacy, -,          0.134.1+1.21.9,   16.0.1
+1.21.10,  21, legacy, 21.10.64,   0.138.4+1.21.10,  16.0.1
+1.21.11,  21, modern, 21.11.42,   0.141.6+1.21.11,  17.0.1
+26.1.2,   25, modern, 26.1.2.71,  -,                -
+26.2.0,   25, modern, 26.2.0.57,  -,                -

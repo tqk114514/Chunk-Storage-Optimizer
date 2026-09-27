@@ -19,8 +19,8 @@ repositories {
 // ------------------------------------------------------------------ what we build for
 
 // supported-versions.csv is the one list of Minecraft builds this mod ships for. Columns:
-// minecraft, oldest stable NeoForge build, Java level, command-permission API family.
-// Rows whose NeoForge column is '-' exist for another loader only and cannot be built here.
+// minecraft, Java level, command-permission family, NeoForge floor, Fabric API, Mod Menu.
+// Rows whose NeoForge floor is '-' exist for the other loader only and cannot be built here.
 def supportedVersions = [:]
 def versionTable = rootProject.file('supported-versions.csv')
 versionTable.eachLine { line ->
@@ -28,7 +28,7 @@ versionTable.eachLine { line ->
     if (trimmed.isEmpty() || trimmed.startsWith('#')) {
         return
     }
-    def (mc, floor, rowJavaLevel, family) = trimmed.split(',').collect { it.trim() }
+    def (mc, rowJavaLevel, family, floor, fabricApi, modMenu) = trimmed.split(',').collect { it.trim() }
     supportedVersions[mc] = [neo: floor, java: rowJavaLevel as int, family: family]
 }
 if (supportedVersions.isEmpty()) {
@@ -69,9 +69,10 @@ def upperParts = loaderLine.split('\\.').collect { it as int }
 upperParts[-1] = upperParts[-1] + 1
 def neoUpper = upperParts.join('.')
 
-// The Minecraft version goes in the file name: one mod version yields one jar per Minecraft, and
-// identical names from different matrix rows are impossible to tell apart once uploaded.
-base.archivesName = "${mod_id}-${mcVersion}"
+// Loader and Minecraft both go in the file name: one mod version yields one jar per supported
+// Minecraft per loader, and names without those two tokens are impossible to tell apart once
+// uploaded. Fabric uses the same shape.
+base.archivesName = "${mod_id}-neoforge-${mcVersion}"
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(javaLevel)
 
