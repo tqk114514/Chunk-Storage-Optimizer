@@ -3,35 +3,45 @@ name: Build
 on: [push, pull_request]
 
 jobs:
-  # The Minecraft matrix is read from supported-versions.csv so it cannot drift from the table
-  # build.gradle compiles against — one row missing from either side is now impossible.
+  # The matrix is read from supported-versions.csv so it cannot drift from the table the build
+  # scripts compile against — one row missing from either side is now impossible. Each row expands
+  # to one job per loader that actually ships for that Minecraft.
   discover:
     runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.list.outputs.versions }}
+      matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: List the supported Minecraft versions
+      - name: List the loader and Minecraft pairs to build
         id: list
         run: |
           # -c is not cosmetic: a multi-line value cannot be written through $GITHUB_OUTPUT.
           # \r is stripped because the csv may be checked out with CRLF on Windows clones.
-          versions=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$' \
-            | cut -d, -f1 | jq -R -sc 'split("\n") | map(select(length > 0))')
-          echo "versions=$versions" >> "$GITHUB_OUTPUT"
-          echo "matrix: $versions"
+          # A '-' in a loader's column means that loader never shipped for that Minecraft, so the
+          # pair gets no job; column 4 is the NeoForge floor, column 5 the Fabric API.
+          matrix=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$' \
+            | jq -Rsc '
+                split("\n")
+                | map(select(length > 0) | split(","))
+                | map(
+                    (if .[3] != "-" then [{loader: "neoforge", minecraft_version: .[0]}] else [] end)
+                    + (if .[4] != "-" then [{loader: "fabric", minecraft_version: .[0]}] else [] end)
+                  )
+                | add')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "matrix: $matrix"
 
   build:
     needs: discover
     runs-on: ubuntu-latest
     strategy:
-      # One broken Minecraft version must not hide whether the others still build — that is the
-      # whole point of the matrix.
+      # One broken combination must not hide whether the others still build — that is the whole
+      # point of the matrix.
       fail-fast: false
       matrix:
-        minecraft_version: ${{ fromJSON(needs.discover.outputs.versions) }}
-    name: build ${{ matrix.minecraft_version }}
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    name: build ${{ matrix.loader }} ${{ matrix.minecraft_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -60,26 +70,28 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # One cache per row: rows generate per-Minecraft artifacts under
-          # ~/.gradle/caches/neoformruntime, so a shared key makes a row able to restore another
-          # row's state.
-          key: ${{ runner.os }}-gradle-${{ matrix.minecraft_version }}
+          # One cache per row: rows generate per-Minecraft artifacts under ~/.gradle/caches, so a
+          # shared key makes a row able to restore another row's state. The loader is in the key
+          # because NeoForge and Fabric keep their artifacts in different directories.
+          key: ${{ runner.os }}-gradle-${{ matrix.loader }}-${{ matrix.minecraft_version }}
 
       # This is needed to be able to run ./gradlew below
       # You can run `git update-index --chmod +x gradlew` then remove this step.
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      # The NeoForge module is the only one with a Minecraft dependency, so it is what a row builds.
-      - name: Build the NeoForge mod
+      # The loader module named by the row is the one with a Minecraft dependency, so it is what
+      # gets built; :core:test covers the format layer, which is the same jar-independent code on
+      # every row.
+      - name: Build the mod
         run: >
-          ./gradlew :core:test :neoforge:build
+          ./gradlew :core:test :${{ matrix.loader }}:build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           "-Porg.gradle.java.installations.paths=${{ steps.jdk25.outputs.path }},${{ steps.jdk21.outputs.path }}"
 
       - name: Upload the mod jar
         uses: actions/upload-artifact@v4
         with:
-          name: chunkstorageoptimizer-${{ matrix.minecraft_version }}
-          path: neoforge/build/libs/*.jar
+          name: chunkstorageoptimizer-${{ matrix.loader }}-${{ matrix.minecraft_version }}
+          path: ${{ matrix.loader }}/build/libs/*.jar
           if-no-files-found: error

@@ -100,24 +100,29 @@ stored as a single zstd stream containing all of its chunks:
 
 ## Requirements
 
-One jar per Minecraft version — select the file whose name matches the game version, e.g.
-`chunkstorageoptimizer-neoforge-26.1.2-1.0.3.jar` — file names carry both the loader and the
-Minecraft version.
+One jar per Minecraft version per loader — select the file whose name carries both tokens, e.g.
+`chunkstorageoptimizer-neoforge-26.1.2-1.0.3.jar` or `chunkstorageoptimizer-fabric-1.21.11-1.0.3.jar`.
 
-- Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**, **1.21.4**,
-  **1.21.3**, **1.21.1**, **1.21**
-- NeoForge, at least the first stable build for that Minecraft (26.1.2 → 26.1.2.71,
-  1.21 → 21.0.143, and so on)
+- **NeoForge**: Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**,
+  **1.21.4**, **1.21.3**, **1.21.1**, **1.21** — with the loader at least the first stable build for
+  that Minecraft (26.1.2 → 26.1.2.71, 1.21 → 21.0.143, and so on)
+- **Fabric**: the whole **1.21** line, **1.21** through **1.21.11** — including 1.21.2, 1.21.6,
+  1.21.7 and 1.21.9 — with Fabric API for the same Minecraft. Mod Menu is optional and contributes
+  the config screen only.
 - Java 21 for the 1.21 line, Java 25 for 26.x — i.e. whatever Minecraft itself requires
 
-Minecraft 26.1, 1.21.2, 1.21.6, 1.21.7 and 1.21.9 never got a stable NeoForge release, so there is
-no jar to install on them.
+There are no Fabric jars for 26.x yet: those Minecraft versions ship an unobfuscated client, so the
+mapping set a fabric-loom build needs no longer exists and no stable loom accepts that. Minecraft
+26.1 never got a stable NeoForge build either, so it has no jar on either loader.
 
 ## Installation
 
-1. Download the jar named after the target Minecraft version.
-2. Install NeoForge for that version, then place the jar in the `mods/` folder.
-3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml`.
+1. Download the jar named after the target Minecraft and loader.
+2. Install NeoForge — or Fabric Loader plus Fabric API — for that version, then place the jar in the
+   `mods/` folder.
+3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml` on
+   NeoForge and `config/chunkstorageoptimizer.properties` on Fabric. The keys are identical, so the
+   tables below apply to both.
 
 **Who needs it: the side that holds the world.** The mod registers no network payloads — its only client-side
 code is the config screen — and everything it changes lives on disk. A dedicated server needs it and
@@ -169,7 +174,8 @@ Two numbers in `/cso stats` are worth watching:
 
 ## Configuration
 
-`config/chunkstorageoptimizer-common.toml`:
+`config/chunkstorageoptimizer-common.toml` on NeoForge, `config/chunkstorageoptimizer.properties`
+on Fabric — same keys, same defaults:
 
 | Key | Default | Description |
 |---|---|---|

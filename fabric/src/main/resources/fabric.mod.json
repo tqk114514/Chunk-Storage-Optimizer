@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "Replaces Minecraft's Anvil region storage with a bucket-grouped, zstd-compressed format (.cso): smaller saves and faster reads and writes.",
+  "authors": [
+    "${mod_author}"
+  ],
+  "license": "${mod_license}",
+  "icon": "assets/chunkstorageoptimizer/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "tqk114514.chunkstorageoptimizer.ChunkStorageOptimizerFabric"
+    ],
+    "modmenu": [
+      "tqk114514.chunkstorageoptimizer.CsoModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "${mod_id}.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": "${minecraft_version}",
+    "java": ">=${java_level}",
+    "fabric-api": "*"
+  }
+}

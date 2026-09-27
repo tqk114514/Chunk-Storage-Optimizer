@@ -1,5 +1,10 @@
 pluginManagement {
     repositories {
+        // fabric-loom is published to the Fabric maven, not to the plugin portal.
+        maven {
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
         gradlePluginPortal()
     }
 }
@@ -11,4 +16,37 @@ plugins {
 rootProject.name = 'chunkstorageoptimizer'
 
 include 'core'
-include 'neoforge'
+
+// ------------------------------------------------------------------ which loaders this row has
+//
+// supported-versions.csv decides which loader modules exist for the requested Minecraft: a '-' in a
+// loader's column means that loader never shipped a build for it. The decision belongs here and not
+// in the module because Gradle configures every included project for any requested task, so a
+// module that cannot serve the row would refuse the build long before its own tasks were reached —
+// `:fabric:build -Pminecraft_version=1.21.9` needs :neoforge to stay out of the way.
+//
+// Without -Pminecraft_version both modules are included and each resolves its own default row,
+// which is why the '-' checks in the two build scripts stay in place as well: they are reachable
+// through a module default or a -Pneo_version/-Pfabric_api_version override, not only through here.
+def minecraftVersionProperty = providers.gradleProperty('minecraft_version')
+if (minecraftVersionProperty.isPresent()) {
+    def requested = minecraftVersionProperty.get().trim()
+    def row = file('supported-versions.csv').readLines()
+        .collect { it.trim() }
+        .find { !it.isEmpty() && !it.startsWith('#') && it.startsWith(requested + ',') }
+    if (row == null) {
+        throw new GradleException(
+            "Minecraft ${requested} is not listed in supported-versions.csv. Add a row before building for it."
+        )
+    }
+    def columns = row.split(',').collect { it.trim() }
+    if (columns[3] != '-') {
+        include 'neoforge'
+    }
+    if (columns[4] != '-') {
+        include 'fabric'
+    }
+} else {
+    include 'neoforge'
+    include 'fabric'
+}

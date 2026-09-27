@@ -17,8 +17,13 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 在一个 889 MB 的城市存档上实测：体积减少 55%，写入快 8.1 倍，读取快 3.1 倍。
 
-- 游戏版本：Minecraft 1.21 / 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 / 1.21.10 / 1.21.11
-  / 26.1.2 / 26.2.0，**每个游戏版本一个 jar**
+- 加载器：NeoForge 与 Fabric，**每个游戏版本、每个加载器各一个 jar**
+- NeoForge：Minecraft 1.21 / 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 / 1.21.10 / 1.21.11
+  / 26.1.2 / 26.2.0
+- Fabric：1.21 线的 12 个版本（1.21 至 1.21.11，含 NeoForge 没有稳定构建的 1.21.2 / 1.21.6 /
+  1.21.7 / 1.21.9）。26.x 暂无 Fabric 构建，原因见 `docs/uncovered-minecraft-versions.md`
+- Fabric 侧需要 Fabric API。设置界面由 Mod Menu 提供，Mod Menu 是可选依赖：没有它时配置
+  仍然可用，改文件即可
 - 运行环境：Java 21（1.21.x）或 Java 25（26.x），跟随 Minecraft 本身的要求
 
 ---
@@ -39,12 +44,15 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 ## 安装
 
-1. 按游戏版本挑 jar：文件名中间那段就是 Minecraft 版本，例如
-   `chunkstorageoptimizer-26.1.2-1.0.3.jar`。放进 `mods/` 目录即可。
-2. 每个 jar 只认自己那个 Minecraft 版本，并要求 NeoForge 不低于**该版本的第一个稳定构建**——
+1. 按加载器和游戏版本挑 jar：文件名中间两段就是加载器与 Minecraft 版本，例如
+   `chunkstorageoptimizer-neoforge-26.1.2-1.0.3.jar` 与 `chunkstorageoptimizer-fabric-1.21.11-1.0.3.jar`。
+   放进 `mods/` 目录即可。
+2. 每个 jar 只认自己那个 Minecraft 版本。NeoForge 侧还要求加载器不低于**该版本的第一个稳定构建**，
    逐版列在 `supported-versions.csv` 里，加载器也会在版本不够时直接拒绝启动而不是崩在半路。
-   Minecraft 26.1.2 对应的下限是 NeoForge 26.1.2.71。
-3. 启动游戏，配置文件会生成在 `config/chunkstorageoptimizer-common.toml`。
+   Minecraft 26.1.2 对应的下限是 NeoForge 26.1.2.71。Fabric 侧需要同一行的 Fabric API
+   （同样列在 `supported-versions.csv`）。
+3. 启动游戏，配置文件按加载器生成：NeoForge 写 `config/chunkstorageoptimizer-common.toml`，
+   Fabric 写 `config/chunkstorageoptimizer.properties`。两者的键完全同名。
 
 > 与 **C2ME** 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。
 > 两者都改写了区块 IO，混用会造成存档割裂。
@@ -81,11 +89,13 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 ## 配置
 
-`config/chunkstorageoptimizer-common.toml`：
+配置文件的键在两个加载器之间完全同名，只是容器格式不同：NeoForge 用
+`config/chunkstorageoptimizer-common.toml`，Fabric 用 `config/chunkstorageoptimizer.properties`。
 
-> 生成的 toml 里**没有注释**：NeoForge 只会把代码里的 comment 写进文件，而选项说明需要按语言
-> 各出一份，所以它们放在语言文件里。含义见下表，或游戏内 **Mods → 选中本 mod → Config**
-> 界面（简中 / 繁中 TW / 繁中 HK 均有）。
+> NeoForge 生成的 toml 里**没有注释**：它只会把代码里的 comment 写进文件，而选项说明需要按语言
+> 各出一份，所以它们放在语言文件里。含义见下表，或游戏内 **Mods → 选中本 mod → Config** 界面
+> （简中 / 繁中 TW / 繁中 HK 均有）——两个加载器的界面读同一批语言键。Fabric 的 properties
+> 文件自带取值范围注释，手改后重启生效。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -365,41 +375,53 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 
 ## 从源码构建
 
-仓库按依赖边界分成三块：`core`（不依赖 Minecraft 也不依赖加载器：格式、指标、离线工具，
+仓库按依赖边界分成四块：`core`（不依赖 Minecraft 也不依赖加载器：格式、指标、离线工具，
 单元测试都在这里）、`common`（依赖 Minecraft 但不依赖加载器：存储层、mixin、命令实现，
-以及按权限 API 分的两套 `CsoPermissions`）、`neoforge`（加载器入口、`ModConfigSpec` 配置、
-`mods.toml` 与 mixin 配置）。`common` 不是独立模块，它作为源码目录被加载器模块各自编译一次。
+以及按权限 API 分的两套 `CsoPermissions`）、`neoforge` 与 `fabric`（各自的加载器入口与配置
+存储）。`core` 和 `common` 不产出独立 jar，它们作为源码目录被两个加载器模块各自编译一次。
 
 ```bash
 ./gradlew :neoforge:build          # 产物在 neoforge/build/libs/
+./gradlew :fabric:build            # 产物在 fabric/build/libs/
 ./gradlew :core:test               # 只跑格式层，不需要 Minecraft
 ./gradlew :neoforge:runServer      # 开发用服务端，工作目录 neoforge/run/
+./gradlew :fabric:runServer        # 同上，工作目录 fabric/run/
 ```
 
 ### 多版本构建
 
-`minecraft_version` 是唯一的版本开关。一个 Minecraft 对应哪一行的 NeoForge 下限、写进 mod 元数据
-的版本范围、Java 级别、命令权限 API 走哪套，全部由 `supported-versions.csv` 里的那一行决定：
+`minecraft_version` 是唯一的版本开关。一个 Minecraft 对应哪一行的 NeoForge 下限、Fabric API 与
+Mod Menu 版本、写进 mod 元数据的版本范围、Java 级别、命令权限 API 走哪套，全部由
+`supported-versions.csv` 里的那一行决定：
 
 ```bash
 ./gradlew :neoforge:build -Pminecraft_version=1.21.11   # csv 里列出的版本都能直接编
+./gradlew :fabric:build -Pminecraft_version=1.21.2      # 只有 NeoForge 写 '-' 的那些行照样能编
 ```
 
-同一份 csv 也是 CI 矩阵的来源（workflow 读第一列），所以"本机编得动的版本"和"会被发布的版本"
-不可能各说各话。加一个新版本只要两步：
+"编得动"还有一层：Gradle 会为任何被请求的任务配置**所有已 include 的模块**，所以只属于另一个
+加载器的行会把它拖死。因此决定"这一版有哪些加载器模块"的地方是 `settings.gradle`——它读同一份
+csv 的那两列，`-` 的那侧根本不 include。不传 `-Pminecraft_version` 时两个模块都在，各自用自己
+那行（NeoForge 26.1.2、Fabric 1.21.11）。
+
+同一份 csv 也是 CI 矩阵的来源（workflow 按加载器两列展开成 job），所以"本机编得动的版本"和
+"会被发布的版本"不可能各说各话。加一个新版本只要两步：
 
 ```bash
 tools/oldest-stable-neoforge.sh 26.3.0
-# ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <最老稳定版>, <java>, <legacy|modern>
+# ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <java>, <legacy|modern>,
+#    <NeoForge 下限>, <Fabric API>, <Mod Menu>；某个加载器没有该游戏版本的构建就在该列写 -
 #    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
-# ② ./gradlew :neoforge:build -Pminecraft_version=26.3.0 验证
+# ② 逐个模块验证：./gradlew :neoforge:build -Pminecraft_version=26.3.0，再 :fabric:build
+#    同一版本；某一列写 '-' 时那个模块不会被 include，请求它会得到 "project not found"
 ```
 
 下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建没有正式发布，玩家无法安装。未覆盖的版本及原因
 记录在 `docs/uncovered-minecraft-versions.md`。
 
-版本范围是**精确单版本**（`[26.1.2]`），不是 `>=`。因为 `mixins.json` 里 `defaultRequire: 1`，
-签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前就被干净拒绝，而不是崩在玩家机器上。
+版本范围是**精确单版本**（NeoForge 的 `[26.1.2]`、Fabric 的 `"minecraft": "1.21.11"`），不是 `>=`。
+因为 `mixins.json` 里 `defaultRequire: 1`，签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前
+就被干净拒绝，而不是崩在玩家机器上。
 
 ### 跨版本的编译缝
 
@@ -413,7 +435,9 @@ family 只将其中一个放入编译路径。运行期没有条件分支，也�
 
 ### 各版本行的实测状态
 
-| Minecraft（loader） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
+NeoForge：
+
+| Minecraft（NeoForge 构建） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
 |---|---|---|---|---|
 | 1.21 (21.0.143) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 5 个文件、0 个 `.mca` |
 | 1.21.1 (21.1.1) | dev | 通过 | 未执行 | 否，回退 Anvil |
@@ -426,23 +450,53 @@ family 只将其中一个放入编译路径。运行期没有条件分支，也�
 | 26.1.2 (26.1.2.71) | dev | 通过 | 已执行 | 是：5 个文件 |
 | 26.2.0 (26.2.0.57) | dev + 真实服务端 | 通过 | 未执行 | 是：真实服务端 9 个文件 |
 
-真实服务端验证的做法：用 `neoforge-<版本>-installer.jar --installServer` 在仓库之外装一个服务端，把
-`neoforge/build/libs/` 下对应的 jar 放进 `mods/`，再通过 RCON 执行 `cso stats` 与 `save-all flush`。
-1.21.1 至 1.21.8 未做这一步，只验证了 1.21 这一行。
+Fabric：
+
+| Minecraft（loader / Fabric API） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
+|---|---|---|---|---|
+| 1.21.11 (0.19.5 / 0.141.6) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 9 个文件、0 个 `.mca` |
+
+其余 11 个 Fabric 行只有编译验证（CI 覆盖），运行时未逐版跑过。
+
+真实服务端验证的做法：NeoForge 用 `neoforge-<版本>-installer.jar --installServer` 在仓库之外装一个
+服务端，把 `neoforge/build/libs/` 下对应的 jar 放进 `mods/`。Fabric 用 `meta.fabricmc.net` 的
+`/v2/versions/loader/<mc>/<loader>/<installer>/server/jar` 取到可直接 `java -jar` 的启动器，`mods/` 里
+放本 mod 与该行对应版本的 Fabric API。两边再通过 RCON 执行 `cso stats` 与 `save-all flush`。
+NeoForge 侧的 1.21.1 至 1.21.8 未做这一步，只验证了 1.21 这一行。
 
 `runServer` 在 21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError`，随后回退原版 Anvil），
 21.10 起正常；两种环境下生成的 `neoforge/build/moddev/serverLegacyClasspath.txt` 都不含 zstd。这是 dev 环境的
-差异，发行路径使用嵌套 jar，与其无关——1.21 与 26.2.0 两行已按发行路径验证。
+差异，发行路径使用嵌套 jar，与其无关——1.21 与 26.2.0 两行已按发行路径验证。Fabric 的 dev 运行没有
+这条差异：1.21.11 的 `:fabric:runServer` 直接写出 `.cso`。
 
 存档目录布局：1.21.1、1.21.11 以及 1.21 的真实服务端均为 `<世界>/{region,poi,entities}` 加
 `DIM-1/`、`DIM1/`；26.1.2 与 26.2.0 为 `<世界>/dimensions/minecraft/<维度>/…`。`.cso` 写在游戏提供
 的目录里，两种布局的落盘位置均已实测。
 
 
-### 移植到其他加载器（未做，缝已留好）
+### 两个加载器之间换了什么
 
-按实际 import 关系，换加载器需要重写的只有 4 个文件：`ChunkStorageOptimizer`（mod 入口）、
-`ChunkStorageOptimizerClient`（客户端配置界面）、`Config`（`ModConfigSpec`）、
-`commands/CsoCommands`（事件注册与权限声明）。`storage/CsoStorage` 只依赖 Minecraft 类，
-而 `format` / `metrics` / `tools` 既不依赖 Minecraft 也不依赖任何加载器——格式层能脱离游戏
-独立跑测试就是因为这条边界。所以换加载器不必动格式，也不必动存档语义。
+按实际 import 关系，一个加载器需要自己写的只有 4 个文件：入口（`ChunkStorageOptimizer` /
+`ChunkStorageOptimizerFabric`）、配置存储（`Config` 的 `ModConfigSpec` / `FabricConfig` 的
+properties）、命令注册钩子、配置界面（NeoForge 复用 FML 自带的 `ConfigurationScreen`，Fabric 没有
+官方界面，所以 `CsoModMenuIntegration` + `CsoConfigScreen` 自己提供一个给 Mod Menu 打开的
+Screen）。`storage/CsoStorage`、mixin、命令实现全部在 `common` 里一份不改动地共用，
+`format` / `metrics` / `tools` 既不依赖 Minecraft 也不依赖任何加载器——格式层能脱离游戏
+独立跑测试就是因为这条边界。
+
+加载器带来的三处实现差异：
+
+- **mixin 的映射方式。** loom 从 1.15 起默认不再挂 mixin 的注解处理器，改由 remapJar 阶段把
+  intermediary 名字直接写进注解（`MixinRefmapInliner`），所以 `fabric/src/main/resources` 里的
+  `chunkstorageoptimizer.mixins.json` 不带 `refmap` 字段；NeoForge 那份带，refmap 文件由 FML 的
+  注解处理器生成。实测发行 jar：`@Mixin` 的值已是 `net/minecraft/class_2867`，`@Inject` 的
+  `method` 已是 `method_17911`，dev 运行则直接用未 remap 的类，两条路径都绑得上。
+- **嵌套依赖。** NeoForge 用 `jarJar`，Fabric 用 loom 的 `include`，zstd-jni 落在
+  `META-INF/jars/`，加载后是一个独立的嵌套 mod（id 为 `com_github_luben_zstd-jni`）。
+- **可选的第三方界面。** Mod Menu 只以 `modCompileOnly` 参与编译：没有它时 `modmenu` 入口点永远
+  不会被实例化，配置退回纯文件编辑。
+
+配置界面只用 `Button.builder(Component, OnPress)` 与 `Screen.addRenderableWidget` 两个控件 API，
+每个选项是一个循环取值的按钮、点击即写文件。不用文本框也不自绘：界面依赖的客户端 API 越少，
+12 个版本行同时编过的把握越大。界面用到的其余签名（`Tooltip.create`、`Component.plainCopy`、
+`Screen.width`）在 1.21 与 1.21.8 的反编译源码里对过，两端一致。
