@@ -1,0 +1,24 @@
+# Minecraft versions this mod ships for — one row per published jar.
+#
+#   minecraft, oldest STABLE NeoForge build, Java level, command-permission API family
+#
+# Floors are what tools/oldest-stable-neoforge.sh prints: builds with a -beta/-alpha suffix never
+# count, because a player cannot install them.
+# family picks the seam in src/version/<family>/java: 'legacy' gates commands on a numeric
+# permission level, 'modern' on the PermissionCheck tree (first shipped in 1.21.11).
+#
+# .github/workflows/build.yml reads the first column, so this file — not a hand-copied matrix —
+# decides what gets built.
+#
+# 1.21.2, 1.21.6, 1.21.7 and 1.21.9 are deliberately absent: NeoForge never shipped a stable build
+# for them, so there is no floor a player could reach.
+1.21,     21.0.143,   21, legacy
+1.21.1,   21.1.1,     21, legacy
+1.21.3,   21.3.56,    21, legacy
+1.21.4,   21.4.121,   21, legacy
+1.21.5,   21.5.74,    21, legacy
+1.21.8,   21.8.9,     21, legacy
+1.21.10,  21.10.63,   21, legacy
+1.21.11,  21.11.42,   21, modern
+26.1.2,   26.1.2.71,  25, modern
+26.2.0,   26.2.0.57,  25, modern

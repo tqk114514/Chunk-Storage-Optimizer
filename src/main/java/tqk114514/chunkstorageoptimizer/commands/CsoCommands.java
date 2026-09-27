@@ -17,8 +17,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.permissions.PermissionCheck;
-import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -26,6 +24,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import tqk114514.chunkstorageoptimizer.ChunkStorageOptimizer;
 import tqk114514.chunkstorageoptimizer.Config;
+import tqk114514.chunkstorageoptimizer.CsoPermissions;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
 import tqk114514.chunkstorageoptimizer.metrics.CsoLatency;
@@ -48,8 +47,9 @@ public final class CsoCommands {
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(
             Commands.literal("cso")
-                // 26.1 replaced the numeric permission level with a PermissionCheck tree.
-                .requires(Commands.hasPermission(new PermissionCheck.Require(Permissions.COMMANDS_ADMIN)))
+                // The permission API is one of the few things Minecraft changed across the versions
+                // this mod ships for, so the check itself lives in src/version/<family>.
+                .requires(CsoPermissions.operatorOnly())
                 .then(Commands.literal("stats").executes(CsoCommands::stats))
                 .then(Commands.literal("reset").executes(CsoCommands::reset))
                 .then(Commands.literal("compact").executes(CsoCommands::compact))

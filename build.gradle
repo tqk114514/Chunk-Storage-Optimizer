@@ -32,27 +32,56 @@ repositories {
     // Add here additional repositories if required by some of the dependencies below.
 }
 
-// One row per Minecraft version this mod ships for. `neo` is the oldest STABLE NeoForge build
-// for that Minecraft: builds carrying a "-beta" suffix are never taken as the floor, so the lower
-// bound admits only versions a player can install without a pre-release.
-// tools/oldest-stable-neoforge.sh prints the right value when a new Minecraft lands.
-def supportedVersions = [
-    '26.1.2': [neo: '26.1.2.71', java: 25],
-    '26.2.0': [neo: '26.2.0.57', java: 25],
-]
+// supported-versions.csv is the one list of Minecraft builds this mod ships for: build.gradle and
+// the CI matrix both read it. Columns: minecraft, oldest stable NeoForge build, Java level,
+// command-permission API family.
+def supportedVersions = [:]
+def versionTable = file('supported-versions.csv')
+versionTable.eachLine { line ->
+    def trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith('#')) {
+        return
+    }
+    def (mc, floor, rowJavaLevel, family) = trimmed.split(',').collect { it.trim() }
+    supportedVersions[mc] = [neo: floor, java: rowJavaLevel as int, family: family]
+}
+if (supportedVersions.isEmpty()) {
+    throw new GradleException("${versionTable} has no data rows.")
+}
 
 def mcVersion = (project.findProperty('minecraft_version') ?: '26.1.2') as String
 def target = supportedVersions[mcVersion]
 if (target == null) {
-    throw new GradleException("Minecraft ${mcVersion} is not configured in supportedVersions " \
+    throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
         + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
 }
 def neoVersion = (project.findProperty('neo_version') ?: target.neo) as String
 def javaLevel = (project.findProperty('java_level') ?: target.java) as int
-// Every NeoForge build for a Minecraft shares its prefix, so the range stops at the next patch
-// line instead of running to infinity: an untested newer loader should refuse us, not crash.
-def versionDot = mcVersion.lastIndexOf('.')
-def neoUpper = versionDot < 0 ? mcVersion : mcVersion.substring(0, versionDot + 1) + ((mcVersion.substring(versionDot + 1) as int) + 1)
+def apiFamily = target.family as String
+if (!(apiFamily in ['legacy', 'modern'])) {
+    throw new GradleException("Minecraft ${mcVersion} has family=${apiFamily}; use 'legacy' or 'modern'.")
+}
+// Exactly one seam implementation goes on the compile path, which is how the two command-permission
+// APIs share one source tree without version checks at runtime.
+sourceSets.main.java.srcDir file("src/version/${apiFamily}/java")
+// The loader drops the old "1." prefix, so Minecraft 1.21.11 is served by the 21.11 line and
+// Minecraft 26.1.2 by the 26.1.2 line; a two-part old version means patch 0, so Minecraft 1.21 is
+// served by 21.0. Every NeoForge build for one Minecraft shares that line. Guards against a row
+// whose floor was copied in from a different Minecraft, which would otherwise only surface as a jar
+// no player can load.
+def loaderLine = mcVersion.startsWith('1.') ? mcVersion.substring(2) : mcVersion
+if (mcVersion.startsWith('1.') && !loaderLine.contains('.')) {
+    loaderLine += '.0'
+}
+if (!neoVersion.startsWith("${loaderLine}.")) {
+    throw new GradleException("NeoForge floor ${neoVersion} does not belong to Minecraft ${mcVersion} " \
+        + "(expected a build of ${loaderLine}.N).")
+}
+// Stop the dependency range at the next loader line instead of running to infinity: that line is a
+// different Minecraft, and an untested newer loader should refuse us, not crash.
+def upperParts = loaderLine.split('\\.').collect { it as int }
+upperParts[-1] = upperParts[-1] + 1
+def neoUpper = upperParts.join('.')
 
 // The Minecraft version goes in the file name: one mod version now yields one jar per Minecraft,
 // and identical names from different matrix rows are impossible to tell apart once uploaded.
