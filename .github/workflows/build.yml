@@ -57,6 +57,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # Per-row keys on purpose. Ten matrix jobs share one workflow run, and the default key
+          # lets a job restore a cache another job wrote mid-flight — that mixes neoformruntime's
+          # intermediate artifacts (a renamed-but-already-patched Minecraft class) between rows and
+          # fails binaryPatch's checksum. Sequential local builds never hit it.
+          key: ${{ runner.os }}-gradle-${{ matrix.minecraft_version }}
 
       # This is needed to be able to run ./gradlew below
       # You can run `git update-index --chmod +x gradlew` then remove this step.
