@@ -77,6 +77,8 @@ tools/oldest-stable-neoforge.sh <minecraft 版本号>
   需要给两段式的新版本号补 `.0`，否则排他上界会算成 `26.4`。
 
 已定：沿用 loader 写法（`26.2.0`、范围 `[26.2.0]`），它与游戏自报的 `26.2` 等价已实测；新增行照此填。
+文件名侧自 1.0.4 起带加载器段（`chunkstorageoptimizer-neoforge-26.2.0-1.0.4.jar`），行键写法只管
+Minecraft 那一段；Fabric 行的 `depends.minecraft` 用同一个写法（`"1.21.11"`，实测加载正常）。
 
 ## 5. 1.20.x 及更早
 
