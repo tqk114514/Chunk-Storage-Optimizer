@@ -18,9 +18,10 @@
 # jar — fixed four days later in 21.10.64 ("When creating the joined patches, use the clean jar as
 # base.", #2849). Anything that assembles artifacts through binpatches therefore cannot build against
 # 21.10.63 at all (CI hit this; a local build got away with it because it took the
-# decompile -> patch -> recompile path instead). Cost of the exception: a 1.21.10 player sitting on
-# 21.10.63 has to update the loader. That is a build-time bug in NeoForge, not a runtime
-# incompatibility, so the floor is deliberately one build higher than strictly necessary.
+# decompile -> patch -> recompile path instead). The floor for this row is 21.10.64 and it stays
+# there: splitting "the floor players need" from "the version we compile against" over the whole
+# table because one loader build shipped bad patches is not worth a second column. The cost is one
+# update prompt for a 1.21.10 player sitting on 21.10.63.
 1.21,     21.0.143,   21, legacy
 1.21.1,   21.1.1,     21, legacy
 1.21.3,   21.3.56,    21, legacy
