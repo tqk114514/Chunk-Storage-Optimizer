@@ -153,25 +153,25 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 
 ```bash
 # 只报告体积对比，不改动任何文件
-./gradlew csoTool -PcsoArgs="bench --grid 16 --level 3" -PcsoDir="<存档>/dimensions/minecraft/overworld/region"
+./gradlew :core:csoTool -PcsoArgs="bench --grid 16 --level 3" -PcsoDir="<存档>/dimensions/minecraft/overworld/region"
 
 # 转换（原文件保留）
-./gradlew csoTool -PcsoArgs="convert --to cso --grid 16" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="convert --to cso --grid 16" -PcsoDir="<目录>"
 
 # 反向转换：.cso -> .mca
-./gradlew csoTool -PcsoArgs="convert --to mca" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="convert --to mca" -PcsoDir="<目录>"
 
 # 读写速度对比（多轮取中位数）
-./gradlew csoTool -PcsoArgs="ab --grid 16 --level 3" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="ab --grid 16 --level 3" -PcsoDir="<目录>"
 
 # 各 grid 的写入量对比
-./gradlew csoTool -PcsoArgs="amp --level 3" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="amp --level 3" -PcsoDir="<目录>"
 
 # 预写日志带来的写入开销
-./gradlew csoTool -PcsoArgs="walcost --level 3" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="walcost --level 3" -PcsoDir="<目录>"
 
 # 统计目录内的区块总数与平均区块大小（只读，常用于对照实验前确认两边一致）
-./gradlew csoTool -PcsoArgs="count" -PcsoDir="<目录>"
+./gradlew :core:csoTool -PcsoArgs="count" -PcsoDir="<目录>"
 ```
 
 `bench`/`ab`/`amp`/`walcost` 读目录里现成的格式：有 `.mca` 就用它（那是原版真实写出的字节），
@@ -365,20 +365,15 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 
 ## 从源码构建
 
-```bash
-./gradlew build
-```
-
-构建产物在 `build/libs/`。单元测试覆盖格式层，该层不依赖 Minecraft，可独立运行：
-
-```bash
-./gradlew test
-```
-
-启动开发服务器：
+仓库按依赖边界分成三块：`core`（不依赖 Minecraft 也不依赖加载器：格式、指标、离线工具，
+单元测试都在这里）、`common`（依赖 Minecraft 但不依赖加载器：存储层、mixin、命令实现，
+以及按权限 API 分的两套 `CsoPermissions`）、`neoforge`（加载器入口、`ModConfigSpec` 配置、
+`mods.toml` 与 mixin 配置）。`common` 不是独立模块，它作为源码目录被加载器模块各自编译一次。
 
 ```bash
-./gradlew runServer
+./gradlew :neoforge:build          # 产物在 neoforge/build/libs/
+./gradlew :core:test               # 只跑格式层，不需要 Minecraft
+./gradlew :neoforge:runServer      # 开发用服务端，工作目录 neoforge/run/
 ```
 
 ### 多版本构建
@@ -387,7 +382,7 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 的版本范围、Java 级别、命令权限 API 走哪套，全部由 `supported-versions.csv` 里的那一行决定：
 
 ```bash
-./gradlew build -Pminecraft_version=1.21.11     # csv 里列出的版本都能直接编
+./gradlew :neoforge:build -Pminecraft_version=1.21.11   # csv 里列出的版本都能直接编
 ```
 
 同一份 csv 也是 CI 矩阵的来源（workflow 读第一列），所以"本机编得动的版本"和"会被发布的版本"
@@ -397,7 +392,7 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 tools/oldest-stable-neoforge.sh 26.3.0
 # ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <最老稳定版>, <java>, <legacy|modern>
 #    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
-# ② ./gradlew build -Pminecraft_version=26.3.0 验证
+# ② ./gradlew :neoforge:build -Pminecraft_version=26.3.0 验证
 ```
 
 下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建没有正式发布，玩家无法安装。未覆盖的版本及原因
@@ -408,8 +403,8 @@ tools/oldest-stable-neoforge.sh 26.3.0
 
 ### 跨版本的编译缝
 
-1.21 到 26.x 之间不兼容的 API 只有一处：命令权限。`src/version/legacy/java` 与
-`src/version/modern/java` 各提供一个签名相同的 `CsoPermissions.operatorOnly()`，构建时按 csv 中的
+1.21 到 26.x 之间不兼容的 API 只有一处：命令权限。`common/src/version/legacy/java` 与
+`common/src/version/modern/java` 各提供一个签名相同的 `CsoPermissions.operatorOnly()`，构建时按 csv 中的
 family 只将其中一个放入编译路径。运行期没有条件分支，也没有反射，两者的判定标准都是权限等级 3。
 
 另一处差异是 26.1 将 `ChunkPos` 改为 record（`pack`/`unpack`/`x()`/`z()`）。写入批处理用的坐标键不
@@ -432,11 +427,11 @@ family 只将其中一个放入编译路径。运行期没有条件分支，也�
 | 26.2.0 (26.2.0.57) | dev + 真实服务端 | 通过 | 未执行 | 是：真实服务端 9 个文件 |
 
 真实服务端验证的做法：用 `neoforge-<版本>-installer.jar --installServer` 在仓库之外装一个服务端，把
-`build/libs/` 下对应的 jar 放进 `mods/`，再通过 RCON 执行 `cso stats` 与 `save-all flush`。
+`neoforge/build/libs/` 下对应的 jar 放进 `mods/`，再通过 RCON 执行 `cso stats` 与 `save-all flush`。
 1.21.1 至 1.21.8 未做这一步，只验证了 1.21 这一行。
 
 `runServer` 在 21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError`，随后回退原版 Anvil），
-21.10 起正常；两种环境下生成的 `build/moddev/serverLegacyClasspath.txt` 都不含 zstd。这是 dev 环境的
+21.10 起正常；两种环境下生成的 `neoforge/build/moddev/serverLegacyClasspath.txt` 都不含 zstd。这是 dev 环境的
 差异，发行路径使用嵌套 jar，与其无关——1.21 与 26.2.0 两行已按发行路径验证。
 
 存档目录布局：1.21.1、1.21.11 以及 1.21 的真实服务端均为 `<世界>/{region,poi,entities}` 加

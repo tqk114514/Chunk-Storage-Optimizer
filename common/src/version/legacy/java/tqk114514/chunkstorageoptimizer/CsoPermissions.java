@@ -8,8 +8,9 @@ import net.minecraft.commands.Commands;
 /**
  * Version seam: this Minecraft still gates commands on a numeric permission level.
  *
- * <p>The counterpart lives in {@code src/version/modern/java}; build.gradle puts exactly one of the
- * two on the compile path, so both must expose the same signature and the same bar (op level 3).
+ * <p>The counterpart lives in {@code common/src/version/modern/java}. Each loader build puts
+ * exactly one of the two on the compile path, so both must expose the same signature and the same
+ * bar (op level 3).
  */
 public final class CsoPermissions {
 

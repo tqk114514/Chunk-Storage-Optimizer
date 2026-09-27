@@ -1,0 +1,52 @@
+// The Minecraft-free, loader-free layer: region format, zstd codec, latency stats, the offline
+// converter/benchmark. Everything here is compiled again into each loader's jar (the loader modules
+// add this directory as a source root), and tested here without a game on the classpath.
+plugins {
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+repositories {
+    mavenCentral()
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+dependencies {
+    implementation 'com.github.luben:zstd-jni:1.5.6-3'
+
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// Runs the converter/benchmark CLI against a real world folder. No Minecraft and no loader are on
+// the classpath, so this works whatever version is being built.
+//   ./gradlew :core:csoTool -PcsoArgs="bench --grid 8" -PcsoDir="D:/saves/My World/region"
+// Pass the directory via -PcsoDir, not inside -PcsoArgs: save folders contain spaces and would
+// otherwise be split into two arguments.
+tasks.register('csoTool', JavaExec) {
+    group = 'cso'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'tqk114514.chunkstorageoptimizer.tools.Converter'
+    def extra = []
+    if (project.hasProperty('csoArgs')) {
+        extra += project.property('csoArgs').toString().split(' ').toList()
+    }
+    if (project.hasProperty('csoDir')) {
+        extra += ['--dir', project.property('csoDir').toString()]
+    }
+    args = extra
+    // Real saves are large; the benchmark holds several region files' chunks in memory at once.
+    maxHeapSize = '3g'
+}

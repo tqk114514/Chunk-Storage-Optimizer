@@ -70,9 +70,10 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build with Gradle
+      # The NeoForge module is the only one with a Minecraft dependency, so it is what a row builds.
+      - name: Build the NeoForge mod
         run: >
-          ./gradlew build
+          ./gradlew :core:test :neoforge:build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           "-Porg.gradle.java.installations.paths=${{ steps.jdk25.outputs.path }},${{ steps.jdk21.outputs.path }}"
 
@@ -80,5 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chunkstorageoptimizer-${{ matrix.minecraft_version }}
-          path: build/libs/*.jar
+          path: neoforge/build/libs/*.jar
           if-no-files-found: error

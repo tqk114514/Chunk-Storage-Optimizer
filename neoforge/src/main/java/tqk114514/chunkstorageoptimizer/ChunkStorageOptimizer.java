@@ -10,6 +10,10 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+
+import tqk114514.chunkstorageoptimizer.commands.CsoCommands;
 
 @Mod(ChunkStorageOptimizer.MODID)
 public class ChunkStorageOptimizer {
@@ -21,7 +25,11 @@ public class ChunkStorageOptimizer {
 
     public ChunkStorageOptimizer(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        // Everything below the loader reads config through these two suppliers, so the storage and
+        // command layers never name a ModConfigSpec.
+        CsoRuntime.install(Config.ENABLED::getAsBoolean, Config::settings);
         modEventBus.addListener(this::commonSetup);
+        NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> CsoCommands.register(event.getDispatcher()));
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {

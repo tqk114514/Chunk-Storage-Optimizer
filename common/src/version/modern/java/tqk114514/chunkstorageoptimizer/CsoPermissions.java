@@ -11,8 +11,9 @@ import net.minecraft.server.permissions.Permissions;
  * Version seam: this Minecraft replaced the numeric permission level with a {@link PermissionCheck}
  * tree.
  *
- * <p>The counterpart lives in {@code src/version/legacy/java}; build.gradle puts exactly one of the
- * two on the compile path, so both must expose the same signature and the same bar (op level 3).
+ * <p>The counterpart lives in {@code common/src/version/legacy/java}. Each loader build puts
+ * exactly one of the two on the compile path, so both must expose the same signature and the same
+ * bar (op level 3).
  */
 public final class CsoPermissions {
 

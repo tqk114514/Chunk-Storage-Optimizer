@@ -19,7 +19,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionFileStorage;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 
-import tqk114514.chunkstorageoptimizer.Config;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.Compressor;
 import tqk114514.chunkstorageoptimizer.format.CsoFormat;
@@ -53,7 +52,7 @@ public class RegionFileStorageMixin {
             return;
         }
         try {
-            this.cso$storage = new CsoStorage(info, folder, sync, Config.settings());
+            this.cso$storage = new CsoStorage(info, folder, sync, CsoRuntime.settings());
         } catch (Throwable t) {
             // Never let storage init kill the world: fall back to vanilla Anvil.
             LOGGER.error("Chunk Storage Optimizer failed to initialise for {}; using vanilla storage", folder, t);

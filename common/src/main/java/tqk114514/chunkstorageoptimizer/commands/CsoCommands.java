@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -18,18 +19,14 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
-import tqk114514.chunkstorageoptimizer.ChunkStorageOptimizer;
-import tqk114514.chunkstorageoptimizer.Config;
 import tqk114514.chunkstorageoptimizer.CsoPermissions;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
 import tqk114514.chunkstorageoptimizer.metrics.CsoLatency;
 import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
 import tqk114514.chunkstorageoptimizer.storage.CsoRegistry;
+import tqk114514.chunkstorageoptimizer.storage.CsoSettings;
 import tqk114514.chunkstorageoptimizer.storage.CsoStorage;
 import tqk114514.chunkstorageoptimizer.tools.Converter;
 
@@ -37,18 +34,17 @@ import tqk114514.chunkstorageoptimizer.tools.Converter;
  * {@code /cso stats | reset | compact} — the only way to see whether the format is actually
  * helping on a given world, since the vanilla JFR region hooks are bypassed.
  */
-@EventBusSubscriber(modid = ChunkStorageOptimizer.MODID)
 public final class CsoCommands {
 
     private CsoCommands() {
     }
 
-    @SubscribeEvent
-    public static void onRegisterCommands(RegisterCommandsEvent event) {
-        event.getDispatcher().register(
+    /** Called by each loader's command hook; nothing here knows which loader invoked it. */
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(
             Commands.literal("cso")
                 // The permission API is one of the few things Minecraft changed across the versions
-                // this mod ships for, so the check itself lives in src/version/<family>.
+                // this mod ships for, so the check itself lives in common/src/version/<family>.
                 .requires(CsoPermissions.operatorOnly())
                 .then(Commands.literal("stats").executes(CsoCommands::stats))
                 .then(Commands.literal("reset").executes(CsoCommands::reset))
@@ -211,7 +207,8 @@ public final class CsoCommands {
                             continue;
                         }
                         Path out = folder.resolve(Converter.swapExtension(mcaFile.getFileName().toString(), ".cso"));
-                        Converter.writeCso(out, in, Config.GRID.getAsInt(), Config.ZSTD_LEVEL.getAsInt());
+                        CsoSettings settings = CsoRuntime.settings();
+                        Converter.writeCso(out, in, settings.grid(), settings.level());
                         verify(out, in.size(), target);
                         if (prune) {
                             Files.delete(mcaFile);
