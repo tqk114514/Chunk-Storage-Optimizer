@@ -48,7 +48,7 @@ public class RegionFileStorageMixin {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void cso$init(RegionStorageInfo info, Path folder, boolean sync, CallbackInfo ci) {
-        if (!CsoRuntime.isActive() || !cso$zstdUsable()) {
+        if (!CsoRuntime.isActive(folder) || !cso$zstdUsable()) {
             return;
         }
         try {
@@ -60,48 +60,73 @@ public class RegionFileStorageMixin {
         }
     }
 
+    /**
+     * The storage to serve this call, or null to let vanilla handle the folder.
+     *
+     * <p>A released storage is forgotten here rather than kept around: a world that opted out
+     * mid-session has to go back to its own {@code .mca} files at once, and every handler reaches
+     * this method, so the release takes effect on the next chunk touched.
+     */
+    @Unique
+    private CsoStorage cso$active() {
+        CsoStorage storage = this.cso$storage;
+        if (storage == null) {
+            return null;
+        }
+        if (storage.isReleased()) {
+            this.cso$storage = null;
+            return null;
+        }
+        return storage;
+    }
+
     @Inject(method = "read", at = @At("HEAD"), cancellable = true)
     private void cso$read(ChunkPos pos, CallbackInfoReturnable<CompoundTag> cir) throws IOException {
-        if (this.cso$storage == null) {
+        CsoStorage storage = cso$active();
+        if (storage == null) {
             return;
         }
-        cir.setReturnValue(this.cso$storage.read(pos));
+        cir.setReturnValue(storage.read(pos));
         cir.cancel();
     }
 
     @Inject(method = "write", at = @At("HEAD"), cancellable = true)
     private void cso$write(ChunkPos pos, CompoundTag value, CallbackInfo ci) throws IOException {
-        if (this.cso$storage == null) {
+        CsoStorage storage = cso$active();
+        if (storage == null) {
             return;
         }
-        this.cso$storage.write(pos, value);
+        storage.write(pos, value);
         ci.cancel();
     }
 
     @Inject(method = "scanChunk", at = @At("HEAD"), cancellable = true)
     private void cso$scanChunk(ChunkPos pos, StreamTagVisitor visitor, CallbackInfo ci) throws IOException {
-        if (this.cso$storage == null) {
+        CsoStorage storage = cso$active();
+        if (storage == null) {
             return;
         }
-        this.cso$storage.scanChunk(pos, visitor);
+        storage.scanChunk(pos, visitor);
         ci.cancel();
     }
 
     @Inject(method = "flush", at = @At("HEAD"), cancellable = true)
     private void cso$flush(CallbackInfo ci) throws IOException {
-        if (this.cso$storage == null) {
+        CsoStorage storage = cso$active();
+        if (storage == null) {
             return;
         }
-        this.cso$storage.flush();
+        storage.flush();
         ci.cancel();
     }
 
     @Inject(method = "close", at = @At("HEAD"), cancellable = true)
     private void cso$close(CallbackInfo ci) throws IOException {
-        if (this.cso$storage == null) {
+        CsoStorage storage = cso$active();
+        if (storage == null) {
             return;
         }
-        this.cso$storage.close();
+        storage.close();
         ci.cancel();
     }
 

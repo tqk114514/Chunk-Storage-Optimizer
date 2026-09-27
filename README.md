@@ -142,8 +142,13 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 | `/cso reset` | 清零统计 |
 | `/cso compact` | 对所有已打开的 region 文件执行一次空间整理 |
 | `/cso report [files]` | 抽样本存档各维度目录，按 grid 1/8/16/32 报出"同样的区块会占多大"，用来决定 grid 该调成几。`files` 是每个目录抽几个文件（默认 2，最多 8）；在后台线程跑，跑完再发到聊天 |
-| `/cso convert cso [prune]` | 把 `.mca` 转成 `.cso`。加 `prune` 会在验证后删除 `.mca` |
-| `/cso convert mca [prune]` | 把 `.cso` 转回 `.mca` 并**自动停用本 mod**。加 `prune` 会删除 `.cso` |
+| `/cso convert cso [prune]` | 把 `.mca` 转成 `.cso`；同名 `.cso` 已存在时两侧取并集（`.cso` 的版本优先，与读取顺序一致）。加 `prune` 会在验证后删除 `.mca` |
+| `/cso convert mca [prune]` | 把 `.cso` 转回 `.mca`，并在世界目录写下 `cso.disabled`——**只有这个世界**退出本 mod，重启后仍认。加 `prune` 会删除 `.cso` |
+
+`/cso convert mca` 之后世界目录里会多一个与 `level.dat` 同级的 `cso.disabled`：它记录这个世界已退回
+原版存储，重启也照此办理，所以配置文件里的 `enabled` 不必改动，同一目录下的其它世界也不受影响。要切
+回来就删掉该文件、重进世界，再执行 `/cso convert cso prune`。不重进就转换会被拒绝——这个世界已经打开
+的 `.mca` 句柄还在继续写，转换出来的 `.cso` 会把它们盖住。
 
 `report` 的百分比是**相对抽样文件当前磁盘占用**：源是 `.mca` 时就是"相比原版能省多少"，源已是
 `.cso` 时是"相比现在重写一遍能省多少"。分位数来自对数分桶直方图（桶宽是 2 倍关系），所以是

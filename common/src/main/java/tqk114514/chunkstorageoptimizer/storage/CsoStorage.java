@@ -56,6 +56,8 @@ public final class CsoStorage implements AutoCloseable {
     private final Map<Long, ChunkPos> pendingRegionSample = new HashMap<>();
     private int pendingCount;
     private long lastFlushMillis = System.currentTimeMillis();
+    /** Set once by {@link #release()}; the mixin then stops routing this folder to us. */
+    private volatile boolean released;
 
     /** "overworld/region" style label, so /cso stats can attribute numbers to one store. */
     private final String label;
@@ -84,6 +86,29 @@ public final class CsoStorage implements AutoCloseable {
 
     public String label() {
         return this.label;
+    }
+
+    /** Which world's directory this storage writes, so callers can scope an action to one save. */
+    public Path folder() {
+        return this.folder;
+    }
+
+    public boolean isReleased() {
+        return this.released;
+    }
+
+    /**
+     * Detaches this storage for the rest of the session: staged data is written, handles closed,
+     * and from here on the game's own Anvil files serve the folder again.
+     *
+     * <p>This is what a world's opt-out needs besides the marker file. The marker only reaches
+     * storages created from now on; without releasing, an already-attached storage would go on
+     * writing {@code .cso} straight into a directory that was just converted to {@code .mca}.
+     */
+    public void release() throws IOException {
+        this.released = true;
+        CsoRegistry.remove(this);
+        pauseForConversion();
     }
 
     public long chunksReadCount() {

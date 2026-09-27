@@ -161,10 +161,14 @@ Requires admin permission.
 | `/cso reset` | Reset statistics |
 | `/cso compact` | Run space reclamation on all open region files |
 | `/cso report [files]` | Sample this world's directories and report what the same chunks would weigh at bucket grids 1/8/16/32 — the data needed to choose a `grid`. `files` is how many files to sample per directory (default 2, max 8). Runs in the background and posts the result when done |
-| `/cso convert cso [prune]` | Convert `.mca` → `.cso`. `prune` deletes the originals after verification |
-| `/cso convert mca [prune]` | Convert `.cso` → `.mca` and **disable this mod**. `prune` also deletes the `.cso` files |
+| `/cso convert cso [prune]` | Convert `.mca` → `.cso`. Where a `.cso` of the same name already exists the two are unioned, the `.cso` copy winning, exactly as the reader orders them. `prune` deletes the originals after verification |
+| `/cso convert mca [prune]` | Convert `.cso` → `.mca` and take **this world** out of the mod by writing `cso.disabled` next to its `level.dat`; the choice holds across restarts. `prune` also deletes the `.cso` files |
 
 Conversion runs `save-all flush` first, then closes all file handles before moving any bytes.
+`cso.disabled` is per world: the config's `enabled` key stays as it is, and other saves in the same
+folder keep using `.cso`. To come back, delete the file, re-enter the world, then run
+`/cso convert cso prune`. Converting without re-entering is refused on purpose — region files the
+running session still has open would keep being written to `.mca` behind the fresh `.cso` ones.
 
 Two numbers in `/cso stats` are worth watching:
 

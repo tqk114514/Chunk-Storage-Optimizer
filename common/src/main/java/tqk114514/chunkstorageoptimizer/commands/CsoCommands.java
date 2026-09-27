@@ -28,10 +28,11 @@ import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
 import tqk114514.chunkstorageoptimizer.storage.CsoRegistry;
 import tqk114514.chunkstorageoptimizer.storage.CsoSettings;
 import tqk114514.chunkstorageoptimizer.storage.CsoStorage;
+import tqk114514.chunkstorageoptimizer.storage.CsoWorldMarker;
 import tqk114514.chunkstorageoptimizer.tools.Converter;
 
 /**
- * {@code /cso stats | reset | compact} — the only way to see whether the format is actually
+ * {@code /cso stats | reset | compact} �� the only way to see whether the format is actually
  * helping on a given world, since the vanilla JFR region hooks are bypassed.
  */
 public final class CsoCommands {
@@ -64,7 +65,10 @@ public final class CsoCommands {
     }
 
     private static int stats(CommandContext<CommandSourceStack> context) {
-        String report = format(CsoStats.snapshot());
+        // Whether this world is served is a per-world question, so the state is read against the
+        // world the command is running in.
+        Path root = context.getSource().getServer().getWorldPath(LevelResource.ROOT).normalize();
+        String report = format(CsoStats.snapshot(), CsoRuntime.reason(root));
         context.getSource().sendSuccess(() -> Component.literal(report), false);
         return 1;
     }
@@ -97,7 +101,7 @@ public final class CsoCommands {
     private static final Set<String> STORE_DIRECTORIES = Set.of("region", "poi", "entities");
 
     /**
-     * {@code /cso report [files]} — samples each store directory and weighs what the same chunks
+     * {@code /cso report [files]} �� samples each store directory and weighs what the same chunks
      * would occupy at several bucket grids.
      *
      * <p>Runs on a worker thread: rewriting a sample of a live world would otherwise stall the tick
@@ -106,12 +110,12 @@ public final class CsoCommands {
     private static int report(CommandContext<CommandSourceStack> context, int sampleFiles) {
         CommandSourceStack source = context.getSource();
         MinecraftServer server = source.getServer();
-        Path root = server.getWorldPath(LevelResource.ROOT);
+        Path root = server.getWorldPath(LevelResource.ROOT).normalize();
         try {
             // Same precaution as convert: get the game's own queue onto disk and drop our handles,
             // so the sample is not read out from under a half-written file.
             saveAll(source);
-            CsoRegistry.pauseAll();
+            CsoRegistry.pauseWorld(root);
         } catch (IOException e) {
             source.sendFailure(Component.literal("CSO report aborted: " + e));
             return 0;
@@ -120,7 +124,7 @@ public final class CsoCommands {
             .literal("CSO: sampling " + root + " (" + sampleFiles + " files per directory)..."), false);
 
         Thread.startVirtualThread(() -> {
-            StringBuilder text = new StringBuilder("CSO report — up to ").append(sampleFiles)
+            StringBuilder text = new StringBuilder("CSO report �� up to ").append(sampleFiles)
                 .append(" files per directory, zstd L3; percentages are of the sampled bytes now on disk\n");
             try {
                 for (Path dir : storeDirectories(root)) {
@@ -170,10 +174,15 @@ public final class CsoCommands {
     }
 
     /**
-     * {@code /cso convert cso|mca} — migrates region files in place without leaving the game.
+     * {@code /cso convert cso|mca} �� migrates region files in place without leaving the game.
      *
-     * <p>Converting to {@code mca} is the way off the mod: it disables CSO when it finishes, so the
-     * world cannot end up being written in two formats at once.
+     * <p>Converting to {@code mca} is the way off the mod, and the decision is written into the save
+     * as {@code cso.disabled} so a restart keeps honouring it. The world's storages are released
+     * before any byte moves: a storage that stays attached goes on writing {@code .cso} straight into
+     * the directories being converted, and that split is the whole reason this command exists.
+     *
+     * <p>Both directions work off the store directories on disk rather than off the storages the game
+     * happens to have open, so a dimension never visited this session is not skipped.
      */
     private static int convertWorld(CommandContext<CommandSourceStack> context) {
         String target = StringArgumentType.getString(context, "target");
@@ -181,25 +190,42 @@ public final class CsoCommands {
             context.getSource().sendFailure(Component.literal("Target must be 'cso' or 'mca'."));
             return 0;
         }
-        boolean prune = isPruneRequested(context);
         CommandSourceStack source = context.getSource();
+        Path root = source.getServer().getWorldPath(LevelResource.ROOT).normalize();
+        if ("cso".equals(target) && !CsoRuntime.isActive(root)) {
+            // A world the mod is not serving has its region files open in the vanilla storage, and
+            // those keep writing .mca for the rest of the session. Converted now, the newer .mca
+            // data would sit behind the fresh .cso files and read as missing chunks, so the switch
+            // back has to happen after the world is re-entered.
+            source.sendFailure(Component.literal("CSO is not serving this world (" + CsoRuntime.reason(root)
+                + "). Re-enter it with that condition gone, then run /cso convert cso �� otherwise the"
+                + " .mca files this session still holds open would hide behind the new .cso ones."));
+            return 0;
+        }
+        boolean prune = isPruneRequested(context);
         long startedAt = System.nanoTime();
         try {
             // The game keeps its own queue of unwritten chunks. Get those to disk before moving any
             // bytes, otherwise the conversion silently misses them.
             saveAll(source);
 
-            List<Path> folders = CsoRegistry.pauseAll();
+            if ("mca".equals(target)) {
+                CsoRuntime.disableWorld(root, "converted back to .mca");
+                CsoRegistry.releaseWorld(root);
+            } else {
+                CsoRegistry.pauseWorld(root);
+            }
+
             int files = 0;
             int chunks = 0;
             int deleted = 0;
-            for (Path folder : folders) {
+            for (Path folder : storeDirectories(root)) {
                 if ("cso".equals(target)) {
                     for (Path mcaFile : Converter.listFiles(folder, ".mca")) {
                         List<AnvilRegionFile.Chunk> in = AnvilRegionFile.read(mcaFile);
                         if (in.isEmpty()) {
                             // Nothing to carry over. Under prune this file would linger forever,
-                            // and once CSO is disabled there is no second chance to clean it up.
+                            // and once CSO is off there is no second chance to clean it up.
                             if (prune) {
                                 Files.delete(mcaFile);
                                 deleted++;
@@ -207,15 +233,21 @@ public final class CsoCommands {
                             continue;
                         }
                         Path out = folder.resolve(Converter.swapExtension(mcaFile.getFileName().toString(), ".cso"));
+                        // A half-migrated world already has a .cso for this region holding chunks the
+                        // .mca never saw. Writing the .mca over it would drop them, so the two are
+                        // unioned with the .cso winning — the same order the live reader uses.
+                        List<AnvilRegionFile.Chunk> merged = Files.exists(out)
+                            ? Converter.prefer(Converter.readCso(out), in)
+                            : in;
                         CsoSettings settings = CsoRuntime.settings();
-                        Converter.writeCso(out, in, settings.grid(), settings.level());
-                        verify(out, in.size(), target);
+                        Converter.writeCso(out, merged, settings.grid(), settings.level());
+                        verify(out, merged.size(), target);
                         if (prune) {
                             Files.delete(mcaFile);
                             deleted++;
                         }
                         files++;
-                        chunks += in.size();
+                        chunks += merged.size();
                     }
                 } else {
                     for (Path csoFile : Converter.listFiles(folder, ".cso")) {
@@ -230,14 +262,18 @@ public final class CsoCommands {
                             continue;
                         }
                         Path out = folder.resolve(Converter.swapExtension(csoFile.getFileName().toString(), ".mca"));
-                        AnvilRegionFile.write(out, in);
-                        verify(out, in.size(), target);
+                        // And here too: a .mca already on disk may carry chunks this .cso never had.
+                        List<AnvilRegionFile.Chunk> merged = Files.exists(out)
+                            ? Converter.prefer(in, AnvilRegionFile.read(out))
+                            : in;
+                        AnvilRegionFile.write(out, merged);
+                        verify(out, merged.size(), target);
                         if (prune) {
                             Files.delete(csoFile);
                             deleted++;
                         }
                         files++;
-                        chunks += in.size();
+                        chunks += merged.size();
                     }
                 }
             }
@@ -249,11 +285,12 @@ public final class CsoCommands {
             if (prune) {
                 message.append(" Deleted ").append(deleted).append(" original file(s).");
             } else {
-                message.append(" Originals kept — repeat with 'prune' to delete them.");
+                message.append(" Originals kept �� repeat with 'prune' to delete them.");
             }
             if ("mca".equals(target)) {
-                CsoRuntime.disable("converted back to .mca");
-                message.append(" CSO disabled — a world must not be written in two formats at once.");
+                message.append(" This world now stays on vanilla storage: the marker ")
+                    .append(root.resolve(CsoWorldMarker.FILE_NAME))
+                    .append(" survives a restart. Delete it and re-enter the world to switch back.");
             }
             String text = message.toString();
             source.sendSuccess(() -> Component.literal(text), false);
@@ -284,7 +321,7 @@ public final class CsoCommands {
         if (actual != expectedChunks) {
             throw new IOException(
                 "verification failed for " + written.getFileName() + ": wrote " + expectedChunks
-                    + " chunks but read back " + actual + " — nothing was deleted"
+                    + " chunks but read back " + actual + " �� nothing was deleted"
             );
         }
     }
@@ -299,8 +336,7 @@ public final class CsoCommands {
         }
     }
 
-    private static String format(CsoStats.Snapshot s) {
-        String state = CsoRuntime.isActive() ? "active" : "inactive (" + CsoRuntime.reason() + ")";
+    private static String format(CsoStats.Snapshot s, String state) {
         StringBuilder report = new StringBuilder("CSO [" + state + "]\n")
             .append("  chunks   read=").append(s.chunksRead())
             .append("  written=").append(s.chunksWritten())
