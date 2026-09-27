@@ -13,11 +13,14 @@
 # 1.21.2, 1.21.6, 1.21.7 and 1.21.9 are deliberately absent: NeoForge never shipped a stable build
 # for them, so there is no floor a player could reach.
 #
-# One row breaks the "oldest stable" rule on purpose. Minecraft 1.21.10 uses 21.10.64 rather than
-# 21.10.63 because the older build cannot be assembled at all on Linux: applying NeoForge's published
-# binpatches fails against the Minecraft jar Mojang serves today — "Patch expected
-# com/mojang/math/OctahedralGroup.class to have the checksum fca5a11b but it was 7b9aa0cb" — so
-# nothing can be compiled against it. 21.10.64 is four days newer and applies cleanly.
+# One row breaks the "oldest stable" rule on purpose. Minecraft 1.21.10 is the first line assembled
+# with NeoForge's new binpatching tooling, and 21.10.63 shipped binpatches built from a dirty base
+# jar — fixed four days later in 21.10.64 ("When creating the joined patches, use the clean jar as
+# base.", #2849). Anything that assembles artifacts through binpatches therefore cannot build against
+# 21.10.63 at all (CI hit this; a local build got away with it because it took the
+# decompile -> patch -> recompile path instead). Cost of the exception: a 1.21.10 player sitting on
+# 21.10.63 has to update the loader. That is a build-time bug in NeoForge, not a runtime
+# incompatibility, so the floor is deliberately one build higher than strictly necessary.
 1.21,     21.0.143,   21, legacy
 1.21.1,   21.1.1,     21, legacy
 1.21.3,   21.3.56,    21, legacy

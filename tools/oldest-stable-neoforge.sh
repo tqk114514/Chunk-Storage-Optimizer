@@ -6,9 +6,10 @@
 # A mod's lower bound should never be one of those: a player cannot install a build that was
 # never released as stable, so pinning a beta makes the floor unreachable in practice.
 #
-# The oldest stable build is only a candidate floor: it has to be assemblable, i.e. its published
-# binpatches must apply to the Minecraft jar Mojang serves today. When one does not, take the next
-# stable build in the same line instead (see the note at the top of supported-versions.csv).
+# The oldest stable build is only a candidate floor: our pipeline has to be able to assemble it.
+# A loader release that ships broken inputs (NeoForge 21.10.63 published binpatches built from a
+# dirty base jar) cannot be compiled against at all, so take the next stable build in that line
+# instead and record why at the top of supported-versions.csv.
 #
 #   tools/oldest-stable-neoforge.sh 26.2.0
 #   tools/oldest-stable-neoforge.sh 1.21.11
