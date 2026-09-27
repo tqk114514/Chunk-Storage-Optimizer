@@ -99,14 +99,22 @@ stored as a single zstd stream containing all of its chunks:
 
 ## Requirements
 
-- Minecraft **26.1.2**
-- NeoForge **26.1.2.71** or newer
-- Java 25
+One jar per Minecraft version — pick the file whose name carries your version, e.g.
+`chunkstorageoptimizer-26.1.2-1.0.2.jar`.
+
+- Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**, **1.21.4**,
+  **1.21.3**, **1.21.1**, **1.21**
+- NeoForge, at least the first stable build for that Minecraft (26.1.2 → 26.1.2.71,
+  1.21 → 21.0.143, and so on)
+- Java 21 for the 1.21 line, Java 25 for 26.x — i.e. whatever Minecraft itself requires
+
+Minecraft 26.1, 1.21.2, 1.21.6, 1.21.7 and 1.21.9 never got a stable NeoForge release, so there is
+no jar to install on them.
 
 ## Installation
 
-1. Install NeoForge 26.1.2.71+.
-2. Drop the jar into your `mods/` folder.
+1. Download the jar named after your Minecraft version.
+2. Install NeoForge for that version, then drop the jar into your `mods/` folder.
 3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml`.
 
 ## Getting started

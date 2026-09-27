@@ -17,8 +17,9 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 在一个 889 MB 的城市存档上实测：体积减少 55%，写入快 8.1 倍，读取快 3.1 倍。
 
-- 游戏版本：Minecraft 26.1.2 / NeoForge 26.1.2.71 或更高
-- 运行环境：Java 25
+- 游戏版本：Minecraft 1.21 / 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 / 1.21.10 / 1.21.11
+  / 26.1.2 / 26.2.0，**每个游戏版本一个 jar**
+- 运行环境：Java 21（1.21.x）或 Java 25（26.x），跟随 Minecraft 本身的要求
 
 ---
 
@@ -38,9 +39,11 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 
 ## 安装
 
-1. 确认已安装 **NeoForge 26.1.2.71 或更高**（Minecraft 26.1.2）。
-2. 把 `chunkstorageoptimizer-26.1.2-1.0.2.jar` 放进 `mods/` 目录。文件名中间那段是
-   Minecraft 版本——同一个 mod 版本会为每个受支持的 MC 版本各出一个 jar，按你的游戏版本选。
+1. 按游戏版本挑 jar：文件名中间那段就是 Minecraft 版本，例如
+   `chunkstorageoptimizer-26.1.2-1.0.2.jar`。放进 `mods/` 目录即可。
+2. 每个 jar 只认自己那个 Minecraft 版本，并要求 NeoForge 不低于**该版本的第一个稳定构建**——
+   逐版列在 `supported-versions.csv` 里，加载器也会在版本不够时直接拒绝启动而不是崩在半路。
+   Minecraft 26.1.2 对应的下限是 NeoForge 26.1.2.71。
 3. 启动游戏，配置文件会生成在 `config/chunkstorageoptimizer-common.toml`。
 
 > 与 **C2ME** 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。
@@ -365,27 +368,44 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 
 ### 多版本构建
 
-`minecraft_version` 是唯一的版本开关；NeoForge 下限、写进 mod 元数据的版本范围、Java 级别
-全部从 `build.gradle` 里的 `supportedVersions` 表推导，不用手改三处：
+`minecraft_version` 是唯一的版本开关。一个 Minecraft 对应哪一行的 NeoForge 下限、写进 mod 元数据
+的版本范围、Java 级别、命令权限 API 走哪套，全部由 `supported-versions.csv` 里的那一行决定：
 
 ```bash
-./gradlew build -Pminecraft_version=26.2.0      # 26.1.2 / 26.2.0 已在表内
+./gradlew build -Pminecraft_version=1.21.11     # csv 里列出的版本都能直接编
 ```
 
-加一个新版本只要三步：
+同一份 csv 也是 CI 矩阵的来源（workflow 读第一列），所以"本机编得动的版本"和"会被发布的版本"
+不可能各说各话。加一个新版本只要两步：
 
 ```bash
 tools/oldest-stable-neoforge.sh 26.3.0
-# ① 把查到的最老稳定版填进 build.gradle 的 supportedVersions：'26.3.0': [neo: '...', java: 25]
-# ② 把版本号加进 .github/workflows/build.yml 的矩阵
-# ③ ./gradlew build -Pminecraft_version=26.3.0 验证
+# ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <最老稳定版>, <java>, <legacy|modern>
+#    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
+# ② ./gradlew build -Pminecraft_version=26.3.0 验证
 ```
 
 下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建玩家装不到，拿它当下限等于承诺一个不存在的地盘。
-顺带一个事实——**MC 26.1 没有可选项**，它的 NeoForge 只出到 beta 就被 26.1.2 取代了。
+顺带两个事实——**MC 26.1** 的 NeoForge 只出到 beta 就被 26.1.2 取代了；**1.21.2 / 1.21.6 / 1.21.7 /
+1.21.9** 同样只有 beta，所以这四个版本没有 jar 可发。
 
 版本范围是**精确单版本**（`[26.1.2]`），不是 `>=`。因为 `mixins.json` 里 `defaultRequire: 1`，
 签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前就被干净拒绝，而不是崩在玩家机器上。
+
+### 跨版本的编译缝
+
+1.21 到 26.x 之间真正对不上的 API 只有一处：命令权限。`src/version/legacy/java` 和
+`src/version/modern/java` 各放一个**同签名**的 `CsoPermissions.operatorOnly()`，构建时按 csv 里的
+family 只把其中一个放进编译路径——运行期既没有 if/else 也没有反射，两边都是 op 等级 3 这道杠。
+
+另一处曾经的差异是 26.1 把 `ChunkPos` 改成了 record（`pack`/`unpack`/`x()`/`z()`）。等待编译的
+存档映射键本来就不该借游戏的类，所以 `CsoStorage` 改用自己的坐标打包，这条差异就此消失。
+除此之外区块存储的入口 `RegionFileStorage` 签名在整个范围内一字未动，这也是只需要一个缝的原因。
+
+1.21 线上已经跑过实机验证（`./gradlew runServer -Pminecraft_version=1.21`）：加载器接受 mod jar、
+mixin 确实注入了 `RegionFileStorage`、`/cso` 命令能注册并执行。有一处**已知不对称**：那一代加载器
+不把启动 classpath 上的第三方库暴露给 mod，所以 dev 运行里 zstd 看不见，mod 按设计记一条日志退回
+原版 Anvil——写成 `.cso` 的链路只能在真实实例里验证（正式版走嵌套 jar，与 dev 的类加载路径不同）。
 
 ### 移植到其他加载器（未做，缝已留好）
 
