@@ -4,6 +4,13 @@
 # Note that there are a couple of TOML lists in this file.
 # Find more information on toml format here:  https://github.com/toml-lang/toml
 
+# modLoader and loaderVersion became optional only in newer loaders: FML 4.x (NeoForge for
+# Minecraft 1.21) refuses the jar outright without them. The floor stays deliberately low because
+# the exact NeoForge range below already pins which loader we run under — this field only has to
+# be satisfiable, it is not where the compatibility decision is made.
+modLoader="javafml"
+loaderVersion="[1,)"
+
 # The license for you mod. This is mandatory metadata and allows for easier comprehension of your redistributive properties.
 # Review your options at https://choosealicense.com/. All rights reserved is the default copyright stance, and is thus the default here.
 license="${mod_license}"
