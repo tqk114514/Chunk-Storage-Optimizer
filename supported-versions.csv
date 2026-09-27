@@ -10,8 +10,9 @@
 # .github/workflows/build.yml reads the first column, so this file — not a hand-copied matrix —
 # decides what gets built.
 #
-# 1.21.2, 1.21.6, 1.21.7 and 1.21.9 are deliberately absent: NeoForge never shipped a stable build
-# for them, so there is no floor a player could reach.
+# Missing rows (both "never will exist" and "not stable yet") are tracked in
+# docs/uncovered-minecraft-versions.md; 1.21.2, 1.21.6, 1.21.7, 1.21.9 and 26.1 / 26.1.1 never got a
+# stable NeoForge build, so no floor a player could reach exists for them.
 #
 # One row breaks the "oldest stable" rule on purpose. Minecraft 1.21.10 is the first line assembled
 # with NeoForge's new binpatching tooling, and 21.10.63 shipped binpatches built from a dirty base
