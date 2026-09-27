@@ -5,7 +5,6 @@ import java.util.List;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-import tqk114514.chunkstorageoptimizer.format.CsoFormat;
 import tqk114514.chunkstorageoptimizer.storage.CsoSettings;
 
 /**
@@ -67,8 +66,8 @@ public final class Config {
     }
 
     public static CsoSettings settings() {
-        return new CsoSettings(
-            snapGrid(GRID.getAsInt()),
+        return CsoSettings.normalized(
+            GRID.getAsInt(),
             compressionId(),
             ZSTD_LEVEL.getAsInt(),
             CACHED_BUCKETS.getAsInt(),
@@ -82,19 +81,6 @@ public final class Config {
     }
 
     private static int compressionId() {
-        return switch (COMPRESSION.get()) {
-            case "none" -> CsoFormat.COMPRESSION_NONE;
-            default -> CsoFormat.COMPRESSION_ZSTD;
-        };
-    }
-
-    /**
-     * Rounds down to a legal bucket grid (power of two within [1, 32]).
-     *
-     * <p>Rounding down rather than rejecting: a typo in the config must not stop the world from
-     * loading. It just picks a somewhat smaller bucket and keeps going.
-     */
-    private static int snapGrid(int value) {
-        return Integer.highestOneBit(Math.clamp(value, 1, 32));
+        return CsoSettings.compressionId(COMPRESSION.get());
     }
 }
