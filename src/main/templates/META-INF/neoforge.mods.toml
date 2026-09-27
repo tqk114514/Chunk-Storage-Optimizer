@@ -12,7 +12,7 @@ modLoader="javafml"
 loaderVersion="[1,)"
 
 # The license for you mod. This is mandatory metadata and allows for easier comprehension of your redistributive properties.
-# Review your options at https://choosealicense.com/. All rights reserved is the default copyright stance, and is thus the default here.
+# Keep it in step with the LICENSE file at the repository root: ${mod_license} comes from mod_license.
 license="${mod_license}"
 
 # A URL to refer people to when problems occur with this mod
@@ -44,7 +44,7 @@ logoFile="assets/chunkstorageoptimizer/icon.png" #optional
 #credits="" #optional
 
 # The authors of the mod, displayed in the mod UI (optional)
-#authors=""
+authors="${mod_author}"
 
 # The description text for the mod (multi line!) (#mandatory)
 description='''

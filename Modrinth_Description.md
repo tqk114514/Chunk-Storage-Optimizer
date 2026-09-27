@@ -100,7 +100,7 @@ stored as a single zstd stream containing all of its chunks:
 ## Requirements
 
 One jar per Minecraft version — pick the file whose name carries your version, e.g.
-`chunkstorageoptimizer-26.1.2-1.0.2.jar`.
+`chunkstorageoptimizer-26.1.2-1.0.3.jar`.
 
 - Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**, **1.21.4**,
   **1.21.3**, **1.21.1**, **1.21**

@@ -40,7 +40,7 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 ## 安装
 
 1. 按游戏版本挑 jar：文件名中间那段就是 Minecraft 版本，例如
-   `chunkstorageoptimizer-26.1.2-1.0.2.jar`。放进 `mods/` 目录即可。
+   `chunkstorageoptimizer-26.1.2-1.0.3.jar`。放进 `mods/` 目录即可。
 2. 每个 jar 只认自己那个 Minecraft 版本，并要求 NeoForge 不低于**该版本的第一个稳定构建**——
    逐版列在 `supported-versions.csv` 里，加载器也会在版本不够时直接拒绝启动而不是崩在半路。
    Minecraft 26.1.2 对应的下限是 NeoForge 26.1.2.71。

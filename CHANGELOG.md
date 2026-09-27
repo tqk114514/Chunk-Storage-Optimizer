@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.3] - 2026-09-27
+
+### Added
+- **Minecraft 1.21 through 1.21.11.** Eight more game versions are supported next to 26.1.2 and
+  26.2.0: 1.21, 1.21.1, 1.21.3, 1.21.4, 1.21.5, 1.21.8, 1.21.10 and 1.21.11. Nothing about the
+  on-disk format changed, so a world is not touched differently than it was in 1.0.2.
+  (Minecraft 26.1, 1.21.2, 1.21.6, 1.21.7 and 1.21.9 have never had a stable NeoForge release, so
+  there is no jar to install on them.)
+- **An author and a licence in the Mods screen.** The mod entry now names `tqk114514` and reports
+  the project's licence as MIT, which is what the repository has carried all along.
+
+### Changed
+- **One jar per Minecraft version, named after it.** The file is now
+  `chunkstorageoptimizer-<minecraft>-<version>.jar`, because a single release produces ten of them
+  and they were indistinguishable once downloaded. Pick the one matching your game; the loader
+  requirement is the first stable NeoForge build for that Minecraft.
+
 ## [1.0.2] - 2026-09-22
 
 ### Added
