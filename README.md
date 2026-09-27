@@ -49,6 +49,11 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 > 与 **C2ME** 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。
 > 两者都改写了区块 IO，混用会造成存档割裂。
 
+> **只需要装在世界所在的那一侧。** 这个 mod 不注册任何网络通道，客户端侧的代码只有配置界面，
+> 改的纯粹是磁盘上的区块存储。所以专用服务器只装服务端就行；联机时房主装、房客什么都不用装；
+> 房客装了而房主没装也不会变成"必须一致"。唯一的前提是同一个存档只能由装了 mod 的一侧读写
+> （见开头第一条警告）。
+
 ---
 
 ## 开始使用
@@ -179,12 +184,19 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 
 **路径含空格时必须用 `-PcsoDir`**，不要放进 `-PcsoArgs`（会被按空格拆成两个参数）。
 
-### 存档目录结构（26.1.2）
+### 存档目录结构
 
-维度数据位于 `<world>/dimensions/minecraft/<维度>/` 下：
+两种布局，取决于游戏版本——1.21 全线（含 1.21.11）还是老布局，26.x 起维度被挪进
+`dimensions/<namespace>/<维度>/`：
 
 ```
-<saves>/你的世界/
+<saves>/你的世界/                     # 1.21 线（实测 1.21.1 与 1.21.11 一致）
+├── level.dat
+├── {region,poi,entities}             # 主世界直接在存档根下
+├── DIM-1/{region,poi,entities}       # 下界
+└── DIM1/{region,poi,entities}        # 末地
+
+<saves>/你的世界/                     # 26.x
 ├── level.dat
 └── dimensions/minecraft/
     ├── overworld/{region,poi,entities}
@@ -192,7 +204,10 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
     └── the_end/{region,poi,entities}
 ```
 
-`region`、`poi`、`entities` 三个目录是同一种 region 文件，同一套命令都能处理。
+`.cso` 永远写在游戏递给 mod 的那个目录里、和同名 `.mca` 平级，所以两种布局都不需要特别处理：
+1.21.11 的 dev 服务器实测落在 `<世界>/region/r.0.0.cso`、`<世界>/poi/…`、`<世界>/entities/…`，
+26.1.2 落在 `<世界>/dimensions/minecraft/overworld/region/…`。`region`、`poi`、`entities`
+三种目录是同一种 region 文件，同一套命令都能处理。
 
 ---
 
@@ -402,10 +417,30 @@ family 只把其中一个放进编译路径——运行期既没有 if/else 也�
 存档映射键本来就不该借游戏的类，所以 `CsoStorage` 改用自己的坐标打包，这条差异就此消失。
 除此之外区块存储的入口 `RegionFileStorage` 签名在整个范围内一字未动，这也是只需要一个缝的原因。
 
-1.21 线上已经跑过实机验证（`./gradlew runServer -Pminecraft_version=1.21`）：加载器接受 mod jar、
-mixin 确实注入了 `RegionFileStorage`、`/cso` 命令能注册并执行。有一处**已知不对称**：那一代加载器
-不把启动 classpath 上的第三方库暴露给 mod，所以 dev 运行里 zstd 看不见，mod 按设计记一条日志退回
-原版 Anvil——写成 `.cso` 的链路只能在真实实例里验证（正式版走嵌套 jar，与 dev 的类加载路径不同）。
+### 十行版本各自的实测状态
+
+| Minecraft | 加载器接受 jar | mixin 注入 | `/cso` 可执行 | 写成 `.cso` |
+|---|---|---|---|---|
+| 1.21 | ✅ | ✅ | ✅ | ✅ 真实服务端实测 |
+| 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 | ✅ | ✅ | 未单独测 | ✅ 同上（同一代加载器） |
+| 1.21.10 / 1.21.11 | ✅ | ✅ | ✅ | ✅ dev 实测（5 个 / 9 个文件，0 个 `.mca`） |
+| 26.1.2 / 26.2.0 | ✅ | ✅ | ✅ | ✅ dev 实测 |
+
+"真实服务端实测"是拿发行路径跑的：在临时目录用 `neoforge-21.0.143-installer.jar --installServer`
+装一个正经的 1.21 服务端，把 `build/libs/chunkstorageoptimizer-1.21-1.0.2.jar` 丢进 `mods/`，
+RCON 打 `cso stats` 与 `save-all flush`。结果：mod 加载、mixin 注入、**zstd 从嵌套 jar 里正常取出**，
+`<世界>/region/*.cso` 与 `<世界>/entities/*.cso` 各就位、一个 `.mca` 都没留，
+`/cso stats` 报 4,986 区块读取 / 88 写入、6.0 MB 原始 → 963.6 KB 落盘。1.21.1～1.21.8 与它同代
+加载器（FML 4.x～6.x），机制上没有差别，所以只测了这一行最老的。
+
+一处 **dev 专属的不对称**要记下来，免得有人以为格式在老版本上不行：`./gradlew runServer` 在
+21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError` → 按设计退回原版 Anvil），21.10 起正常。
+两边的 `build/moddev/serverLegacyClasspath.txt` 都不含 zstd，差异在老几代 FML 不把启动 classpath
+上的第三方库暴露给 mod 模块层；发行路径走嵌套 jar，与这条无关，已按上一段实测。
+
+顺带一条实测：整个 1.21 线（1.21.1、1.21.11 与真实 1.21 服务端都看过）仍是老存档布局
+`<世界>/{region,poi,entities}` + `DIM-1/` + `DIM1/`，26.x 才换成
+`<世界>/dimensions/minecraft/<维度>/…`。`.cso` 跟着游戏给的目录走，两种布局的落盘位置都实测到了。
 
 ### 移植到其他加载器（未做，缝已留好）
 

@@ -117,6 +117,12 @@ no jar to install on them.
 2. Install NeoForge for that version, then drop the jar into your `mods/` folder.
 3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml`.
 
+**Who needs it: whoever holds the world.** The mod registers no network payloads — its only client-side
+code is the config screen — and everything it changes lives on disk. A dedicated server needs it and
+its players need nothing; on LAN or singleplayer the host installs it. A client that has it modded
+joining a server that does not is fine too. The one real constraint is that a given save must always
+be opened by a side that has the mod (see the warning at the top).
+
 ## Getting started
 
 ### New worlds
