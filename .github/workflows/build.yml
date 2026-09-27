@@ -40,11 +40,9 @@ jobs:
           fetch-tags: true
 
       # Rows compile with the Java level their Minecraft ships on (declared in
-      # supported-versions.csv), so both toolchains must be findable. The LAST step wins JAVA_HOME,
-      # and that has to be 25 because that is what local builds run on: with the daemon on 21,
-      # neoform-runtime took a different artifact path for 1.21.10 (rename -> binaryPatch, which
-      # rejected Minecraft's OctahedralGroup checksum) while a 25 daemon produced it through
-      # decompile -> patch -> recompile without complaint. Same JVM on both sides, same pipeline.
+      # supported-versions.csv), so both toolchains must be findable: the row's own toolchain JVM is
+      # what runs neoform-runtime's patch/decompile steps, even though Gradle itself runs on 25
+      # (JAVA_HOME comes from the LAST setup-java step).
       - name: Setup JDK 21 (toolchain for the 1.21 line)
         id: jdk21
         uses: actions/setup-java@v4
