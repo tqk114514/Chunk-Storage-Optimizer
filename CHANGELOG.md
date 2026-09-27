@@ -8,8 +8,8 @@
   on-disk format changed, so a world is not touched differently than it was in 1.0.2.
   (Minecraft 26.1, 1.21.2, 1.21.6, 1.21.7 and 1.21.9 have never had a stable NeoForge release, so
   there is no jar to install on them.)
-- **An author and a licence in the Mods screen.** The mod entry now names `tqk114514` and reports
-  the project's licence as MIT, which is what the repository has carried all along.
+- **Author and licence in the Mods screen.** The mod entry now names `tqk114514`, and the licence is
+  reported as MIT.
 
 ### Changed
 - **One jar per Minecraft version, named after it.** The file is now

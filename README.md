@@ -400,47 +400,49 @@ tools/oldest-stable-neoforge.sh 26.3.0
 # ② ./gradlew build -Pminecraft_version=26.3.0 验证
 ```
 
-下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建玩家装不到，拿它当下限等于承诺一个不存在的地盘。
-没稳定 loader 的版本不列在这张表里，完整清单（含 **26.1.1** 和"26.3 只有 beta"这类还得等的）在
-`docs/uncovered-minecraft-versions.md`。
+下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建没有正式发布，玩家无法安装。未覆盖的版本及原因
+记录在 `docs/uncovered-minecraft-versions.md`。
 
 版本范围是**精确单版本**（`[26.1.2]`），不是 `>=`。因为 `mixins.json` 里 `defaultRequire: 1`，
 签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前就被干净拒绝，而不是崩在玩家机器上。
 
 ### 跨版本的编译缝
 
-1.21 到 26.x 之间真正对不上的 API 只有一处：命令权限。`src/version/legacy/java` 和
-`src/version/modern/java` 各放一个**同签名**的 `CsoPermissions.operatorOnly()`，构建时按 csv 里的
-family 只把其中一个放进编译路径——运行期既没有 if/else 也没有反射，两边都是 op 等级 3 这道杠。
+1.21 到 26.x 之间不兼容的 API 只有一处：命令权限。`src/version/legacy/java` 与
+`src/version/modern/java` 各提供一个签名相同的 `CsoPermissions.operatorOnly()`，构建时按 csv 中的
+family 只将其中一个放入编译路径。运行期没有条件分支，也没有反射，两者的判定标准都是权限等级 3。
 
-另一处曾经的差异是 26.1 把 `ChunkPos` 改成了 record（`pack`/`unpack`/`x()`/`z()`）。等待编译的
-存档映射键本来就不该借游戏的类，所以 `CsoStorage` 改用自己的坐标打包，这条差异就此消失。
-除此之外区块存储的入口 `RegionFileStorage` 签名在整个范围内一字未动，这也是只需要一个缝的原因。
+另一处差异是 26.1 将 `ChunkPos` 改为 record（`pack`/`unpack`/`x()`/`z()`）。写入批处理用的坐标键不
+来自游戏数据，`CsoStorage` 因此使用自己的打包方式，这条差异不再需要缝。其余部分里
+`RegionFileStorage` 的方法签名在整个范围内没有变化，这是只有一处缝的原因。
 
-### 十行版本各自的实测状态
+### 各版本行的实测状态
 
-| Minecraft | 加载器接受 jar | mixin 注入 | `/cso` 可执行 | 写成 `.cso` |
+| Minecraft（loader） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
 |---|---|---|---|---|
-| 1.21 | ✅ | ✅ | ✅ | ✅ 真实服务端实测 |
-| 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 | ✅ | ✅ | 未单独测 | ✅ 同上（同一代加载器） |
-| 1.21.10 / 1.21.11 | ✅ | ✅ | ✅ | ✅ dev 实测（5 个 / 9 个文件，0 个 `.mca`） |
-| 26.1.2 / 26.2.0 | ✅ | ✅ | ✅ | ✅ dev 实测 |
+| 1.21 (21.0.143) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 5 个文件、0 个 `.mca` |
+| 1.21.1 (21.1.1) | dev | 通过 | 未执行 | 否，回退 Anvil |
+| 1.21.3 (21.3.56) | dev | 通过 | 未执行 | 否，回退 Anvil |
+| 1.21.4 (21.4.121) | dev | 通过 | 未执行 | 否，回退 Anvil |
+| 1.21.5 (21.5.74) | dev | 通过 | 未执行 | 否，回退 Anvil |
+| 1.21.8 (21.8.9) | dev | 通过 | 未执行 | 否，回退 Anvil |
+| 1.21.10 (21.10.63) | dev | 通过 | 未执行 | 是：5 个文件、0 个 `.mca` |
+| 1.21.11 (21.11.42) | dev | 通过 | 未执行 | 是：9 个文件、0 个 `.mca` |
+| 26.1.2 (26.1.2.71) | dev | 通过 | 已执行 | 是：5 个文件 |
+| 26.2.0 (26.2.0.57) | dev + 真实服务端 | 通过 | 未执行 | 是：真实服务端 9 个文件 |
 
-"真实服务端实测"是拿发行路径跑的：在临时目录用 `neoforge-21.0.143-installer.jar --installServer`
-装一个正经的 1.21 服务端，把 `build/libs/chunkstorageoptimizer-1.21-1.0.2.jar` 丢进 `mods/`，
-RCON 打 `cso stats` 与 `save-all flush`。结果：mod 加载、mixin 注入、**zstd 从嵌套 jar 里正常取出**，
-`<世界>/region/*.cso` 与 `<世界>/entities/*.cso` 各就位、一个 `.mca` 都没留，
-`/cso stats` 报 4,986 区块读取 / 88 写入、6.0 MB 原始 → 963.6 KB 落盘。1.21.1～1.21.8 与它同代
-加载器（FML 4.x～6.x），机制上没有差别，所以只测了这一行最老的。
+真实服务端验证的做法：用 `neoforge-<版本>-installer.jar --installServer` 在仓库之外装一个服务端，把
+`build/libs/` 下对应的 jar 放进 `mods/`，再通过 RCON 执行 `cso stats` 与 `save-all flush`。
+1.21.1 至 1.21.8 未做这一步，只验证了 1.21 这一行。
 
-一处 **dev 专属的不对称**要记下来，免得有人以为格式在老版本上不行：`./gradlew runServer` 在
-21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError` → 按设计退回原版 Anvil），21.10 起正常。
-两边的 `build/moddev/serverLegacyClasspath.txt` 都不含 zstd，差异在老几代 FML 不把启动 classpath
-上的第三方库暴露给 mod 模块层；发行路径走嵌套 jar，与这条无关，已按上一段实测。
+`runServer` 在 21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError`，随后回退原版 Anvil），
+21.10 起正常；两种环境下生成的 `build/moddev/serverLegacyClasspath.txt` 都不含 zstd。这是 dev 环境的
+差异，发行路径使用嵌套 jar，与其无关——1.21 与 26.2.0 两行已按发行路径验证。
 
-顺带一条实测：整个 1.21 线（1.21.1、1.21.11 与真实 1.21 服务端都看过）仍是老存档布局
-`<世界>/{region,poi,entities}` + `DIM-1/` + `DIM1/`，26.x 才换成
-`<世界>/dimensions/minecraft/<维度>/…`。`.cso` 跟着游戏给的目录走，两种布局的落盘位置都实测到了。
+存档目录布局：1.21.1、1.21.11 以及 1.21 的真实服务端均为 `<世界>/{region,poi,entities}` 加
+`DIM-1/`、`DIM1/`；26.1.2 与 26.2.0 为 `<世界>/dimensions/minecraft/<维度>/…`。`.cso` 写在游戏提供
+的目录里，两种布局的落盘位置均已实测。
+
 
 ### 移植到其他加载器（未做，缝已留好）
 

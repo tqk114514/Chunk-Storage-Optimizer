@@ -14,15 +14,14 @@
 # docs/uncovered-minecraft-versions.md; 1.21.2, 1.21.6, 1.21.7, 1.21.9 and 26.1 / 26.1.1 never got a
 # stable NeoForge build, so no floor a player could reach exists for them.
 #
-# One row breaks the "oldest stable" rule on purpose. Minecraft 1.21.10 is the first line assembled
-# with NeoForge's new binpatching tooling, and 21.10.63 shipped binpatches built from a dirty base
-# jar — fixed four days later in 21.10.64 ("When creating the joined patches, use the clean jar as
-# base.", #2849). Anything that assembles artifacts through binpatches therefore cannot build against
-# 21.10.63 at all (CI hit this; a local build got away with it because it took the
-# decompile -> patch -> recompile path instead). The floor for this row is 21.10.64 and it stays
-# there: splitting "the floor players need" from "the version we compile against" over the whole
-# table because one loader build shipped bad patches is not worth a second column. The cost is one
-# update prompt for a 1.21.10 player sitting on 21.10.63.
+# One row does not use the oldest stable build. Minecraft 1.21.10 is the first line assembled with
+# NeoForge's binpatching tooling, and 21.10.63 published binpatches generated from a modified base
+# jar; 21.10.64 fixed that four days later ("When creating the joined patches, use the clean jar as
+# base.", #2849). Environments that assemble artifacts through binpatches cannot build against
+# 21.10.63 at all — CI does, while a local build takes the decompile -> patch -> recompile path and
+# does not hit it. The floor stays at 21.10.64: separating the player-facing floor from the version
+# we compile against would add a column for one loader build. Effect: a 1.21.10 player on 21.10.63
+# is asked to update the loader.
 1.21,     21.0.143,   21, legacy
 1.21.1,   21.1.1,     21, legacy
 1.21.3,   21.3.56,    21, legacy
