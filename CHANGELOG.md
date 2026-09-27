@@ -14,7 +14,8 @@
 ### Changed
 - **One jar per Minecraft version, named after it.** The file is now
   `chunkstorageoptimizer-<minecraft>-<version>.jar`, because a single release produces ten of them
-  and they were indistinguishable once downloaded. Pick the one matching your game; the loader
+  and they were indistinguishable once downloaded. Select the file matching the game version; the
+  loader
   requirement is the first stable NeoForge build for that Minecraft.
 
 ## [1.0.2] - 2026-09-22

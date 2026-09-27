@@ -1,15 +1,16 @@
 # Chunk Storage Optimizer
 
-> ## ⚠️ Read this before you install
+> ## ⚠️ Read this before installing
 >
 > **1. A world this mod has written to is no longer a vanilla-readable world.** Remove the mod and
 > any progress stored only in `.cso` is invisible to the game; tools like MCA Selector cannot open
-> it either. To go back, run `/cso convert mca prune` first. **Back your saves up.**
+> it either. To go back, run `/cso convert mca prune` first. **Back up the save first.**
 >
 > **2. Major versions do not read each other's files, and backwards compatibility is not the
 > goal.** The rule for this project: **any format change or incompatibility jumps the major
 > version** (1.0.1 → 2.0.0). Within one major line (1.0.1 → 1.4.3 → 1.100.0) the format is fully
-> compatible and you just drop in the new jar. So **2.x will not read a world written by 1.x** —
+> compatible, so the new jar replaces the old one directly. **2.x will not read a world written
+> by 1.x** —
 > the only way across is to convert back with the old version (`/cso convert mca`), swap the mod,
 > then convert again. Check `CHANGELOG.md` before upgrading.
 
@@ -36,7 +37,7 @@ until everything loaded:
 Both hold exactly the same 8,281 chunks, so the **33.0% difference comes purely from the
 format** — no content differences mixed in. (Entities: −61.3%. POI: −20.9%.)
 
-### How much you save depends on your chunks
+### Savings depend on chunk size
 
 | World | Avg. chunk (vanilla) | Saved |
 |---|---|---|
@@ -99,7 +100,7 @@ stored as a single zstd stream containing all of its chunks:
 
 ## Requirements
 
-One jar per Minecraft version — pick the file whose name carries your version, e.g.
+One jar per Minecraft version — select the file whose name matches the game version, e.g.
 `chunkstorageoptimizer-26.1.2-1.0.3.jar`.
 
 - Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**, **1.21.4**,
@@ -113,14 +114,14 @@ no jar to install on them.
 
 ## Installation
 
-1. Download the jar named after your Minecraft version.
-2. Install NeoForge for that version, then drop the jar into your `mods/` folder.
+1. Download the jar named after the target Minecraft version.
+2. Install NeoForge for that version, then place the jar in the `mods/` folder.
 3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml`.
 
-**Who needs it: whoever holds the world.** The mod registers no network payloads — its only client-side
+**Who needs it: the side that holds the world.** The mod registers no network payloads — its only client-side
 code is the config screen — and everything it changes lives on disk. A dedicated server needs it and
-its players need nothing; on LAN or singleplayer the host installs it. A client that has it modded
-joining a server that does not is fine too. The one real constraint is that a given save must always
+its players need nothing; on LAN or in singleplayer the host installs it. A modded client joining a
+server without the mod works as well. The one real constraint is that a given save must always
 be opened by a side that has the mod (see the warning at the top).
 
 ## Getting started
@@ -134,8 +135,8 @@ Just play. Everything is written to `.cso` files; no `.mca` is created.
 Existing data keeps working — chunks not yet migrated are read from the original `.mca`.
 New and modified chunks are written to `.cso`.
 
-Note that old data stays in the `.mca` files, so **both copies occupy disk space** until you
-migrate. To convert everything and drop the originals:
+Note that old data stays in the `.mca` files, so **both copies occupy disk space** until the
+migration is done. To convert everything and drop the originals:
 
 ```
 /cso convert cso prune
@@ -150,10 +151,10 @@ Requires admin permission.
 
 | Command | Description |
 |---|---|
-| `/cso stats` | Cumulative statistics: chunks read/written, compress and decompress time, cache hit rate, effective compression ratio, **latency percentiles** (p50 / p95 / max for batch writes, compressing and decompressing) and **one line per store**, so you can see which dimension is doing what |
+| `/cso stats` | Cumulative statistics: chunks read/written, compress and decompress time, cache hit rate, effective compression ratio, **latency percentiles** (p50 / p95 / max for batch writes, compressing and decompressing) and **one line per store**, which separates the contribution of each store |
 | `/cso reset` | Reset statistics |
 | `/cso compact` | Run space reclamation on all open region files |
-| `/cso report [files]` | Sample this world's directories and report what the same chunks would weigh at bucket grids 1/8/16/32 — the number you need to pick a `grid`. `files` is how many files to sample per directory (default 2, max 8). Runs in the background and posts the result when done |
+| `/cso report [files]` | Sample this world's directories and report what the same chunks would weigh at bucket grids 1/8/16/32 — the data needed to choose a `grid`. `files` is how many files to sample per directory (default 2, max 8). Runs in the background and posts the result when done |
 | `/cso convert cso [prune]` | Convert `.mca` → `.cso`. `prune` deletes the originals after verification |
 | `/cso convert mca [prune]` | Convert `.cso` → `.mca` and **disable this mod**. `prune` also deletes the `.cso` files |
 
@@ -163,7 +164,7 @@ Two numbers in `/cso stats` are worth watching:
 
 - **chunks per decompression** — how many chunk reads one bucket decompression serves. Higher
   means caching and batching are working.
-- **ratio** — raw bytes in vs. bytes actually stored, i.e. your real compression ratio.
+- **ratio** — raw bytes in vs. bytes actually stored, i.e. the effective compression ratio.
 
 ## Configuration
 
