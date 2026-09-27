@@ -15,8 +15,10 @@ jobs:
       - name: List the supported Minecraft versions
         id: list
         run: |
-          versions=$(grep -v '^#' supported-versions.csv | tr -d ' \t' | grep -v '^$' \
-            | cut -d, -f1 | jq -R -s 'split("\n") | map(select(length > 0))')
+          # -c is not cosmetic: a multi-line value cannot be written through $GITHUB_OUTPUT.
+          # \r is stripped because the csv may be checked out with CRLF on Windows clones.
+          versions=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$' \
+            | cut -d, -f1 | jq -R -sc 'split("\n") | map(select(length > 0))')
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
           echo "matrix: $versions"
 
