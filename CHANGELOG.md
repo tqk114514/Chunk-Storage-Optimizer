@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.0.4] - 2026-09-28
+
+### Added
+- **Fabric, for the whole Minecraft 1.21 line** — 1.21 through 1.21.11, twelve versions, including
+  1.21.2 / 1.21.6 / 1.21.7 / 1.21.9 that never had a stable NeoForge release. Fabric needs Fabric
+  API. The options are reachable through Mod Menu's Config screen, in the same three Chinese
+  translations and English as NeoForge; Mod Menu is optional, and without it the config stays the
+  plain file it is.
+- **A loader token in every file name**: `chunkstorageoptimizer-neoforge-1.21.11-1.0.4.jar`,
+  `chunkstorageoptimizer-fabric-1.21.11-1.0.4.jar`. On Fabric the settings live in
+  `config/chunkstorageoptimizer.properties`, whose keys are identical to the NeoForge toml's.
+
+### Changed
+- **`/cso convert cso` refuses to run on a world the mod is not serving.** Region files that session
+  already has open would keep being written to `.mca` behind the freshly converted `.cso` ones.
+  Delete `cso.disabled`, re-enter the world, then convert.
+
+### Fixed
+- **Converting a world back to vanilla storage now sticks.** It was a decision for the running game
+  only: the next launch took the world back over and started writing `.cso` files alongside the ones
+  just converted, which is the split that command exists to prevent. The choice now travels with the
+  save as `cso.disabled`, next to its `level.dat`, and it applies to that world alone — the `enabled`
+  config key and every other save are left as they are. Delete the file and re-enter the world to
+  switch back.
+- **No more half-converted worlds inside one session.** Chunks saved after `/cso convert mca` used to
+  go on landing in new `.cso` files until the game restarted; they now go to `.mca`, which is what
+  the conversion promised.
+- **Converting onto a file that already existed could leave part of the old file behind.** In a
+  half-migrated world, where one region lives in both formats, the result either kept stale bytes
+  readable as extra chunks or lost the chunks only one of the two files had. The two are now merged
+  before anything is deleted — the `.cso` copy winning, exactly as the game reads them. The offline
+  converter had the same problem.
+- **`/cso stats` says which world is off, and why**: `this world opted out (…\cso.disabled)`,
+  `disabled by config`, or the conflict it refused to run beside.
+
 ## [1.0.3] - 2026-09-27
 
 ### Added

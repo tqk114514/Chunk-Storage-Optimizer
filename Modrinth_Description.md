@@ -101,7 +101,7 @@ stored as a single zstd stream containing all of its chunks:
 ## Requirements
 
 One jar per Minecraft version per loader — select the file whose name carries both tokens, e.g.
-`chunkstorageoptimizer-neoforge-26.1.2-1.0.3.jar` or `chunkstorageoptimizer-fabric-1.21.11-1.0.3.jar`.
+`chunkstorageoptimizer-neoforge-26.1.2-1.0.4.jar` or `chunkstorageoptimizer-fabric-1.21.11-1.0.4.jar`.
 
 - **NeoForge**: Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**,
   **1.21.4**, **1.21.3**, **1.21.1**, **1.21** — with the loader at least the first stable build for
@@ -169,6 +169,12 @@ Conversion runs `save-all flush` first, then closes all file handles before movi
 folder keep using `.cso`. To come back, delete the file, re-enter the world, then run
 `/cso convert cso prune`. Converting without re-entering is refused on purpose — region files the
 running session still has open would keep being written to `.mca` behind the fresh `.cso` ones.
+
+Conversion is synchronous, deliberately: the flush waits for the game's chunk-write queue to drain,
+then the files move while the server thread is held, so no write can land halfway through a
+conversion. The cost is a tick stall roughly proportional to the bytes moved. `/cso report` samples in
+the background instead; when a chunk is being written while it samples, it prints `CSO report failed`
+and changes nothing — running it again is fine.
 
 Two numbers in `/cso stats` are worth watching:
 
