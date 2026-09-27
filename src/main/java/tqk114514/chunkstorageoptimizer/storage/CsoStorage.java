@@ -288,8 +288,8 @@ public final class CsoStorage implements AutoCloseable {
     // ------------------------------------------------------------------ batching
 
     private void stage(ChunkPos pos, byte[] data) {
-        long regionKey = ChunkPos.pack(pos.getRegionX(), pos.getRegionZ());
-        long chunkKey = ChunkPos.pack(pos.getRegionLocalX(), pos.getRegionLocalZ());
+        long regionKey = CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ());
+        long chunkKey = CsoFormat.coordKey(pos.getRegionLocalX(), pos.getRegionLocalZ());
         Map<Long, byte[]> forRegion = this.pending.computeIfAbsent(regionKey, k -> new HashMap<>());
         if (!forRegion.containsKey(chunkKey)) {
             this.pendingCount++;
@@ -299,16 +299,17 @@ public final class CsoStorage implements AutoCloseable {
     }
 
     private byte[] staged(ChunkPos pos) {
-        Map<Long, byte[]> forRegion = this.pending.get(ChunkPos.pack(pos.getRegionX(), pos.getRegionZ()));
-        return forRegion == null ? null : forRegion.get(ChunkPos.pack(pos.getRegionLocalX(), pos.getRegionLocalZ()));
+        Map<Long, byte[]> forRegion = this.pending.get(CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ()));
+        return forRegion == null ? null
+                : forRegion.get(CsoFormat.coordKey(pos.getRegionLocalX(), pos.getRegionLocalZ()));
     }
 
     private boolean isStagedDeleted(ChunkPos pos) {
-        Map<Long, byte[]> forRegion = this.pending.get(ChunkPos.pack(pos.getRegionX(), pos.getRegionZ()));
+        Map<Long, byte[]> forRegion = this.pending.get(CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ()));
         if (forRegion == null) {
             return false;
         }
-        long chunkKey = ChunkPos.pack(pos.getRegionLocalX(), pos.getRegionLocalZ());
+        long chunkKey = CsoFormat.coordKey(pos.getRegionLocalX(), pos.getRegionLocalZ());
         return forRegion.containsKey(chunkKey) && forRegion.get(chunkKey) == null;
     }
 
@@ -332,9 +333,11 @@ public final class CsoStorage implements AutoCloseable {
             int grid = file.grid();
             Map<Integer, Map<Integer, byte[]>> byBucket = new HashMap<>();
             for (Map.Entry<Long, byte[]> chunkEntry : regionEntry.getValue().entrySet()) {
-                ChunkPos local = ChunkPos.unpack(chunkEntry.getKey());
-                int bucket = CsoFormat.bucketIndex(local.x(), local.z(), grid);
-                int slot = CsoFormat.chunkIndexInBucket(local.x(), local.z(), grid);
+                long packed = chunkEntry.getKey();
+                int localX = CsoFormat.keyX(packed);
+                int localZ = CsoFormat.keyZ(packed);
+                int bucket = CsoFormat.bucketIndex(localX, localZ, grid);
+                int slot = CsoFormat.chunkIndexInBucket(localX, localZ, grid);
                 byBucket.computeIfAbsent(bucket, k -> new HashMap<>()).put(slot, chunkEntry.getValue());
             }
             file.writeWal(byBucket);
@@ -385,7 +388,7 @@ public final class CsoStorage implements AutoCloseable {
     }
 
     private CsoRegionFile region(ChunkPos pos) throws IOException {
-        long key = ChunkPos.pack(pos.getRegionX(), pos.getRegionZ());
+        long key = CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ());
         CsoRegionFile file = this.regions.get(key);
         if (file != null) {
             return file;
@@ -412,7 +415,7 @@ public final class CsoStorage implements AutoCloseable {
         if (!Files.isRegularFile(path)) {
             return null;
         }
-        long key = ChunkPos.pack(pos.getRegionX(), pos.getRegionZ());
+        long key = CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ());
         RegionFile file = this.legacyRegions.get(key);
         if (file != null) {
             return file;

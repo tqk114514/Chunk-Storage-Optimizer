@@ -76,6 +76,23 @@ public final class CsoFormat {
         return (localZ % s) * s + (localX % s);
     }
 
+    /**
+     * Packs a coordinate pair into a 64-bit key. Minecraft record-ified {@code ChunkPos} in 26.1
+     * (pack/unpack/x/z), so the batching maps keep their own bijection rather than follow the
+     * game's API across every version this mod ships for.
+     */
+    public static long coordKey(int x, int z) {
+        return (long) x << 32 | z & 0xffffffffL;
+    }
+
+    public static int keyX(long packed) {
+        return (int) (packed >> 32);
+    }
+
+    public static int keyZ(long packed) {
+        return (int) packed;
+    }
+
     /** Offset of one bucket entry inside one of the two table copies. */
     public static int tableOffset(int table, int bucket, int bucketCount) {
         return HEADER_SIZE + (table * bucketCount + bucket) * BUCKET_ENTRY_SIZE;
