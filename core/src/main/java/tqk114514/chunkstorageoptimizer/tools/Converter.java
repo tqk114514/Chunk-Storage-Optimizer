@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -683,9 +684,13 @@ public final class Converter {
                     continue;
                 }
                 Path out = dir.resolve(swapExtension(source.getFileName().toString(), ".cso"));
-                writeCso(out, chunks, grid, level);
-                total += chunks.size();
-                System.out.println(out.getFileName() + " <- " + chunks.size() + " chunks");
+                // Writing next to the sources means the destination may already hold chunks this
+                // .mca never saw, which is the shape a half-migrated world has. The .cso copy wins
+                // because that is the copy a running game reads.
+                List<AnvilRegionFile.Chunk> merged = Files.exists(out) ? prefer(readCso(out), chunks) : chunks;
+                writeCso(out, merged, grid, level);
+                total += merged.size();
+                System.out.println(out.getFileName() + " <- " + merged.size() + " chunks");
             }
             System.out.println("Converted " + total + " chunks to .cso. Originals left untouched.");
             return;
@@ -699,9 +704,10 @@ public final class Converter {
                     continue;
                 }
                 Path out = dir.resolve(swapExtension(source.getFileName().toString(), ".mca"));
-                AnvilRegionFile.write(out, chunks);
-                total += chunks.size();
-                System.out.println(out.getFileName() + " <- " + chunks.size() + " chunks");
+                List<AnvilRegionFile.Chunk> merged = Files.exists(out) ? prefer(chunks, AnvilRegionFile.read(out)) : chunks;
+                AnvilRegionFile.write(out, merged);
+                total += merged.size();
+                System.out.println(out.getFileName() + " <- " + merged.size() + " chunks");
             }
             System.out.println("Converted " + total + " chunks back to .mca. Originals left untouched.");
             return;
@@ -712,6 +718,14 @@ public final class Converter {
     // ------------------------------------------------------------------ io
 
     /** Writes chunks into a fresh CSO file, one compress per bucket. */
+    /**
+     * Writes {@code chunks} out as a CSO file, replacing whatever is at {@code target}.
+     *
+     * <p>The replacement goes through a sibling temp file and an atomic move. {@link CsoRegionFile}
+     * opens without truncating — it must not destroy the file a live world is using — so writing
+     * fewer chunks than the target already held would leave the tail of the old payload readable as
+     * extra chunks. A caller that has to keep what the target holds merges first; see {@link #prefer}.
+     */
     public static void writeCso(Path target, List<AnvilRegionFile.Chunk> chunks, int grid, int level)
         throws IOException {
         CsoFormat.validateGrid(grid);
@@ -724,13 +738,35 @@ public final class Converter {
             byBucket.computeIfAbsent(bucket, k -> new HashMap<>()).put(slot, chunk.nbt());
         }
         // Compaction disabled: a freshly converted file is already laid out optimally.
+        Path temp = target.resolveSibling(target.getFileName() + ".tmp");
         try (CsoRegionFile file = CsoRegionFile.open(
-            target, grid, CsoFormat.COMPRESSION_ZSTD, level, 4, true, Long.MAX_VALUE, 10.0
+            temp, grid, CsoFormat.COMPRESSION_ZSTD, level, 4, true, Long.MAX_VALUE, 10.0
         )) {
             for (Map.Entry<Integer, Map<Integer, byte[]>> entry : byBucket.entrySet()) {
                 file.writeChunks(entry.getKey(), entry.getValue());
             }
         }
+        Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * Unions two chunk lists by position, with {@code primary} winning where both hold a chunk.
+     *
+     * <p>A world that spent time on each format can have the same chunk in both files, and the copy
+     * worth keeping is the one the game would have read: the live reader takes {@code .cso} first and
+     * only then falls back to {@code .mca}, so callers pass the CSO list as {@code primary}.
+     */
+    public static List<AnvilRegionFile.Chunk> prefer(
+        List<AnvilRegionFile.Chunk> primary, List<AnvilRegionFile.Chunk> secondary
+    ) {
+        Map<Integer, AnvilRegionFile.Chunk> merged = new LinkedHashMap<>();
+        for (AnvilRegionFile.Chunk chunk : secondary) {
+            merged.put(chunk.index(), chunk);
+        }
+        for (AnvilRegionFile.Chunk chunk : primary) {
+            merged.put(chunk.index(), chunk);
+        }
+        return new ArrayList<>(merged.values());
     }
 
     /**
