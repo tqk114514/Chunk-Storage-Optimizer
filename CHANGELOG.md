@@ -32,6 +32,9 @@
   readable as extra chunks or lost the chunks only one of the two files had. The two are now merged
   before anything is deleted — the `.cso` copy winning, exactly as the game reads them. The offline
   converter had the same problem.
+- **No particular Fabric Loader version is required.** The jar used to ask for the one it was built
+  with (0.19.5), which rejected setups that run it fine — it was measured working on 0.15.11. The
+  only hard requirement is Fabric API for the same Minecraft, and that carries its own loader floor.
 - **`/cso stats` says which world is off, and why**: `this world opted out (…\cso.disabled)`,
   `disabled by config`, or the conflict it refused to run beside.
 
