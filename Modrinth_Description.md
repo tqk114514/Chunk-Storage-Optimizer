@@ -108,7 +108,8 @@ One jar per Minecraft version per loader — select the file whose name carries 
   that Minecraft (26.1.2 → 26.1.2.71, 1.21 → 21.0.143, and so on)
 - **Fabric**: the whole **1.21** line, **1.21** through **1.21.11** — including 1.21.2, 1.21.6,
   1.21.7 and 1.21.9 — with Fabric API for the same Minecraft. Mod Menu is optional and contributes
-  the config screen only.
+  the config screen only. No particular Fabric Loader version is needed beyond the one that Fabric API
+  itself requires.
 - Java 21 for the 1.21 line, Java 25 for 26.x — i.e. whatever Minecraft itself requires
 
 There are no Fabric jars for 26.x yet: those Minecraft versions ship an unobfuscated client, so the

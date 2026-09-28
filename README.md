@@ -497,7 +497,7 @@ Screen）。`storage/CsoStorage`、mixin、命令实现全部在 `common` 里一
 `format` / `metrics` / `tools` 既不依赖 Minecraft 也不依赖任何加载器——格式层能脱离游戏
 独立跑测试就是因为这条边界。
 
-加载器带来的三处实现差异：
+加载器带来的四处实现差异：
 
 - **mixin 的映射方式。** loom 从 1.15 起默认不再挂 mixin 的注解处理器，改由 remapJar 阶段把
   intermediary 名字直接写进注解（`MixinRefmapInliner`），所以 `fabric/src/main/resources` 里的
@@ -508,6 +508,12 @@ Screen）。`storage/CsoStorage`、mixin、命令实现全部在 `common` 里一
   `META-INF/jars/`，加载后是一个独立的嵌套 mod（id 为 `com_github_luben_zstd-jni`）。
 - **可选的第三方界面。** Mod Menu 只以 `modCompileOnly` 参与编译：没有它时 `modmenu` 入口点永远
   不会被实例化，配置退回纯文件编辑。
+- **下限放在哪。** NeoForge 的下限是产物内容：`neoforge.mods.toml` 里的 `versionRange` 直接决定玩家
+  能不能装，所以那一列必须填"该版本第一个稳定构建"。Fabric 侧的 `fabric.mod.json` 因此不写
+  `fabricloader`：唯一的硬依赖是 Fabric API，而每个 fabric-api 模块自己带 loader 下限
+  （MC 1.21.1 那档是 `>=0.15.11`，实测把本 mod 放到 0.14.24 上，拒绝来自 API 而不是本 mod），
+  抄一份只会更严或更松，不会更准。编译用的 loader 版本（`fabric_loader_version`，默认 0.19.5）
+  只影响 dev 运行与 loom。
 
 配置界面只用 `Button.builder(Component, OnPress)` 与 `Screen.addRenderableWidget` 两个控件 API，
 每个选项是一个循环取值的按钮、点击即写文件。不用文本框也不自绘：界面依赖的客户端 API 越少，

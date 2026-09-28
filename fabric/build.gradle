@@ -56,6 +56,12 @@ if (!(apiFamily in ['legacy', 'modern'])) {
 }
 def fabricApiVersion = (project.findProperty('fabric_api_version') ?: target.api) as String
 def modMenuVersion = (project.findProperty('modmenu_version') ?: target.modmenu) as String
+// The loader this module compiles and dev-runs against. It is deliberately NOT written into
+// fabric.mod.json as a floor: the only hard requirement the mod has is Fabric API, and every
+// fabric-api module already carries its own `fabricloader` floor (>=0.15.11 for Minecraft 1.21.1,
+// measured). Copying that number here could only ever be stricter or looser than the dependency
+// that actually decides it - verified by running this jar on 0.15.11, where mixin binding and the
+// nested zstd jar work.
 def loaderVersion = (project.findProperty('fabric_loader_version') ?: '0.19.5') as String
 
 // Minecraft stopped publishing obfuscated clients with 26.x, so the official mappings a
@@ -118,8 +124,6 @@ tasks.named('processResources', ProcessResources).configure {
             minecraft_version: mcVersion,
             mixin_java_level : "JAVA_${javaLevel}",
             java_level        : javaLevel,
-            fabric_loader_version: loaderVersion,
-            fabric_api_version   : fabricApiVersion,
     ]
     inputs.properties replaceProperties
     filesMatching(['fabric.mod.json', '*.mixins.json']) {
