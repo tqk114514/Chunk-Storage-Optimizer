@@ -32,7 +32,7 @@ import tqk114514.chunkstorageoptimizer.storage.CsoWorldMarker;
 import tqk114514.chunkstorageoptimizer.tools.Converter;
 
 /**
- * {@code /cso stats | reset | compact} �� the only way to see whether the format is actually
+ * {@code /cso stats | reset | compact} — the only way to see whether the format is actually
  * helping on a given world, since the vanilla JFR region hooks are bypassed.
  */
 public final class CsoCommands {
@@ -101,7 +101,7 @@ public final class CsoCommands {
     private static final Set<String> STORE_DIRECTORIES = Set.of("region", "poi", "entities");
 
     /**
-     * {@code /cso report [files]} �� samples each store directory and weighs what the same chunks
+     * {@code /cso report [files]} — samples each store directory and weighs what the same chunks
      * would occupy at several bucket grids.
      *
      * <p>Runs on a worker thread: rewriting a sample of a live world would otherwise stall the tick
@@ -124,7 +124,7 @@ public final class CsoCommands {
             .literal("CSO: sampling " + root + " (" + sampleFiles + " files per directory)..."), false);
 
         Thread.startVirtualThread(() -> {
-            StringBuilder text = new StringBuilder("CSO report �� up to ").append(sampleFiles)
+            StringBuilder text = new StringBuilder("CSO report — up to ").append(sampleFiles)
                 .append(" files per directory, zstd L3; percentages are of the sampled bytes now on disk\n");
             try {
                 for (Path dir : storeDirectories(root)) {
@@ -174,7 +174,7 @@ public final class CsoCommands {
     }
 
     /**
-     * {@code /cso convert cso|mca} �� migrates region files in place without leaving the game.
+     * {@code /cso convert cso|mca} — migrates region files in place without leaving the game.
      *
      * <p>Converting to {@code mca} is the way off the mod, and the decision is written into the save
      * as {@code cso.disabled} so a restart keeps honouring it. The world's storages are released
@@ -198,7 +198,7 @@ public final class CsoCommands {
             // data would sit behind the fresh .cso files and read as missing chunks, so the switch
             // back has to happen after the world is re-entered.
             source.sendFailure(Component.literal("CSO is not serving this world (" + CsoRuntime.reason(root)
-                + "). Re-enter it with that condition gone, then run /cso convert cso �� otherwise the"
+                + "). Re-enter it with that condition gone, then run /cso convert cso — otherwise the"
                 + " .mca files this session still holds open would hide behind the new .cso ones."));
             return 0;
         }
@@ -285,7 +285,7 @@ public final class CsoCommands {
             if (prune) {
                 message.append(" Deleted ").append(deleted).append(" original file(s).");
             } else {
-                message.append(" Originals kept �� repeat with 'prune' to delete them.");
+                message.append(" Originals kept — repeat with 'prune' to delete them.");
             }
             if ("mca".equals(target)) {
                 message.append(" This world now stays on vanilla storage: the marker ")
@@ -321,7 +321,7 @@ public final class CsoCommands {
         if (actual != expectedChunks) {
             throw new IOException(
                 "verification failed for " + written.getFileName() + ": wrote " + expectedChunks
-                    + " chunks but read back " + actual + " �� nothing was deleted"
+                    + " chunks but read back " + actual + " — nothing was deleted"
             );
         }
     }
