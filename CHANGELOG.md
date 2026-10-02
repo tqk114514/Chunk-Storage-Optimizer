@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.7] - 2026-10-03
+
+### Changed
+- **The `.mca` reader now proves it accounted for every slot the header names**, and reports that
+  count on `ReadResult` beside the chunks it read and the ones it could not. The three always add
+  up — every path past the "unwritten slot" test either decodes a chunk or counts it unreadable —
+  but the check guards the failure that started this whole thread: a slot dropped without being
+  counted, which reads as a smaller world rather than as an error. Taking the count during the pass
+  the reader already makes over the header also retired a second file open that only the tests used.
+
 ## [1.0.6] - 2026-10-03
 
 ### Fixed

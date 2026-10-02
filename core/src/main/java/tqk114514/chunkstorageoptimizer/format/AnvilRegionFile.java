@@ -55,8 +55,11 @@ public final class AnvilRegionFile {
      *
      * @param chunks     the slots that decoded, in slot order
      * @param unreadable slots that hold a chunk this parser could not decode
+     * @param occupied   slots the header names as holding a chunk — the denominator the other two
+     *                   have to add up to
      */
-    public record ReadResult(List<Chunk> chunks, int unreadable) {
+    public record ReadResult(List<Chunk> chunks, int unreadable, int occupied) {
+        /** Whether nothing was lost: every chunk the header named was read back. */
         public boolean isComplete() {
             return this.unreadable == 0;
         }
@@ -70,9 +73,10 @@ public final class AnvilRegionFile {
     public static ReadResult readReporting(Path path) throws IOException {
         List<Chunk> out = new ArrayList<>();
         int unreadable = 0;
+        int occupied = 0;
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             if (channel.size() < HEADER_BYTES) {
-                return new ReadResult(out, 0);
+                return new ReadResult(out, 0, 0);
             }
             ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
             readFully(channel, header, 0L);
@@ -86,6 +90,7 @@ public final class AnvilRegionFile {
                 }
                 // Past here the header names a chunk, so anything that stops us from decoding it
                 // means one chunk would be lost rather than absent.
+                occupied++;
                 int sector = (packed >> 8) & 0xFFFFFF;
                 int sectorCount = packed & 0xFF;
                 if (sector < 2 || sectorCount == 0) {
@@ -136,26 +141,19 @@ public final class AnvilRegionFile {
                 }
             }
         }
-        return new ReadResult(out, unreadable);
-    }
-
-    /** Slots the header marks as holding a chunk. The denominator for "did we read everything". */
-    public static int occupiedSlots(Path path) throws IOException {
-        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
-            if (channel.size() < HEADER_BYTES) {
-                return 0;
-            }
-            ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
-            readFully(channel, header, 0L);
-            header.flip();
-            int occupied = 0;
-            for (int i = 0; i < CHUNKS; i++) {
-                if (header.getInt(i * 4) != 0) {
-                    occupied++;
-                }
-            }
-            return occupied;
+        // Every slot the header named either decoded or was counted, so these three numbers have
+        // to agree. They cannot disagree today — every path past the `packed == 0` test either adds
+        // a chunk or bumps `unreadable` — and the check is here anyway, because the failure it
+        // guards is exactly the one that started this: a slot skipped without being counted, which
+        // reads as a smaller world rather than as an error. Counting `occupied` in this same pass
+        // is also what retired the second file open the old accessor needed.
+        if (occupied != out.size() + unreadable) {
+            throw new IllegalStateException(
+                "Read " + out.size() + " chunks and " + unreadable + " unreadable from " + path
+                    + ", but the header names " + occupied + " slots"
+            );
         }
+        return new ReadResult(out, unreadable, occupied);
     }
 
 

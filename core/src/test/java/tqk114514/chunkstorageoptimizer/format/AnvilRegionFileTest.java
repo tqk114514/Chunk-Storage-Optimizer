@@ -124,7 +124,7 @@ class AnvilRegionFileTest {
         assertEquals(1, result.chunks().size());
         assertEquals(0, result.unreadable(), "a zero header slot is unwritten, not a chunk that failed");
         assertTrue(result.isComplete());
-        assertEquals(1, AnvilRegionFile.occupiedSlots(mca));
+        assertEquals(1, result.occupied());
     }
 
     @Test
@@ -142,7 +142,7 @@ class AnvilRegionFileTest {
         assertEquals(3, result.chunks().size(), "only the zlib chunks decode");
         assertEquals(2, result.unreadable(), "the external and unknown slots are losses, not absences");
         assertTrue(!result.isComplete());
-        assertEquals(5, AnvilRegionFile.occupiedSlots(mca), "the header names all five");
+        assertEquals(5, result.occupied(), "the header names all five");
         // The old read() cannot tell the difference — this is what callers must stop relying on.
         assertEquals(3, AnvilRegionFile.read(mca).size());
     }
@@ -175,7 +175,24 @@ class AnvilRegionFileTest {
         assertTrue(result.chunks().isEmpty(), "a stub carries no decodable bytes");
         assertEquals(3, result.unreadable(), "every stub still names a chunk that lives in a .mcc");
         assertTrue(!result.isComplete());
-        assertEquals(3, AnvilRegionFile.occupiedSlots(mca));
+        assertEquals(3, result.occupied());
+    }
+
+    @Test
+    void everyOccupiedSlotIsEitherReadOrReportedAsLost(@TempDir Path dir) throws IOException {
+        // The invariant that makes ReadResult worth trusting: whatever the header names, the reader
+        // accounts for all of it. A slot that went missing from both counts would read as a smaller
+        // world rather than as an error, which is the shape of the bug this all started with.
+        Path mca = dir.resolve("r.0.0.mca");
+        writeRawMca(mca, new int[] {0, 1, 2, 3, 4}, new int[] {2, 2, 130, 130, 7});
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertEquals(5, result.occupied(), "the header names five slots");
+        assertEquals(result.chunks().size() + result.unreadable(), result.occupied(),
+            "every slot the header named must be either read or reported as unreadable");
+        assertEquals(2, result.chunks().size(), "the two zlib chunks decode");
+        assertEquals(3, result.unreadable(), "two external stubs and one unknown id do not");
     }
 
     @Test
