@@ -438,6 +438,14 @@ tools/oldest-stable-neoforge.sh 26.3.0
 因为 `mixins.json` 里 `defaultRequire: 1`，签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前
 就被干净拒绝，而不是崩在玩家机器上。
 
+### 发布
+
+打一个 `mc-<minecraft>-<version>` 的 tag 就会自动发到 Modrinth：CI 先把 csv 里每个
+（加载器，版本）组合编成 jar，再**一个 jar 一个 Modrinth 版本条目**地传上去。每个条目只声明
+自己那一个加载器和那一个游戏版本——这是启动器能自己挑对文件的唯一分组方式，把两个加载器的 jar
+塞进同一个条目只会让其中一侧的玩家下到错的 jar。一次性配置（一个 token secret）与手工演练方式
+见 `docs/releasing.md`。
+
 ### 跨版本的编译缝
 
 1.21 到 26.x 之间不兼容的 API 只有一处：命令权限。`common/src/version/legacy/java` 与
