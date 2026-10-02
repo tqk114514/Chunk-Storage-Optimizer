@@ -510,6 +510,9 @@ public final class CsoStorage implements AutoCloseable {
                 int slot = CsoFormat.chunkIndexInBucket(localX, localZ, grid);
                 byBucket.computeIfAbsent(bucket, k -> new HashMap<>()).put(slot, chunkEntry.getValue());
             }
+            // Before the log, not after: the seed is part of what this batch will write, so a crash
+            // between the log and the apply has to replay it too.
+            seedNewBuckets(file, sample, grid, byBucket);
             file.writeWal(byBucket);
             staged.put(file, byBucket);
         }
@@ -538,6 +541,62 @@ public final class CsoStorage implements AutoCloseable {
     /** Bytes currently staged but not yet written to disk. Diagnostic use. */
     public int pendingCount() {
         return this.pendingCount;
+    }
+
+    /**
+     * Decides every slot of each bucket that has never been written, taking the chunks it is not
+     * changing from the legacy {@code .mca}.
+     *
+     * <p>Without this a bucket's first write would record only the chunks of one save, and the
+     * neighbours still living in the {@code .mca} would read back as absent — because the read path
+     * skips the fallback for any written bucket, which is exactly what keeps a deleted chunk
+     * deleted. The game reads "absent" as "never generated" and regenerates terrain over it, so
+     * this is the difference between migrating a world and destroying it.
+     *
+     * <p>The cost is bounded and paid once per bucket: at most {@code chunksPerBucket - 1} extra
+     * reads the first time a bucket is touched, which at grid 16 is three.
+     */
+    private void seedNewBuckets(
+        CsoRegionFile file, ChunkPos sample, int grid, Map<Integer, Map<Integer, byte[]>> byBucket
+    ) throws IOException {
+        RegionFile legacy = null;
+        for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : byBucket.entrySet()) {
+            if (file.hasBucketIndex(bucketEntry.getKey())) {
+                continue; // already written, so it is already authoritative for every slot
+            }
+            if (legacy == null) {
+                legacy = legacy(sample);
+                if (legacy == null) {
+                    // No .mca for this region: nothing has ever been migrated here, so every empty
+                    // slot really is empty and there is nothing to seed from.
+                    return;
+                }
+            }
+            RegionFile source = legacy;
+            bucketEntry.setValue(BucketSeeder.seed(
+                bucketEntry.getValue(), bucketEntry.getKey(), grid,
+                (localX, localZ) -> legacyChunkBytes(source, sample, localX, localZ)
+            ));
+        }
+    }
+
+    /**
+     * Raw NBT bytes of one chunk in the legacy {@code .mca}, or null when it is not there.
+     *
+     * <p>Read as bytes rather than parsed and re-serialized: the {@code .cso} payload stores exactly
+     * what {@code NbtIo.write} produced and the legacy stream holds those same bytes, so a round
+     * trip through NBT would only cost time. A chunk vanilla itself cannot read comes back null and
+     * is simply not seeded, which loses nothing — the fallback could not have read it either.
+     */
+    private static byte[] legacyChunkBytes(RegionFile legacy, ChunkPos sample, int localX, int localZ)
+        throws IOException {
+        ChunkPos pos = new ChunkPos(
+            sample.getRegionX() * CsoFormat.REGION_CHUNKS + localX,
+            sample.getRegionZ() * CsoFormat.REGION_CHUNKS + localZ
+        );
+        try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
+            return in == null ? null : in.readAllBytes();
+        }
     }
 
     // ------------------------------------------------------------------ internals

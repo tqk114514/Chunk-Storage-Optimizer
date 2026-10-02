@@ -409,7 +409,11 @@ class CsoRegionFileTest {
     void bothTableCopiesTornIsFatalButUnwrittenBucketIsNot(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("r.0.0.cso");
         try (CsoRegionFile file = open(dir, GRID)) {
+            // Twice, so that BOTH table copies hold an entry: the first write lands in table 1 and
+            // the second in table 0. One write would leave table 0 blank, which is a different
+            // case — it means no write ever completed, and that is handled by its own test.
             file.writeChunk(0, 0, chunkData(23, 800));
+            file.writeChunk(0, 0, chunkData(24, 800));
         }
 
         // Bucket 1 was never written — its entry is all zeros — and must keep opening cleanly.
@@ -428,6 +432,59 @@ class CsoRegionFileTest {
 
         assertThrows(CsoCorruptedException.class, () -> open(dir, GRID),
             "a bucket with data but no readable table entry must fail loudly, not be dropped");
+    }
+
+    /**
+     * The other side of that rule: one torn copy is not loss when it is the bucket's <em>first</em>
+     * write that tore. Writes start at table 1, so table 0 stays all zeros until a write has
+     * completed — a blank table 0 is proof that nothing durable ever landed here. The
+     * write-ahead log, still on disk and replayed just after this, holds what the interrupted
+     * batch meant to write, so the file must open and serve it.
+     */
+    @Test
+    void tornFirstWriteIsRecoveredByTheWriteAheadLog(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        byte[] recovered = chunkData(52, 900);
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(0, 0, chunkData(51, 800));
+            // A log left behind is exactly what an interrupted apply leaves.
+            file.writeWal(Map.of(0, Map.of(0, recovered)));
+        }
+
+        // Damage table 1's entry. Table 0 is still blank, so this is the shape of a crash during
+        // the bucket's very first write.
+        int bucketCount = CsoFormat.bucketCount(GRID);
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            long crcPosition = CsoFormat.tableOffset(1, 0, bucketCount) + CsoFormat.ENTRY_CRC;
+            channel.write(ByteBuffer.wrap(new byte[] {0, 0, 0, 0}), crcPosition);
+        }
+
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertArrayEquals(recovered, file.readChunk(0, 0),
+                "the interrupted batch must be replayed, not refused");
+        }
+    }
+
+    /**
+     * Without a log the damage is not explained by an interrupted batch, so it is real loss. A
+     * blank table 0 still says no write completed — but the safe reading of "no write completed"
+     * is only available while a log exists to supply the content.
+     */
+    @Test
+    void tornFirstWriteWithoutALogIsFatal(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(0, 0, chunkData(53, 800));
+        }
+
+        int bucketCount = CsoFormat.bucketCount(GRID);
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            long crcPosition = CsoFormat.tableOffset(1, 0, bucketCount) + CsoFormat.ENTRY_CRC;
+            channel.write(ByteBuffer.wrap(new byte[] {0, 0, 0, 0}), crcPosition);
+        }
+
+        assertThrows(CsoCorruptedException.class, () -> open(dir, GRID),
+            "without a log, a bucket that cannot be read must fail loudly rather than be dropped");
     }
 
     @Test

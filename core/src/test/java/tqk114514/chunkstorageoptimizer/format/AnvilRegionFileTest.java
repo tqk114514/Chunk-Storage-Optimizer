@@ -160,14 +160,70 @@ class AnvilRegionFileTest {
         assertTrue(AnvilRegionFile.read(mca).isEmpty());
     }
 
+    @Test
+    void realExternalStubIsReportedAsUnreadable(@TempDir Path dir) throws IOException {
+        // The shape vanilla actually leaves behind for an oversized chunk: a five-byte stub with a
+        // length of 1 and no payload, next to a sibling c.x.z.mcc holding the bytes
+        // (RegionFile.createExternalStub). That length is the same one an empty slot has, so a
+        // reader that judges the length before the flag calls a real chunk "nothing here" — and
+        // --prune then deletes the .mca that is the only pointer to it.
+        Path mca = dir.resolve("r.0.0.mca");
+        writeRawMca(mca, new int[] {0, 1, 2}, new int[] {130, 130, 130});
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertTrue(result.chunks().isEmpty(), "a stub carries no decodable bytes");
+        assertEquals(3, result.unreadable(), "every stub still names a chunk that lives in a .mcc");
+        assertTrue(!result.isComplete());
+        assertEquals(3, AnvilRegionFile.occupiedSlots(mca));
+    }
+
+    @Test
+    void allocatedSlotWithNoPayloadIsDamageNotAnAbsence(@TempDir Path dir) throws IOException {
+        // Vanilla never writes this: deleting a chunk clears the header slot instead, and even an
+        // empty compound serializes to its TAG_End byte. A slot that names a chunk but carries no
+        // stream is therefore damage, and reading it as "nothing here" would let --prune drop it.
+        Path mca = dir.resolve("r.0.0.mca");
+        writeMcaWithPrefixes(mca, new int[] {0}, new byte[][] {{0, 0, 0, 1, 2}});
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertTrue(result.chunks().isEmpty());
+        assertEquals(1, result.unreadable(), "an allocated slot with no stream is a loss, not an absence");
+    }
+
     /**
-     * Hand-builds a region file so slots can carry compression ids the writer never emits — the
-     * external {@code .mcc} flag (id | 128) and an id this parser does not know.
+     * Hand-builds a region file so slots can carry shapes the writer never emits — the external
+     * {@code .mcc} stub and a compression id this parser does not know.
+     *
+     * <p>The external stub is written exactly as vanilla writes it: a length of 1 with no payload.
+     * Building it any other way is what let a length-first reader mistake it for an empty slot.
      *
      * <p>Zlib slots get a genuine deflate stream so they really decode; the other kinds only need
      * the header to name them, since the reader rejects them before looking at their bytes.
      */
     private static void writeRawMca(Path path, int[] slots, int[] compressionIds) throws IOException {
+        byte[][] prefixes = new byte[slots.length][];
+        for (int i = 0; i < slots.length; i++) {
+            int id = compressionIds[i];
+            if ((id & 128) != 0) {
+                // RegionFile.createExternalStub(): length 1, flag set, nothing else.
+                prefixes[i] = new byte[] {0, 0, 0, 1, (byte) id};
+            } else {
+                byte[] payload = id == 2 ? deflateBytes(chunkData(slots[i])) : new byte[] {9};
+                prefixes[i] = new byte[5 + payload.length];
+                java.nio.ByteBuffer.wrap(prefixes[i])
+                    .order(java.nio.ByteOrder.BIG_ENDIAN)
+                    .putInt(payload.length + 1)
+                    .put((byte) id)
+                    .put(payload);
+            }
+        }
+        writeMcaWithPrefixes(path, slots, prefixes);
+    }
+
+    /** Writes one sector per slot, each starting with the given prefix (length + compression id). */
+    private static void writeMcaWithPrefixes(Path path, int[] slots, byte[][] prefixes) throws IOException {
         int sectorBytes = 4096;
         int headerBytes = 8192;
         try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
@@ -181,12 +237,9 @@ class AnvilRegionFileTest {
                 // Absolute put: the offsets do not need to be written in slot order, and the
                 // timestamp half of the header is left zeroed because the reader ignores it.
                 header.putInt(slots[i] * 4, (sector << 8) | 1);
-                byte[] payload = compressionIds[i] == 2 ? deflateBytes(chunkData(slots[i])) : new byte[] {9};
                 java.nio.ByteBuffer block = java.nio.ByteBuffer.allocate(sectorBytes)
                     .order(java.nio.ByteOrder.BIG_ENDIAN);
-                block.putInt(payload.length + 1);
-                block.put((byte) compressionIds[i]);
-                block.put(payload);
+                block.put(prefixes[i]);
                 block.flip();
                 channel.write(block, (long) sector * sectorBytes);
                 sector += 1;

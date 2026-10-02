@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Progressive migration could overwrite the chunks it had not migrated yet.** A bucket's first
+  write recorded only the chunks of that one save, and the read path treats every written bucket as
+  authoritative — so the bucket-mates still living in the `.mca` read back as absent, which the game
+  answers by regenerating terrain over them. A bucket is now seeded from the `.mca` before its first
+  write, with the save's own changes winning (a deletion included, so nothing comes back), and the
+  seed goes into the write-ahead log with the rest of the batch. Only worlds being migrated by the
+  mod's own read-through were affected; a world converted up front with `/cso convert cso` was not.
+- **An `.mca` whose only content was external `.mcc` chunks could still be deleted by `--prune`.**
+  Vanilla writes an oversized chunk's stub as a length of 1 with no payload, which is the same
+  length an empty slot has. The reader judged the length before the external flag, so a real chunk
+  looked like "nothing here": it was not counted as a loss and did not stop the file from being
+  deleted. The flag is now read first, as vanilla's own reader does, and an allocated slot with no
+  payload at all counts as damage rather than an absence.
+- **A crash during a bucket's first write made the region file refuse to open.** Writes alternate
+  between the two table copies and start at table 1, so table 0 is still blank until a first write
+  has completed — a shape the old reader reported as damage, on the assumption that the two copies
+  are only ever blank together, which is not true. A blank table 0 now reads as "no write ever
+  finished", which is safe to act on while the write-ahead log is still on disk to supply the
+  content; with no log the damage stays fatal, because nothing would then explain it.
+
 ## [1.0.5] - 2026-10-02
 
 ### Fixed

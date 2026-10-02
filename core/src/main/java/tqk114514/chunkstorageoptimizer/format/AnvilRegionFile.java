@@ -24,14 +24,17 @@ import java.util.zip.InflaterInputStream;
  * two 4096-byte header sectors (1024 offsets, 1024 timestamps), 4096-byte sectors, each chunk
  * prefixed with a 4-byte length and a 1-byte compression id.
  *
- * <p>External chunks ({@code c.x.z.mcc}, flagged by compression id | 128) are skipped on read;
- * they are rare and only exist for chunks over ~1 MiB.
+ * <p>External chunks ({@code c.x.z.mcc}, flagged by compression id | 128) cannot be decoded here;
+ * they are counted as unreadable rather than skipped, because the header slot still names a real
+ * chunk and a caller must not delete the file that is the only pointer to it.
  */
 public final class AnvilRegionFile {
 
     private static final int SECTOR_BYTES = 4096;
     private static final int HEADER_BYTES = 8192;
     private static final int CHUNKS = 1024;
+    /** Set on the compression id of a chunk whose bytes live in a separate {@code c.x.z.mcc}. */
+    private static final int EXTERNAL_STREAM_FLAG = 128;
 
     private AnvilRegionFile() {
     }
@@ -99,8 +102,22 @@ public final class AnvilRegionFile {
                 prefix.flip();
                 int length = prefix.getInt();
                 int compressionId = prefix.get() & 0xFF;
+                // The external flag has to be read before the length is judged. Vanilla writes an
+                // external chunk's stub as length 1 with no payload (RegionFile.createExternalStub),
+                // which is the same length an empty slot has — so a reader that looks at the length
+                // first calls a real chunk "nothing here", and then neither reports it as a loss nor
+                // stops --prune from deleting the .mca that is the only pointer to it. Vanilla's own
+                // reader checks this flag first for the same reason (RegionFile:135).
+                if ((compressionId & EXTERNAL_STREAM_FLAG) != 0) {
+                    unreadable++;
+                    continue;
+                }
                 if (length <= 1) {
-                    // An empty chunk: written as "nothing here", so not a loss.
+                    // An allocated slot with no payload. Vanilla's writer never emits this: even an
+                    // empty compound serializes to its TAG_End byte, so a zero-length stream is
+                    // damage rather than an absence. Counting it as a loss is the safe reading —
+                    // a false positive only skips the file, a false negative deletes a chunk.
+                    unreadable++;
                     continue;
                 }
                 int streamLength = length - 1;

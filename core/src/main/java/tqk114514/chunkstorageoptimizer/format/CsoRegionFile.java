@@ -235,12 +235,14 @@ public final class CsoRegionFile implements Closeable {
             // damage the copy being written; the other one still points at intact data.
             BucketEntry newest = null;
             int newestTable = 0;
-            boolean allBlank = true;
+            // Writes alternate between the two copies and always start at table 1, so a blank
+            // table 0 says no write to this bucket ever finished — the two copies are NOT only ever
+            // blank together, which an earlier version of this assumed.
+            int tableStride = this.bucketCount * BUCKET_ENTRY_SIZE;
+            boolean blank0 = isBlankEntry(tables, i * BUCKET_ENTRY_SIZE);
+            boolean blank1 = isBlankEntry(tables, tableStride + i * BUCKET_ENTRY_SIZE);
             for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
-                int base = table * this.bucketCount * BUCKET_ENTRY_SIZE + i * BUCKET_ENTRY_SIZE;
-                if (!isBlankEntry(tables, base)) {
-                    allBlank = false;
-                }
+                int base = table * tableStride + i * BUCKET_ENTRY_SIZE;
                 BucketEntry candidate = decodeEntry(tables, base);
                 if (candidate != null && (newest == null || candidate.sequence > newest.sequence)) {
                     newest = candidate;
@@ -248,12 +250,19 @@ public final class CsoRegionFile implements Closeable {
                 }
             }
             if (newest == null) {
-                // No copy validated. An all-zero entry is a bucket nobody ever wrote, so skipping it
-                // is correct. Anything else is a torn or damaged entry, and treating it as "never
-                // written" would drop that bucket's chunks without a word — the one failure mode
-                // this format must never have. Both copies are only ever blank together, so reaching
-                // here with real bytes means the data cannot be recovered.
-                if (allBlank) {
+                // No copy validated, which has two quite different reasons.
+                if (blank0 && blank1) {
+                    // Nothing was ever written here, so there is nothing to lose.
+                    continue;
+                }
+                // Otherwise a copy holds bytes that do not validate. A blank table 0 narrows that
+                // to the bucket's first write having been interrupted — and a write-ahead log left
+                // on disk confirms it and holds what that batch meant to write, so the entry gets
+                // rebuilt from the log right after this. With no log the damage is not explained by
+                // an interrupted batch, so it is real loss: reading it as "never written" would
+                // drop the bucket's chunks without a word, the one failure mode this format must
+                // never have.
+                if (blank0 && Files.isRegularFile(this.walPath)) {
                     continue;
                 }
                 throw new CsoCorruptedException(
@@ -488,7 +497,17 @@ public final class CsoRegionFile implements Closeable {
      * reports it as absent. That is exactly the case this method exists to detect.
      */
     public synchronized boolean hasBucket(int localX, int localZ) {
-        BucketEntry entry = this.entries[CsoFormat.bucketIndex(localX, localZ, this.grid)];
+        return hasBucketIndex(CsoFormat.bucketIndex(localX, localZ, this.grid));
+    }
+
+    /**
+     * The same question asked by bucket ordinal rather than by position.
+     *
+     * <p>The storage layer groups a batch by ordinal, so this is the form it needs; asking that way
+     * also keeps the caller from having to invent a coordinate to stand for the whole bucket.
+     */
+    public synchronized boolean hasBucketIndex(int bucket) {
+        BucketEntry entry = this.entries[bucket];
         return entry.offset != 0 && entry.compressedLength > 0;
     }
 
