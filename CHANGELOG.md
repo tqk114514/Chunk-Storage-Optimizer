@@ -2,6 +2,21 @@
 
 ## [1.0.7] - 2026-10-03
 
+### Note
+**This is the first release since 1.0.4.** 1.0.5 and 1.0.6 were tagged but never published: each
+carried a defect that could destroy a world part-way through migration, so both are superseded here
+and their notes are kept below for the record. Everything they fixed arrives in this jar, so an
+upgrade straight from 1.0.4 gets all of it:
+
+- **1.0.5** — `/cso convert cso prune` could delete a `.mca` while silently leaving some of its
+  chunks behind; a chunk deleted from a world could come back; a write batch ignored its own
+  timeout; a bucket whose two table copies were both unreadable was treated as empty; a failed
+  compaction left the region file unusable until restart; `/cso compact` ran against storages the
+  game was still writing to.
+- **1.0.6** — progressive migration could overwrite the chunks it had not migrated yet; an `.mca`
+  holding only external `.mcc` chunks could still be deleted by `--prune`; a crash during a bucket's
+  first write made the region file refuse to open.
+
 ### Changed
 - **The `.mca` reader now proves it accounted for every slot the header names**, and reports that
   count on `ReadResult` beside the chunks it read and the ones it could not. The three always add
@@ -10,7 +25,9 @@
   counted, which reads as a smaller world rather than as an error. Taking the count during the pass
   the reader already makes over the header also retired a second file open that only the tests used.
 
-## [1.0.6] - 2026-10-03
+## [1.0.6] - 2026-10-03 — unreleased
+
+> **Never published.** Superseded by 1.0.7; see its notes for why, and for a summary of these.
 
 ### Fixed
 - **Progressive migration could overwrite the chunks it had not migrated yet.** A bucket's first
@@ -33,7 +50,9 @@
   finished", which is safe to act on while the write-ahead log is still on disk to supply the
   content; with no log the damage stays fatal, because nothing would then explain it.
 
-## [1.0.5] - 2026-10-02
+## [1.0.5] - 2026-10-02 — unreleased
+
+> **Never published.** Superseded by 1.0.7; see its notes for why, and for a summary of these.
 
 ### Fixed
 - **`/cso convert cso prune` could delete a `.mca` while silently leaving some of its chunks behind.**
