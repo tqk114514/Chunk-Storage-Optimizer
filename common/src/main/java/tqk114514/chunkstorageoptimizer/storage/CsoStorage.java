@@ -10,7 +10,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.ReentrantLock;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -36,16 +41,54 @@ import tqk114514.chunkstorageoptimizer.format.CsoRegionFile;
  * flushed per bucket. Ten chunks in the same bucket cost one compression instead of ten.
  * Staged data is visible to reads, and is forced to disk by {@link #flush()} (which the game
  * calls on autosave) and by {@link #close()}.
+ *
+ * <h3>Threading</h3>
+ * Vanilla reaches this object from the storage's own {@code IOWorker} thread, but commands reach it
+ * from the server thread: {@code /cso compact} and {@code /cso convert} iterate the open region
+ * files while the game may be writing to them. Every field below is therefore guarded by
+ * {@link #lock}, and so are the command entry points. The guard is a {@link ReentrantLock} rather
+ * than {@code synchronized} so the region-file calls it wraps — themselves synchronized — are
+ * taken in one consistent order, which is what keeps the stampede off the file objects.
  */
 public final class CsoStorage implements AutoCloseable {
 
     private static final int MAX_OPEN_REGIONS = 256;
     private static final int MAX_OPEN_LEGACY = 8;
 
+    /**
+     * One daemon thread for every storage in the process, waking often enough that no store's
+     * staged data can sit longer than its configured delay by much.
+     *
+     * <p>The timeout check in {@link #write} only runs when another write arrives, so a server that
+     * goes quiet — which is exactly what autosave looks like, since vanilla does not flush the
+     * region storage on a regular autosave — would leave that last batch in memory until shutdown.
+     * A timer is what makes the configured delay a real bound rather than a best-effort idea.
+     */
+    private static final ScheduledExecutorService TIMER = Executors.newSingleThreadScheduledExecutor(
+        runnable -> {
+            Thread thread = new Thread(runnable, "cso-batch-flush");
+            thread.setDaemon(true);
+            return thread;
+        }
+    );
+    private static final long TIMER_PERIOD_MS = 500L;
+
+    private static final System.Logger LOGGER = System.getLogger(CsoStorage.class.getName());
+
     private final RegionStorageInfo info;
     private final Path folder;
     private final boolean sync;
     private final CsoSettings settings;
+
+    /**
+     * Guards every mutable field below. Reentrant so a guarded method may call another one.
+     *
+     * <p>Held across IO on purpose: two threads rewriting the same bucket at once would corrupt the
+     * file, and the file's own lock is taken inside this one, so the ordering is always
+     * storage-then-file. {@link #flush()} may block the IOWorker for the length of one forced write,
+     * which is the same wait vanilla's own flush imposes.
+     */
+    private final ReentrantLock lock = new ReentrantLock();
 
     private final Map<Long, CsoRegionFile> regions = new LinkedHashMap<>(64, 0.75f, true);
     private final Map<Long, RegionFile> legacyRegions = new LinkedHashMap<>(8, 0.75f, true);
@@ -58,6 +101,8 @@ public final class CsoStorage implements AutoCloseable {
     private long lastFlushMillis = System.currentTimeMillis();
     /** Set once by {@link #release()}; the mixin then stops routing this folder to us. */
     private volatile boolean released;
+    /** Cancels the periodic timeout flush once this storage is closed. */
+    private ScheduledFuture<?> timerTask;
 
     /** "overworld/region" style label, so /cso stats can attribute numbers to one store. */
     private final String label;
@@ -74,6 +119,35 @@ public final class CsoStorage implements AutoCloseable {
         this.settings = settings;
         this.label = labelOf(folder);
         CsoRegistry.add(this);
+        this.timerTask = TIMER.scheduleWithFixedDelay(
+            this::flushIfOverdue, TIMER_PERIOD_MS, TIMER_PERIOD_MS, TimeUnit.MILLISECONDS
+        );
+    }
+
+    /**
+     * The timer's job: write out anything that has been staged longer than the configured delay.
+     *
+     * <p>A failure here is logged, not thrown at the timer thread — the data is still in memory and
+     * the next write or flush tries again, whereas an escaping exception would silently kill the
+     * periodic task and reintroduce the unbounded staging this exists to prevent.
+     */
+    private void flushIfOverdue() {
+        if (this.released) {
+            return;
+        }
+        this.lock.lock();
+        try {
+            if (this.pending.isEmpty()
+                || System.currentTimeMillis() - this.lastFlushMillis < this.settings.batchMaxDelayMs()) {
+                return;
+            }
+            flushPending();
+        } catch (IOException e) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                "Timed flush failed for " + this.folder + "; the batch stays staged", e);
+        } finally {
+            this.lock.unlock();
+        }
     }
 
     private static String labelOf(Path folder) {
@@ -106,9 +180,16 @@ public final class CsoStorage implements AutoCloseable {
      * writing {@code .cso} straight into a directory that was just converted to {@code .mca}.
      */
     public void release() throws IOException {
-        this.released = true;
-        CsoRegistry.remove(this);
-        pauseForConversion();
+        // A released storage serves nothing any more, so its timer has nothing left to flush.
+        cancelTimer();
+        this.lock.lock();
+        try {
+            this.released = true;
+            CsoRegistry.remove(this);
+            pauseForConversion();
+        } finally {
+            this.lock.unlock();
+        }
     }
 
     public long chunksReadCount() {
@@ -133,87 +214,133 @@ public final class CsoStorage implements AutoCloseable {
     // ------------------------------------------------------------------ api
 
     public CompoundTag read(ChunkPos pos) throws IOException {
-        this.chunksRead.increment();
-        byte[] staged = staged(pos);
-        if (staged != null) {
-            return deserialize(staged);
-        }
-        if (isStagedDeleted(pos)) {
-            return null;
-        }
-        byte[] data = region(pos).readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
-        if (data != null) {
-            return deserialize(data);
-        }
-        if (!this.settings.fallbackToMca()) {
-            return null;
-        }
-        RegionFile legacy = legacy(pos);
-        if (legacy == null) {
-            return null;
-        }
-        try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
-            return in == null ? null : NbtIo.read(in);
+        this.lock.lock();
+        try {
+            this.chunksRead.increment();
+            byte[] staged = staged(pos);
+            if (staged != null) {
+                return deserialize(staged);
+            }
+            if (isStagedDeleted(pos)) {
+                return null;
+            }
+            CsoRegionFile file = region(pos);
+            byte[] data = file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            if (data != null) {
+                return deserialize(data);
+            }
+            if (!this.settings.fallbackToMca()) {
+                return null;
+            }
+            // A bucket that CSO has written is authoritative for every slot in it: a zero-length slot
+            // there was deleted on purpose. Falling back for one would resurrect the chunk vanilla
+            // cleared (emptied entity chunks are written as null), so the fallback is only correct
+            // while the bucket has never been written at all.
+            if (file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
+                return null;
+            }
+            RegionFile legacy = legacy(pos);
+            if (legacy == null) {
+                return null;
+            }
+            try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
+                return in == null ? null : NbtIo.read(in);
+            }
+        } finally {
+            this.lock.unlock();
         }
     }
 
     public void write(ChunkPos pos, CompoundTag value) throws IOException {
-        this.chunksWritten.increment();
-        stage(pos, value == null ? null : serialize(value));
-        if (this.pendingCount >= this.settings.batchMaxChunks()
-            || System.currentTimeMillis() - this.lastFlushMillis >= this.settings.batchMaxDelayMs()) {
-            flushPending();
+        this.lock.lock();
+        try {
+            this.chunksWritten.increment();
+            stage(pos, value == null ? null : serialize(value));
+            if (this.pendingCount >= this.settings.batchMaxChunks()
+                || System.currentTimeMillis() - this.lastFlushMillis >= this.settings.batchMaxDelayMs()) {
+                flushPending();
+            }
+        } finally {
+            this.lock.unlock();
         }
     }
 
     public void scanChunk(ChunkPos pos, StreamTagVisitor visitor) throws IOException {
-        byte[] staged = staged(pos);
-        if (staged != null) {
-            NbtIo.parse(new DataInputStream(new ByteArrayInputStream(staged)), visitor, NbtAccounter.unlimitedHeap());
-            return;
-        }
-        if (isStagedDeleted(pos)) {
-            return;
-        }
-        byte[] data = region(pos).readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
-        if (data != null) {
-            NbtIo.parse(new DataInputStream(new ByteArrayInputStream(data)), visitor, NbtAccounter.unlimitedHeap());
-            return;
-        }
-        if (!this.settings.fallbackToMca()) {
-            return;
-        }
-        RegionFile legacy = legacy(pos);
-        if (legacy == null) {
-            return;
-        }
-        try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
-            if (in != null) {
-                NbtIo.parse(in, visitor, NbtAccounter.unlimitedHeap());
+        this.lock.lock();
+        try {
+            byte[] staged = staged(pos);
+            if (staged != null) {
+                NbtIo.parse(new DataInputStream(new ByteArrayInputStream(staged)), visitor, NbtAccounter.unlimitedHeap());
+                return;
             }
+            if (isStagedDeleted(pos)) {
+                return;
+            }
+            CsoRegionFile file = region(pos);
+            byte[] data = file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            if (data != null) {
+                NbtIo.parse(new DataInputStream(new ByteArrayInputStream(data)), visitor, NbtAccounter.unlimitedHeap());
+                return;
+            }
+            if (!this.settings.fallbackToMca()) {
+                return;
+            }
+            // Same reasoning as read(): a written bucket is authoritative for its empty slots.
+            if (file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
+                return;
+            }
+            RegionFile legacy = legacy(pos);
+            if (legacy == null) {
+                return;
+            }
+            try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
+                if (in != null) {
+                    NbtIo.parse(in, visitor, NbtAccounter.unlimitedHeap());
+                }
+            }
+        } finally {
+            this.lock.unlock();
         }
     }
 
     public void flush() throws IOException {
-        long startedAt = System.nanoTime();
+        this.lock.lock();
         try {
-            flushPending();
-            IOException failure = null;
-            for (CsoRegionFile file : this.regions.values()) {
-                try {
-                    file.flush();
-                } catch (IOException e) {
-                    failure = e;
+            long startedAt = System.nanoTime();
+            try {
+                flushPending();
+                IOException failure = null;
+                for (CsoRegionFile file : this.regions.values()) {
+                    try {
+                        file.flush();
+                    } catch (IOException e) {
+                        failure = e;
+                    }
                 }
+                if (failure != null) {
+                    throw failure;
+                }
+                // Housekeeping only after the batch is durable: a failed compaction must not be able to
+                // skip the forced write above.
+                compactOneFile();
+            } finally {
+                this.flushLatency.record(System.nanoTime() - startedAt);
             }
-            if (failure != null) {
-                throw failure;
-            }
-            // Housekeeping only after the batch is durable: a failed compaction must not be able to
-            // skip the forced write above.
-            compactOneFile();
         } finally {
-            this.flushLatency.record(System.nanoTime() - startedAt);
+            this.lock.unlock();
+        }
+    }
+
+    /**
+     * Stops the periodic timeout flush. Idempotent, and safe to call while the task is running:
+     * {@code cancel(false)} only prevents future runs, and the task itself takes the same lock the
+     * caller is about to hold, so the two cannot interleave destructively.
+     */
+    private void cancelTimer() {
+        ScheduledFuture<?> task = this.timerTask;
+        if (task != null) {
+            task.cancel(false);
+            this.timerTask = null;
         }
     }
 
@@ -232,21 +359,26 @@ public final class CsoStorage implements AutoCloseable {
 
     /** Compacts every open region file in this storage. Returns how many were processed. */
     public int compactAll() throws IOException {
-        flushPending();
-        int count = 0;
-        IOException failure = null;
-        for (CsoRegionFile file : this.regions.values()) {
-            try {
-                file.compact();
-                count++;
-            } catch (IOException e) {
-                failure = e;
+        this.lock.lock();
+        try {
+            flushPending();
+            int count = 0;
+            IOException failure = null;
+            for (CsoRegionFile file : this.regions.values()) {
+                try {
+                    file.compact();
+                    count++;
+                } catch (IOException e) {
+                    failure = e;
+                }
             }
+            if (failure != null) {
+                throw failure;
+            }
+            return count;
+        } finally {
+            this.lock.unlock();
         }
-        if (failure != null) {
-            throw failure;
-        }
-        return count;
     }
 
     /**
@@ -256,57 +388,70 @@ public final class CsoStorage implements AutoCloseable {
      * open. Handles are reopened lazily on next access, so this is safe to call at any time.
      */
     public Path pauseForConversion() throws IOException {
-        flushPending();
-        IOException failure = null;
-        for (CsoRegionFile file : this.regions.values()) {
-            try {
-                file.close();
-            } catch (IOException e) {
-                failure = e;
+        this.lock.lock();
+        try {
+            flushPending();
+            IOException failure = null;
+            for (CsoRegionFile file : this.regions.values()) {
+                try {
+                    file.close();
+                } catch (IOException e) {
+                    failure = e;
+                }
             }
-        }
-        this.regions.clear();
-        for (RegionFile file : this.legacyRegions.values()) {
-            try {
-                file.close();
-            } catch (IOException e) {
-                failure = e;
+            this.regions.clear();
+            for (RegionFile file : this.legacyRegions.values()) {
+                try {
+                    file.close();
+                } catch (IOException e) {
+                    failure = e;
+                }
             }
+            this.legacyRegions.clear();
+            if (failure != null) {
+                throw failure;
+            }
+            return this.folder;
+        } finally {
+            this.lock.unlock();
         }
-        this.legacyRegions.clear();
-        if (failure != null) {
-            throw failure;
-        }
-        return this.folder;
     }
 
     @Override
     public void close() throws IOException {
-        CsoRegistry.remove(this);
-        IOException failure = null;
+        // Cancel first, outside the lock: a periodic task that is already running must not be
+        // allowed to re-enter flushPending after the handles below are closed.
+        cancelTimer();
+        this.lock.lock();
         try {
-            flushPending();
-        } catch (IOException e) {
-            failure = e;
-        }
-        for (CsoRegionFile file : this.regions.values()) {
+            CsoRegistry.remove(this);
+            IOException failure = null;
             try {
-                file.close();
+                flushPending();
             } catch (IOException e) {
                 failure = e;
             }
-        }
-        this.regions.clear();
-        for (RegionFile file : this.legacyRegions.values()) {
-            try {
-                file.close();
-            } catch (IOException e) {
-                failure = e;
+            for (CsoRegionFile file : this.regions.values()) {
+                try {
+                    file.close();
+                } catch (IOException e) {
+                    failure = e;
+                }
             }
-        }
-        this.legacyRegions.clear();
-        if (failure != null) {
-            throw failure;
+            this.regions.clear();
+            for (RegionFile file : this.legacyRegions.values()) {
+                try {
+                    file.close();
+                } catch (IOException e) {
+                    failure = e;
+                }
+            }
+            this.legacyRegions.clear();
+            if (failure != null) {
+                throw failure;
+            }
+        } finally {
+            this.lock.unlock();
         }
     }
 

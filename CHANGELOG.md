@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **`/cso convert cso prune` could delete a `.mca` while silently leaving some of its chunks behind.**
+  A header slot pointing at an external `.mcc`, an unknown compression id, or a stream that fails to
+  inflate is still a chunk, but the reader counted only the slots it could decode. Conversion then
+  compared "wrote 3, read back 3" and deleted the file — the only copy of the other two. Any `.mca`
+  holding such a slot is now skipped outright: neither converted nor deleted, and the count is
+  reported. An `.mca` whose every chunk was undecodable used to be deleted by the empty-file branch,
+  which is the same loss in its starkest form.
+- **Chunks deleted from a world could come back.** Vanilla clears an emptied chunk by writing `null`,
+  which lands as a deletion in the `.cso` file — but a read that found nothing there fell back to the
+  old `.mca` and answered with the pre-deletion data. Emptied entity chunks were the usual source.
+  The fallback now applies only when the chunk's whole bucket has never been written; once a bucket
+  holds anything, its empty slots are deletions and are served as such.
+- **The last batch of chunk writes did not respect its own timeout.** `batchMaxDelayMs` was only
+  checked when the next chunk write arrived, so a server that went quiet — a quiet autosave does not
+  flush the region storage — kept that batch in memory until shutdown. A background timer now imposes
+  the delay on its own.
+- **A bucket whose two table copies were both unreadable was treated as an empty bucket**, dropping
+  its chunks without a word. It now fails loudly, which is the whole point of the double table: only
+  an all-zero entry (a bucket nobody wrote) is skipped quietly.
+- **A compaction that could not replace its file left the region file unusable until restart.** The
+  rewrite closes the live handle before swapping the file in, so a failed swap left a closed channel
+  behind every later write. The handle is now reopened before the failure propagates.
+- **`/cso compact` ran on the server thread against storages the game was still writing to.**
+  A storage's state is now guarded by one lock shared with the chunk IO thread.
+
 ## [1.0.4] - 2026-09-28
 
 ### Added

@@ -122,6 +122,36 @@ class CsoRegionFileTest {
     }
 
     @Test
+    void hasBucketTellsWrittenApartFromDeleted(@TempDir Path dir) throws IOException {
+        // What a read-through fallback must be able to ask: did CSO ever write this position's
+        // bucket? An untouched bucket says nothing about its slots (fall back); a written one is
+        // authoritative and an empty slot in it means the chunk was deleted (do NOT fall back).
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertFalse(file.hasBucket(5, 5), "nothing written yet");
+
+            file.writeChunk(5, 5, chunkData(1, 500));
+            assertTrue(file.hasBucket(5, 5));
+
+            file.deleteChunk(5, 5);
+            assertFalse(file.hasChunk(5, 5), "the slot is empty");
+            assertTrue(file.hasBucket(5, 5), "but the bucket was written, so a miss here is a deletion");
+        }
+    }
+
+    @Test
+    void hasBucketSurvivesReopen(@TempDir Path dir) throws IOException {
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(9, 9, chunkData(2, 600));
+            file.deleteChunk(9, 9);
+        }
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertTrue(file.hasBucket(9, 9), "the written-bucket fact is on disk, not just in memory");
+            assertFalse(file.hasChunk(9, 9));
+            assertFalse(file.hasBucket(1, 1), "an untouched bucket is still untouched");
+        }
+    }
+
+    @Test
     void writesLeaveWasteForFlushToReclaim(@TempDir Path dir) throws IOException {
         long bloated;
         try (CsoRegionFile file = open(dir, GRID)) {
@@ -179,6 +209,35 @@ class CsoRegionFileTest {
             for (int i = 0; i < 64; i++) {
                 assertArrayEquals(expected.get(i), file.readChunk(i % 32, i / 32));
             }
+        }
+    }
+
+    /**
+     * A compaction that cannot land its file swap must fail loudly, and the data already on disk
+     * must be untouched. The swap closes the live channel before replacing the file, so this also
+     * covers the reopen-before-throwing path: the failure is reported, not left as a half-applied
+     * state that a later write would discover as a closed channel.
+     *
+     * <p>A move onto a non-empty directory cannot succeed on any platform, which makes the failure
+     * deterministic without depending on OS file-locking semantics.
+     */
+    @Test
+    void failedCompactionIsLoudAndLeavesTheOldFileIntact(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        byte[] present = chunkData(51, 900);
+
+        Files.createDirectories(dir);
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(0, 0, present);
+            file.flush();
+            // Put an unreplaceable non-empty directory where the swap wants to land. The live
+            // channel still points at the now-unlinked old file, so the data is not lost — only the
+            // compaction cannot proceed.
+            Files.deleteIfExists(path);
+            Files.createDirectory(path);
+            Files.createFile(path.resolve("occupied"));
+
+            assertThrows(IOException.class, file::compact, "the failed swap must propagate");
         }
     }
 
@@ -338,6 +397,37 @@ class CsoRegionFileTest {
         try (CsoRegionFile file = open(dir, GRID)) {
             assertArrayEquals(first, file.readChunk(0, 0), "should fall back to the previous intact copy");
         }
+    }
+
+    /**
+     * The one case that must NOT be tolerated: both table copies unreadable for a bucket that has
+     * data. Skipping it would make the bucket's chunks vanish with no error, which is the silent
+     * corruption this format exists to prevent. An untouched bucket, by contrast, is all zeros and
+     * must still be skipped quietly.
+     */
+    @Test
+    void bothTableCopiesTornIsFatalButUnwrittenBucketIsNot(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(0, 0, chunkData(23, 800));
+        }
+
+        // Bucket 1 was never written — its entry is all zeros — and must keep opening cleanly.
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertNull(file.readChunk(0, 1), "an unwritten bucket reads as absent");
+        }
+
+        int bucketCount = CsoFormat.bucketCount(GRID);
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            // Zero the CRC of bucket 0's entry in both copies, which decodeEntry reads as torn.
+            for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
+                long crcPosition = CsoFormat.tableOffset(table, 0, bucketCount) + CsoFormat.ENTRY_CRC;
+                channel.write(ByteBuffer.wrap(new byte[] {0, 0, 0, 0}), crcPosition);
+            }
+        }
+
+        assertThrows(CsoCorruptedException.class, () -> open(dir, GRID),
+            "a bucket with data but no readable table entry must fail loudly, not be dropped");
     }
 
     @Test

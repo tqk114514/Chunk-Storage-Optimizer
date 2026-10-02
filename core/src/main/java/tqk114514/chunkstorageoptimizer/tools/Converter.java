@@ -596,13 +596,21 @@ public final class Converter {
         List<Path> mcaFiles = listFiles(dir, ".mca");
         if (!mcaFiles.isEmpty()) {
             int chunks = 0;
+            int unreadable = 0;
             long bytes = 0;
             for (Path file : mcaFiles) {
-                chunks += AnvilRegionFile.read(file).size();
+                AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(file);
+                chunks += result.chunks().size();
+                unreadable += result.unreadable();
                 bytes += Files.size(file);
             }
             System.out.printf("anvil (.mca) : %d files, %d chunks, %s   avg %d B/chunk%n",
                 mcaFiles.size(), chunks, human(bytes), chunks == 0 ? 0 : bytes / chunks);
+            if (unreadable > 0) {
+                // Without this line the census reads as "that is all there is", which is exactly
+                // how a partial view of a world gets mistaken for the whole thing.
+                System.out.printf("               %d chunk slot(s) present but not decodable%n", unreadable);
+            }
         }
         List<Path> csoFiles = listFiles(dir, ".cso");
         if (!csoFiles.isEmpty()) {
@@ -678,8 +686,22 @@ public final class Converter {
         if ("cso".equals(target)) {
             List<Path> sources = listFiles(dir, ".mca");
             long total = 0;
+            int skipped = 0;
+            int skippedChunks = 0;
             for (Path source : sources) {
-                List<AnvilRegionFile.Chunk> chunks = AnvilRegionFile.read(source);
+                // A slot the header names but this parser cannot decode is still a chunk. Writing a
+                // .cso without it would produce a file that looks converted but is missing data, so
+                // the whole file is skipped rather than partially converted.
+                AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(source);
+                if (result.unreadable() > 0) {
+                    System.out.println(source.getFileName() + " SKIPPED: " + result.unreadable()
+                        + " chunk slot(s) not decodable (external .mcc, unknown compression, or"
+                        + " unreadable stream)");
+                    skipped++;
+                    skippedChunks += result.unreadable();
+                    continue;
+                }
+                List<AnvilRegionFile.Chunk> chunks = result.chunks();
                 if (chunks.isEmpty()) {
                     continue;
                 }
@@ -693,6 +715,10 @@ public final class Converter {
                 System.out.println(out.getFileName() + " <- " + merged.size() + " chunks");
             }
             System.out.println("Converted " + total + " chunks to .cso. Originals left untouched.");
+            if (skipped > 0) {
+                System.out.println("Skipped " + skipped + " file(s) holding " + skippedChunks
+                    + " undecodable chunk(s); their .mca files were left as-is.");
+            }
             return;
         }
         if ("mca".equals(target)) {
@@ -704,7 +730,15 @@ public final class Converter {
                     continue;
                 }
                 Path out = dir.resolve(swapExtension(source.getFileName().toString(), ".mca"));
-                List<AnvilRegionFile.Chunk> merged = Files.exists(out) ? prefer(chunks, AnvilRegionFile.read(out)) : chunks;
+                // The .mca on disk may hold chunks this .cso never saw. Reading it must not drop
+                // them silently, so an undecodable slot here is a hard stop rather than a skip.
+                AnvilRegionFile.ReadResult existing = Files.exists(out)
+                    ? AnvilRegionFile.readReporting(out) : null;
+                if (existing != null && existing.unreadable() > 0) {
+                    throw new IOException("Cannot union into " + out.getFileName() + ": " + existing.unreadable()
+                        + " existing .mca slot(s) are not decodable, and merging would drop them");
+                }
+                List<AnvilRegionFile.Chunk> merged = existing != null ? prefer(chunks, existing.chunks()) : chunks;
                 AnvilRegionFile.write(out, merged);
                 total += merged.size();
                 System.out.println(out.getFileName() + " <- " + merged.size() + " chunks");

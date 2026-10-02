@@ -40,11 +40,36 @@ public final class AnvilRegionFile {
     public record Chunk(int index, byte[] nbt) {
     }
 
+    /**
+     * What a read found, including what it could not read.
+     *
+     * <p>{@code unreadable} counts header slots that name a chunk whose bytes this parser cannot
+     * turn back into NBT: an external {@code .mcc}, an unknown compression id, a codec that is not
+     * on the classpath, or a stream that fails to inflate. Those slots are real chunks, so a caller
+     * that deletes the source file must treat a non-zero count as a reason to stop. Reporting only
+     * the readable chunks is what let {@code convert --prune} delete a file while silently leaving
+     * some of its chunks behind.
+     *
+     * @param chunks     the slots that decoded, in slot order
+     * @param unreadable slots that hold a chunk this parser could not decode
+     */
+    public record ReadResult(List<Chunk> chunks, int unreadable) {
+        public boolean isComplete() {
+            return this.unreadable == 0;
+        }
+    }
+
     public static List<Chunk> read(Path path) throws IOException {
+        return readReporting(path).chunks();
+    }
+
+    /** Reads a region file, reporting both what decoded and how much did not. */
+    public static ReadResult readReporting(Path path) throws IOException {
         List<Chunk> out = new ArrayList<>();
+        int unreadable = 0;
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             if (channel.size() < HEADER_BYTES) {
-                return out;
+                return new ReadResult(out, 0);
             }
             ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
             readFully(channel, header, 0L);
@@ -52,16 +77,21 @@ public final class AnvilRegionFile {
 
             for (int i = 0; i < CHUNKS; i++) {
                 int packed = header.getInt(i * 4);
+                // A zero slot is an unwritten slot, not a chunk we failed on.
                 if (packed == 0) {
                     continue;
                 }
+                // Past here the header names a chunk, so anything that stops us from decoding it
+                // means one chunk would be lost rather than absent.
                 int sector = (packed >> 8) & 0xFFFFFF;
                 int sectorCount = packed & 0xFF;
                 if (sector < 2 || sectorCount == 0) {
+                    unreadable++;
                     continue;
                 }
                 long position = (long) sector * SECTOR_BYTES;
                 if (position + 5 > channel.size()) {
+                    unreadable++;
                     continue;
                 }
                 ByteBuffer prefix = ByteBuffer.allocate(5).order(ByteOrder.BIG_ENDIAN);
@@ -69,11 +99,13 @@ public final class AnvilRegionFile {
                 prefix.flip();
                 int length = prefix.getInt();
                 int compressionId = prefix.get() & 0xFF;
-                if (length <= 1 || (compressionId & 128) != 0) {
-                    continue; // empty, or stored in an external .mcc
+                if (length <= 1) {
+                    // An empty chunk: written as "nothing here", so not a loss.
+                    continue;
                 }
                 int streamLength = length - 1;
                 if (position + 5 + streamLength > channel.size()) {
+                    unreadable++;
                     continue;
                 }
                 byte[] raw = new byte[streamLength];
@@ -81,11 +113,34 @@ public final class AnvilRegionFile {
                 byte[] nbt = decompress(compressionId, raw);
                 if (nbt != null) {
                     out.add(new Chunk(i, nbt));
+                } else {
+                    // External .mcc, unknown id, missing lz4, or a failed inflate.
+                    unreadable++;
                 }
             }
         }
-        return out;
+        return new ReadResult(out, unreadable);
     }
+
+    /** Slots the header marks as holding a chunk. The denominator for "did we read everything". */
+    public static int occupiedSlots(Path path) throws IOException {
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            if (channel.size() < HEADER_BYTES) {
+                return 0;
+            }
+            ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
+            readFully(channel, header, 0L);
+            header.flip();
+            int occupied = 0;
+            for (int i = 0; i < CHUNKS; i++) {
+                if (header.getInt(i * 4) != 0) {
+                    occupied++;
+                }
+            }
+            return occupied;
+        }
+    }
+
 
     /** Writes chunks with zlib compression, matching what vanilla writes by default. */
     public static void write(Path path, List<Chunk> chunks) throws IOException {

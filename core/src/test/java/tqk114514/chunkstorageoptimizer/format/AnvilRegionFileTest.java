@@ -113,4 +113,97 @@ class AnvilRegionFileTest {
         AnvilRegionFile.write(mca, List.of());
         assertTrue(AnvilRegionFile.read(mca).isEmpty(), "empty region should read back empty");
     }
+
+    @Test
+    void unwrittenSlotsAreNotCountedAsLosses(@TempDir Path dir) throws IOException {
+        Path mca = dir.resolve("r.0.0.mca");
+        AnvilRegionFile.write(mca, List.of(new AnvilRegionFile.Chunk(5, chunkData(1))));
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertEquals(1, result.chunks().size());
+        assertEquals(0, result.unreadable(), "a zero header slot is unwritten, not a chunk that failed");
+        assertTrue(result.isComplete());
+        assertEquals(1, AnvilRegionFile.occupiedSlots(mca));
+    }
+
+    @Test
+    void externalAndUnknownCompressionSlotsAreReportedAsUnreadable(@TempDir Path dir) throws IOException {
+        // The exact shape of the silent-loss bug: the header names five chunks, but three of them
+        // are of a kind this parser cannot turn back into NBT. Counting only the readable ones made
+        // convert --prune delete the .mca while leaving those three chunks behind.
+        Path mca = dir.resolve("r.0.0.mca");
+        int[] slots = {0, 1, 2, 3, 4};
+        int[] compressionIds = {2, 2, 2, 130, 7}; // zlib, zlib, zlib, external .mcc, unknown id
+        writeRawMca(mca, slots, compressionIds);
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertEquals(3, result.chunks().size(), "only the zlib chunks decode");
+        assertEquals(2, result.unreadable(), "the external and unknown slots are losses, not absences");
+        assertTrue(!result.isComplete());
+        assertEquals(5, AnvilRegionFile.occupiedSlots(mca), "the header names all five");
+        // The old read() cannot tell the difference — this is what callers must stop relying on.
+        assertEquals(3, AnvilRegionFile.read(mca).size());
+    }
+
+    @Test
+    void allExternalRegionIsReportedAsFullyUnreadable(@TempDir Path dir) throws IOException {
+        Path mca = dir.resolve("r.0.0.mca");
+        writeRawMca(mca, new int[] {0, 1}, new int[] {130, 130});
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertTrue(result.chunks().isEmpty());
+        assertEquals(2, result.unreadable());
+        // A caller that only checks isEmpty() would treat this as "nothing here" and delete it.
+        assertTrue(AnvilRegionFile.read(mca).isEmpty());
+    }
+
+    /**
+     * Hand-builds a region file so slots can carry compression ids the writer never emits — the
+     * external {@code .mcc} flag (id | 128) and an id this parser does not know.
+     *
+     * <p>Zlib slots get a genuine deflate stream so they really decode; the other kinds only need
+     * the header to name them, since the reader rejects them before looking at their bytes.
+     */
+    private static void writeRawMca(Path path, int[] slots, int[] compressionIds) throws IOException {
+        int sectorBytes = 4096;
+        int headerBytes = 8192;
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
+            path, java.nio.file.StandardOpenOption.CREATE,
+            java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
+        )) {
+            java.nio.ByteBuffer header = java.nio.ByteBuffer.allocate(headerBytes)
+                .order(java.nio.ByteOrder.BIG_ENDIAN);
+            int sector = 2;
+            for (int i = 0; i < slots.length; i++) {
+                // Absolute put: the offsets do not need to be written in slot order, and the
+                // timestamp half of the header is left zeroed because the reader ignores it.
+                header.putInt(slots[i] * 4, (sector << 8) | 1);
+                byte[] payload = compressionIds[i] == 2 ? deflateBytes(chunkData(slots[i])) : new byte[] {9};
+                java.nio.ByteBuffer block = java.nio.ByteBuffer.allocate(sectorBytes)
+                    .order(java.nio.ByteOrder.BIG_ENDIAN);
+                block.putInt(payload.length + 1);
+                block.put((byte) compressionIds[i]);
+                block.put(payload);
+                block.flip();
+                channel.write(block, (long) sector * sectorBytes);
+                sector += 1;
+            }
+            // limit(headerBytes), not flip(): the absolute putInt calls never moved the position, so
+            // flip() would leave a zero-length buffer and write an all-zero header.
+            header.limit(headerBytes);
+            header.position(0);
+            channel.write(header, 0L);
+        }
+    }
+
+    private static byte[] deflateBytes(byte[] data) throws IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.DeflaterOutputStream stream = new java.util.zip.DeflaterOutputStream(out)) {
+            stream.write(data);
+        }
+        return out.toByteArray();
+    }
 }

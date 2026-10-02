@@ -219,11 +219,23 @@ public final class CsoCommands {
             int files = 0;
             int chunks = 0;
             int deleted = 0;
+            int unreadableFiles = 0;
+            int unreadableChunks = 0;
             for (Path folder : storeDirectories(root)) {
                 if ("cso".equals(target)) {
                     for (Path mcaFile : Converter.listFiles(folder, ".mca")) {
-                        List<AnvilRegionFile.Chunk> in = AnvilRegionFile.read(mcaFile);
-                        if (in.isEmpty()) {
+                        // A slot the header names but this parser cannot decode is still a chunk.
+                        // Counting only the readable ones is what let prune delete a .mca while
+                        // leaving those chunks behind with no copy anywhere.
+                        AnvilRegionFile.ReadResult in = AnvilRegionFile.readReporting(mcaFile);
+                        if (in.unreadable() > 0) {
+                            // Never touch the source: it is the only copy of those chunks. Any .cso
+                            // written now would hold a strict subset, so it is skipped as well.
+                            unreadableFiles++;
+                            unreadableChunks += in.unreadable();
+                            continue;
+                        }
+                        if (in.chunks().isEmpty()) {
                             // Nothing to carry over. Under prune this file would linger forever,
                             // and once CSO is off there is no second chance to clean it up.
                             if (prune) {
@@ -237,8 +249,8 @@ public final class CsoCommands {
                         // .mca never saw. Writing the .mca over it would drop them, so the two are
                         // unioned with the .cso winning — the same order the live reader uses.
                         List<AnvilRegionFile.Chunk> merged = Files.exists(out)
-                            ? Converter.prefer(Converter.readCso(out), in)
-                            : in;
+                            ? Converter.prefer(Converter.readCso(out), in.chunks())
+                            : in.chunks();
                         CsoSettings settings = CsoRuntime.settings();
                         Converter.writeCso(out, merged, settings.grid(), settings.level());
                         verify(out, merged.size(), target);
@@ -287,6 +299,14 @@ public final class CsoCommands {
             } else {
                 message.append(" Originals kept — repeat with 'prune' to delete them.");
             }
+            if (unreadableFiles > 0) {
+                // These files were neither converted nor deleted. Saying so is the whole point:
+                // silently reporting success over a partial conversion is how a world gets lost.
+                message.append(" SKIPPED ").append(unreadableFiles).append(" file(s) holding ")
+                    .append(unreadableChunks).append(" chunk(s) this build cannot decode")
+                    .append(" (external .mcc, unknown compression, or unreadable stream) — their")
+                    .append(" originals were left untouched.");
+            }
             if ("mca".equals(target)) {
                 message.append(" This world now stays on vanilla storage: the marker ")
                     .append(root.resolve(CsoWorldMarker.FILE_NAME))
@@ -313,15 +333,33 @@ public final class CsoCommands {
     /**
      * Reads the result back before anything is deleted. Deletion is irreversible, so it must never
      * rest on the assumption that the write worked.
+     *
+     * <p>For the {@code .mca} direction this also insists the read-back was complete: a file whose
+     * header names chunks this parser could not decode is not a verified file, even when the count
+     * of the ones it could read happens to match.
      */
     private static void verify(Path written, int expectedChunks, String target) throws IOException {
-        int actual = "cso".equals(target)
-            ? Converter.readCso(written).size()
-            : AnvilRegionFile.read(written).size();
-        if (actual != expectedChunks) {
+        if ("cso".equals(target)) {
+            int actual = Converter.readCso(written).size();
+            if (actual != expectedChunks) {
+                throw new IOException(
+                    "verification failed for " + written.getFileName() + ": wrote " + expectedChunks
+                        + " chunks but read back " + actual + " — nothing was deleted"
+                );
+            }
+            return;
+        }
+        AnvilRegionFile.ReadResult back = AnvilRegionFile.readReporting(written);
+        if (back.unreadable() > 0) {
+            throw new IOException(
+                "verification failed for " + written.getFileName() + ": " + back.unreadable()
+                    + " slot(s) could not be read back — nothing was deleted"
+            );
+        }
+        if (back.chunks().size() != expectedChunks) {
             throw new IOException(
                 "verification failed for " + written.getFileName() + ": wrote " + expectedChunks
-                    + " chunks but read back " + actual + " — nothing was deleted"
+                    + " chunks but read back " + back.chunks().size() + " — nothing was deleted"
             );
         }
     }

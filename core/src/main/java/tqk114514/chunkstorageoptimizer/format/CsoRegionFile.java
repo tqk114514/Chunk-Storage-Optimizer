@@ -235,16 +235,30 @@ public final class CsoRegionFile implements Closeable {
             // damage the copy being written; the other one still points at intact data.
             BucketEntry newest = null;
             int newestTable = 0;
+            boolean allBlank = true;
             for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
-                BucketEntry candidate = decodeEntry(tables, table * this.bucketCount * BUCKET_ENTRY_SIZE
-                    + i * BUCKET_ENTRY_SIZE);
+                int base = table * this.bucketCount * BUCKET_ENTRY_SIZE + i * BUCKET_ENTRY_SIZE;
+                if (!isBlankEntry(tables, base)) {
+                    allBlank = false;
+                }
+                BucketEntry candidate = decodeEntry(tables, base);
                 if (candidate != null && (newest == null || candidate.sequence > newest.sequence)) {
                     newest = candidate;
                     newestTable = table;
                 }
             }
             if (newest == null) {
-                continue;
+                // No copy validated. An all-zero entry is a bucket nobody ever wrote, so skipping it
+                // is correct. Anything else is a torn or damaged entry, and treating it as "never
+                // written" would drop that bucket's chunks without a word — the one failure mode
+                // this format must never have. Both copies are only ever blank together, so reaching
+                // here with real bytes means the data cannot be recovered.
+                if (allBlank) {
+                    continue;
+                }
+                throw new CsoCorruptedException(
+                    "Bucket " + i + " in " + this.path + " has no readable table entry in either copy"
+                );
             }
             BucketEntry e = this.entries[i];
             e.offset = newest.offset;
@@ -376,6 +390,22 @@ public final class CsoRegionFile implements Closeable {
         return e;
     }
 
+    /**
+     * Whether a table entry is all zeros, which is what a bucket nobody ever wrote looks like.
+     *
+     * <p>This is the only shape that may be skipped without complaint. Its own CRC field is zero
+     * too, but the CRC of the remaining 28 zero bytes is not, so {@link #decodeEntry} rejects it
+     * the same way it rejects a torn entry — the two are told apart here instead.
+     */
+    private static boolean isBlankEntry(byte[] buffer, int base) {
+        for (int i = 0; i < BUCKET_ENTRY_SIZE; i++) {
+            if (buffer[base + i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ------------------------------------------------------------------ payload
 
     private byte[] getPayload(int bucket) throws IOException {
@@ -442,6 +472,24 @@ public final class CsoRegionFile implements Closeable {
             return false;
         }
         return CsoFormat.readInt(payload, idx * CHUNK_ENTRY_SIZE + 4) > 0;
+    }
+
+    /**
+     * Whether this file has ever been written at the given position's bucket.
+     *
+     * <p>A bucket with no entry has never been touched, so nothing is known about its slots. A
+     * bucket that does have an entry is authoritative for every slot in it: a slot whose length is
+     * zero was explicitly deleted, not merely absent. Callers that fall back to another format on a
+     * miss need this to tell "never migrated" apart from "migrated and then deleted" — reading the
+     * former from the fallback is the point, reading the latter resurrects deleted chunks.
+     *
+     * <p>Deliberately checks the entry, not {@link #getPayload}: a bucket whose every chunk was
+     * deleted still has an entry, but its payload is not worth holding in memory, so getPayload
+     * reports it as absent. That is exactly the case this method exists to detect.
+     */
+    public synchronized boolean hasBucket(int localX, int localZ) {
+        BucketEntry entry = this.entries[CsoFormat.bucketIndex(localX, localZ, this.grid)];
+        return entry.offset != 0 && entry.compressedLength > 0;
     }
 
     public synchronized void writeChunk(int localX, int localZ, byte[] data) throws IOException {
@@ -856,8 +904,34 @@ public final class CsoRegionFile implements Closeable {
                 out.force(true);
             }
 
+            // From here the live channel is gone and this.path is being replaced, so any failure in
+            // between would leave the object holding a closed channel: every later write and every
+            // flush would then fail until the game restarted. The channel is therefore reopened on
+            // the way out no matter how the swap goes, and a failure to do so is reported rather
+            // than swallowed.
             this.channel.close();
-            Files.move(tmp, this.path, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tmp, this.path, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException moveFailure) {
+                // The swap failed, so the file this object serves is still the pre-compaction one.
+                // Reopening it keeps the object usable; the recovered copy is discarded. A failure
+                // to reopen has to be attached rather than replace the move failure, or the reason
+                // the compaction broke would be lost.
+                try {
+                    this.channel = FileChannel.open(
+                        this.path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE
+                    );
+                } catch (IOException reopenFailure) {
+                    moveFailure.addSuppressed(reopenFailure);
+                    throw moveFailure;
+                }
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // A leftover .tmp is inert; the next compaction truncates it.
+                }
+                throw moveFailure;
+            }
             this.channel = FileChannel.open(
                 this.path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE
             );
