@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.6] - 2026-10-03
 
 ### Fixed
 - **Progressive migration could overwrite the chunks it had not migrated yet.** A bucket's first
