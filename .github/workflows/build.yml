@@ -1,8 +1,13 @@
 name: Build
 
-# A tag is a release: the same matrix that builds on every push also feeds Modrinth. A manual run
-# does everything a tag does without cutting one, which is how the upload path gets exercised — it
-# only plans by default, and publishes when the box is unticked.
+# A release is cut with one tag per row of supported-versions.csv, all on the same commit. Pushing
+# them is therefore fourteen separate pushes, and GitHub starts a run per tag — fourteen full builds,
+# and with publishing attached, fourteen uploads of the same jars. So the tag belonging to the
+# *first* row of the csv is the one that counts as the release; the other thirteen tags still land,
+# they just do not each rebuild and re-upload the same twenty-two jars.
+#
+# A manual run does everything a release does without cutting a tag, which is how the upload path
+# gets exercised. It plans by default and publishes when the box is unticked.
 on:
   push:
   pull_request:
@@ -14,37 +19,75 @@ on:
         default: true
 
 jobs:
-  # The matrix is read from supported-versions.csv so it cannot drift from the table the build
-  # scripts compile against — one row missing from either side is now impossible. Each row expands
-  # to one job per loader that actually ships for that Minecraft.
+  # Everything that decides *what* to build and *whether* to publish is worked out here, so the two
+  # jobs below stay simple and the matrix — read from supported-versions.csv so it cannot drift from
+  # the table the build scripts compile against — exists in exactly one place.
   discover:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.list.outputs.matrix }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      build: ${{ steps.plan.outputs.build }}
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: List the loader and Minecraft pairs to build
-        id: list
+
+      - name: Work out the matrix, and what this event is for
+        id: plan
         run: |
+          set -euo pipefail
+          rows=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$')
+
           # -c is not cosmetic: a multi-line value cannot be written through $GITHUB_OUTPUT.
-          # \r is stripped because the csv may be checked out with CRLF on Windows clones.
           # A '-' in a loader's column means that loader never shipped for that Minecraft, so the
           # pair gets no job; column 4 is the NeoForge floor, column 5 the Fabric API.
-          matrix=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$' \
-            | jq -Rsc '
-                split("\n")
-                | map(select(length > 0) | split(","))
-                | map(
-                    (if .[3] != "-" then [{loader: "neoforge", minecraft_version: .[0]}] else [] end)
-                    + (if .[4] != "-" then [{loader: "fabric", minecraft_version: .[0]}] else [] end)
-                  )
-                | add')
+          matrix=$(printf '%s\n' "$rows" | jq -Rsc '
+              split("\n")
+              | map(select(length > 0) | split(","))
+              | map(
+                  (if .[3] != "-" then [{loader: "neoforge", minecraft_version: .[0]}] else [] end)
+                  + (if .[4] != "-" then [{loader: "fabric", minecraft_version: .[0]}] else [] end)
+                )
+              | add')
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "matrix: $matrix"
 
+          version=$(sed -n 's/^mod_version=//p' gradle.properties | tr -d '\r')
+          first_mc=$(printf '%s\n' "$rows" | head -1 | cut -d, -f1)
+
+          build=true
+          release=false
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # A tag carries the version as well (mc-<minecraft>-<version>), so one that disagrees
+            # with gradle.properties would publish jars under the wrong number. Refuse instead of
+            # quietly doing nothing, which is what a missed anchor tag would otherwise look like.
+            tag_version=${GITHUB_REF_NAME##*-}
+            if [ "$tag_version" != "$version" ]; then
+              echo "tag $GITHUB_REF_NAME names version $tag_version, but gradle.properties says $version" >&2
+              exit 1
+            fi
+            if [ "$GITHUB_REF_NAME" = "mc-${first_mc}-${version}" ]; then
+              release=true
+            else
+              # One of the other thirteen tags for this same commit: the anchor run builds and
+              # publishes everything, so this one has nothing left to do.
+              build=false
+              echo "not the anchor tag (mc-${first_mc}-${version}); nothing to build here"
+            fi
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            release=true
+          fi
+
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build: $build, release: $release, version: $version"
+
   build:
     needs: discover
+    if: needs.discover.outputs.build == 'true'
     runs-on: ubuntu-latest
     strategy:
       # One broken combination must not hide whether the others still build — that is the whole
@@ -107,33 +150,16 @@ jobs:
           path: ${{ matrix.loader }}/build/libs/*.jar
           if-no-files-found: error
 
-  # Publishing lives here rather than in a workflow of its own so the matrix — which is derived from
-  # supported-versions.csv — exists in exactly one place. It goes to Modrinth as one version per
-  # (loader, Minecraft) pair: a version's `loaders` and `game_versions` are what the launcher matches
-  # on before taking that version's primary file, so folding both loaders into a single version
-  # would hand a Fabric player the NeoForge jar.
+  # Publishing goes to Modrinth as one version per (loader, Minecraft) pair: a version's `loaders`
+  # and `game_versions` are what the launcher matches on before taking that version's primary file,
+  # so folding both loaders into a single version would hand a Fabric player the NeoForge jar.
   publish:
     needs: [discover, build]
-    if: startsWith(github.ref, 'refs/tags/mc-') || github.event_name == 'workflow_dispatch'
+    if: needs.discover.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Work out the version, and check a tag agrees with it
-        id: version
-        run: |
-          version=$(sed -n 's/^mod_version=//p' gradle.properties | tr -d '\r')
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            # The tag carries the version too (mc-<minecraft>-<version>), so a tag that disagrees
-            # with gradle.properties would publish jars under the wrong number. Refuse instead.
-            tagged=${GITHUB_REF_NAME##*-}
-            if [ "$tagged" != "$version" ]; then
-              echo "tag $GITHUB_REF_NAME does not name the version in gradle.properties ($version)" >&2
-              exit 1
-            fi
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Collect the jars the matrix built
         uses: actions/download-artifact@v4
@@ -147,7 +173,7 @@ jobs:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           # A repository variable, so the slug can be corrected without editing this file.
           MODRINTH_PROJECT: ${{ vars.MODRINTH_PROJECT || 'chunk-storage-optimizer' }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.discover.outputs.version }}
           JARS_DIR: dist
           # A tag publishes. A manual run only plans unless the box was unticked.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run || 'false' }}

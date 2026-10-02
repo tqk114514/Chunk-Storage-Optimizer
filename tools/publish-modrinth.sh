@@ -16,6 +16,7 @@
 #   CHANGELOG_FILE    where this version's notes are lifted from (default: CHANGELOG.md)
 #   VERSION_TYPE      release | beta | alpha (default: release)
 #   VERSION_STATUS    listed | draft | unlisted | archived (default: listed)
+#   FORCE             "true" uploads even where this version already exists
 #   DRY_RUN           "true" prints the plan and calls nothing
 #
 # API: https://docs.modrinth.com/api/operations/createversion/
@@ -30,12 +31,39 @@ JARS_DIR="${JARS_DIR:-dist}"
 CHANGELOG_FILE="${CHANGELOG_FILE:-CHANGELOG.md}"
 VERSION_TYPE="${VERSION_TYPE:-release}"
 VERSION_STATUS="${VERSION_STATUS:-listed}"
+FORCE="${FORCE:-false}"
 DRY_RUN="${DRY_RUN:-false}"
 
 API="https://api.modrinth.com/v2"
 # A uniquely identifying User-Agent is mandatory, and one that only names the HTTP client gets
 # traffic blocked. The version is in it so a release stays traceable from Modrinth's side.
 USER_AGENT="tqk114514/chunkstorageoptimizer/${VERSION} (https://github.com/tqk114514/Chunk-Storage-Optimizer)"
+
+# Answers "yes", "no", or "unknown" when the question could not be asked at all.
+#
+# This is what makes a run repeatable: a release that died half way can simply be re-run, and the
+# jars already up are skipped while the rest go up. Without it a re-run would double every version.
+already_published() {
+    local minecraft="$1" loader="$2" response code body
+    response=$(curl -sS --max-time 60 -w $'\n%{http_code}' \
+        -H "Authorization: $MODRINTH_TOKEN" \
+        -H "User-Agent: $USER_AGENT" \
+        --get \
+        --data-urlencode "loaders=[\"$loader\"]" \
+        --data-urlencode "game_versions=[\"$minecraft\"]" \
+        "$API/project/$MODRINTH_PROJECT/version") || { echo unknown; return 0; }
+    code=$(tail -n1 <<<"$response")
+    body=$(sed '$d' <<<"$response")
+    if [ "$code" != "200" ]; then
+        echo unknown
+        return 0
+    fi
+    if [ "$(jq --arg v "$VERSION" '[.[] | select(.version_number == $v)] | length' <<<"$body")" = "0" ]; then
+        echo no
+    else
+        echo yes
+    fi
+}
 
 # This version's notes: from its own heading up to the next one. The field is nullable, so a miss
 # is not fatal, but a release that arrives with no notes is worse than one that says why.
@@ -108,6 +136,23 @@ for jar in "${jars[@]}"; do
     if [ "$DRY_RUN" = "true" ]; then
         echo "would publish $name  ->  $minecraft / $loader"
         continue
+    fi
+
+    if [ "$FORCE" != "true" ]; then
+        case "$(already_published "$minecraft" "$loader")" in
+            yes)
+                echo "skipped $name  ->  $minecraft / $loader already has $VERSION"
+                continue
+                ;;
+            no) ;;
+            *)
+                # Not being able to ask is not a licence to guess: creating blind is what would
+                # produce a duplicate, so this jar is counted as a failure instead.
+                echo "FAILED $name: could not list the project's versions, not guessing" >&2
+                failures=$((failures + 1))
+                continue
+                ;;
+        esac
     fi
 
     ok=false
