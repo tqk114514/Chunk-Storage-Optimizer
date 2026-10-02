@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.5] - 2026-10-02
 
 ### Fixed
 - **`/cso convert cso prune` could delete a `.mca` while silently leaving some of its chunks behind.**
