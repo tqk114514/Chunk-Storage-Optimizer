@@ -67,6 +67,39 @@ already_published() {
     fi
 }
 
+# Modrinth tags a two-part Minecraft version the way the game spells it ("26.2"), while the csv
+# spells it the way the loader does ("26.2.0" — see the note at the top of supported-versions.csv).
+# Measured: 26.2.0 is not a tag Modrinth knows, 26.2 is.
+#
+# The tag list is the authority on which spelling is real, so it is fetched once and every version is
+# resolved against it before anything is uploaded. A version that cannot be resolved is a systematic
+# mistake, and finding it here costs one clear message instead of twenty-two 400s and a red run.
+game_tags=$(curl -sS --max-time 60 -H "User-Agent: $USER_AGENT" "$API/tag/game_version" \
+    | jq -r '.[].version') || {
+    echo "could not fetch Modrinth's game version tags" >&2
+    exit 1
+}
+if [ -z "$game_tags" ]; then
+    echo "Modrinth returned an empty game version tag list" >&2
+    exit 1
+fi
+
+# The tag Modrinth knows this Minecraft by, or a failure when it knows none of the spellings.
+game_version_tag() {
+    local minecraft="$1" stripped
+    if grep -qxF "$minecraft" <<<"$game_tags"; then
+        printf '%s' "$minecraft"
+        return 0
+    fi
+    stripped="${minecraft%.0}"
+    if [ "$stripped" != "$minecraft" ] && grep -qxF "$stripped" <<<"$game_tags"; then
+        printf '%s' "$stripped"
+        return 0
+    fi
+    return 1
+}
+
+
 # This version's notes: from its own heading up to the next one. The field is nullable, so a miss
 # is not fatal, but a release that arrives with no notes is worse than one that says why.
 changelog=$(awk -v v="$VERSION" '
@@ -106,18 +139,25 @@ for jar in "${jars[@]}"; do
         continue
     fi
 
-    # Fabric needs Fabric API. Nothing on the NeoForge side is a Modrinth project, so the loader
-    # itself is not listed — the version's `loaders` field is what says that.
+    game_version=$(game_version_tag "$minecraft") || {
+        echo "FAILED $name: Modrinth has no game version tag for '$minecraft'" >&2
+        failures=$((failures + 1))
+        continue
+    }
+
+    # Fabric needs Fabric API. The id is used rather than the slug because that is the identifier
+    # this field names, and an id cannot be renamed out from under us. Nothing on the NeoForge side
+    # is a Modrinth project, so the loader itself is not listed — `loaders` says that instead.
     dependencies='[]'
     if [ "$loader" = "fabric" ]; then
-        dependencies='[{"project_id":"fabric-api","dependency_type":"required"}]'
+        dependencies='[{"project_id":"P7dR8mSH","dependency_type":"required"}]'
     fi
 
     data=$(jq -nc \
-        --arg name "Chunk Storage Optimizer ${VERSION} for ${minecraft} (${loader})" \
+        --arg name "Chunk Storage Optimizer ${VERSION} for ${game_version} (${loader})" \
         --arg number "$VERSION" \
         --arg changelog "$changelog" \
-        --arg minecraft "$minecraft" \
+        --arg minecraft "$game_version" \
         --arg loader "$loader" \
         --arg project "$MODRINTH_PROJECT" \
         --arg type "$VERSION_TYPE" \
@@ -136,14 +176,14 @@ for jar in "${jars[@]}"; do
           primary_file: "file"}')
 
     if [ "$DRY_RUN" = "true" ]; then
-        echo "would publish $name  ->  $minecraft / $loader"
+        echo "would publish $name  ->  $game_version / $loader"
         continue
     fi
 
     if [ "$FORCE" != "true" ]; then
-        case "$(already_published "$minecraft" "$loader")" in
+        case "$(already_published "$game_version" "$loader")" in
             yes)
-                echo "skipped $name  ->  $minecraft / $loader already has $VERSION"
+                echo "skipped $name  ->  $game_version / $loader already has $VERSION"
                 continue
                 ;;
             no) ;;
@@ -161,11 +201,20 @@ for jar in "${jars[@]}"; do
     for attempt in 1 2 3; do
         # --form-string, not -F: curl's -F splits its argument on ',' and ';' and JSON is full of
         # commas, so -F would tear the body apart into extra form parts.
+        #
+        # The `||` is load-bearing: under `set -e` an assignment whose command substitution fails
+        # takes the whole script down, so a timeout or a reset connection would end the run on the
+        # spot — no retry, no attempt at the remaining jars, no summary. Failing to reach the server
+        # is exactly the case the retry below exists for, so it has to be caught here to get there.
         response=$(curl -sS --max-time 300 -w $'\n%{http_code}' -X POST "$API/version" \
             -H "Authorization: $MODRINTH_TOKEN" \
             -H "User-Agent: $USER_AGENT" \
             --form-string "data=$data" \
-            -F "file=@${jar};type=application/java-archive")
+            -F "file=@${jar};type=application/java-archive") || {
+            echo "  $name: curl failed (attempt $attempt)" >&2
+            sleep 10
+            continue
+        }
         code=$(tail -n1 <<<"$response")
         body=$(sed '$d' <<<"$response")
 
@@ -187,7 +236,7 @@ for jar in "${jars[@]}"; do
     done
 
     if [ "$ok" = "true" ]; then
-        echo "published $name  ->  $minecraft / $loader"
+        echo "published $name  ->  $game_version / $loader"
     else
         failures=$((failures + 1))
     fi
