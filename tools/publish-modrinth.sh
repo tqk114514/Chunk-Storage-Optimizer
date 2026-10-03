@@ -60,7 +60,7 @@ already_published() {
     code=$(tail -n1 <<<"$response")
     body=$(sed '$d' <<<"$response")
     if [ "$code" != "200" ]; then
-        echo unknown
+        echo "unknown:$code"
         return 0
     fi
     if [ "$(jq --arg v "$VERSION" '[.[] | select(.version_number == $v)] | length' <<<"$body")" = "0" ]; then
@@ -102,6 +102,31 @@ game_version_tag() {
     return 1
 }
 
+
+# Can the token see this project at all?
+#
+# A project still under review is not publicly readable, and a token without a read scope gets the
+# same 404 a stranger would — which then looks exactly like "the project id is wrong". Asking once,
+# before a single jar is touched, turns that into one clear message instead of twenty-two identical
+# failures, and it validates MODRINTH_PROJECT as a side effect.
+preflight=$(curl -sS --max-time 60 -w $'\n%{http_code}' \
+    -H "Authorization: $MODRINTH_TOKEN" \
+    -H "User-Agent: $USER_AGENT" \
+    "$API/project/$MODRINTH_PROJECT") || {
+    echo "could not reach Modrinth to check project $MODRINTH_PROJECT" >&2
+    exit 1
+}
+code=$(tail -n1 <<<"$preflight")
+body=$(sed '$d' <<<"$preflight")
+if [ "$code" != "200" ]; then
+    # Modrinth answers 404 rather than 403 for a project the token cannot read, so this is
+    # indistinguishable from a wrong id at the HTTP level. Say which it is likely to be.
+    echo "cannot read project $MODRINTH_PROJECT (HTTP $code): $body" >&2
+    echo "A project still under review is not publicly readable, so a token meant for publishing" >&2
+    echo "needs PROJECT_READ and VERSION_READ on top of VERSION_CREATE. Recreate it with those" >&2
+    echo "ticked, update the MODRINTH_TOKEN secret, and run again." >&2
+    exit 1
+fi
 
 # This version's notes. Every jar of a release carries the same text, because they are one release:
 # the notes belong to the version, not to the file, and they are read once here rather than per jar.
@@ -194,7 +219,8 @@ for jar in "${jars[@]}"; do
     fi
 
     if [ "$FORCE" != "true" ]; then
-        case "$(already_published "$game_version" "$loader")" in
+        state=$(already_published "$game_version" "$loader")
+        case "$state" in
             yes)
                 echo "skipped $name  ->  $game_version / $loader already has $VERSION"
                 continue
@@ -202,8 +228,9 @@ for jar in "${jars[@]}"; do
             no) ;;
             *)
                 # Not being able to ask is not a licence to guess: creating blind is what would
-                # produce a duplicate, so this jar is counted as a failure instead.
-                echo "FAILED $name: could not list the project's versions, not guessing" >&2
+                # produce a duplicate, so this jar is counted as a failure instead. The state carries
+                # the HTTP code, because "could not ask" on its own says nothing about why.
+                echo "FAILED $name: could not list the project's versions ($state), not guessing" >&2
                 failures=$((failures + 1))
                 continue
                 ;;

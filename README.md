@@ -445,8 +445,10 @@ tools/oldest-stable-neoforge.sh 26.3.0
 一次性配置在 Settings → Secrets and variables → Actions，两项都取 **repository** 作用域：配成
 environment 的话工作流看不见，而且不报错，只表现为 token 是空的。
 
-- **Repository secret `MODRINTH_TOKEN`** —— Modrinth 个人访问令牌，需要 `VERSION_CREATE` 权限，
-  在 <https://modrinth.com/settings/account> 生成。名字大小写敏感。
+- **Repository secret `MODRINTH_TOKEN`** —— Modrinth 个人访问令牌，在
+  <https://modrinth.com/settings/account> 生成。需要 **`VERSION_CREATE` + `PROJECT_READ` +
+  `VERSION_READ`** 三个权限：只给 `VERSION_CREATE` 的话，项目还在审核中时连读都读不到——而
+  Modrinth 对无权读的项目返回的是 **404 而不是 403**，看起来像 id 写错了。名字大小写敏感。
 - **Repository variable `MODRINTH_PROJECT`**（在 Variables 标签页，不是 Secrets 页）—— 项目的
   **id**，就是你在 Modrinth 上看到的那个 8 位串（形如 `cJqzw49d`）。**优先填 id 而不是 slug**：
   slug 随时可以改，id 恒定，而这条配置是要长期放着的——填 slug 的话，哪天改了项目名它就会
