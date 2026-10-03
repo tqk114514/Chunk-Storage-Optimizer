@@ -440,11 +440,23 @@ tools/oldest-stable-neoforge.sh 26.3.0
 
 ### 发布
 
-打一个 `mc-<minecraft>-<version>` 的 tag 就会自动发到 Modrinth：CI 先把 csv 里每个
-（加载器，版本）组合编成 jar，再**一个 jar 一个 Modrinth 版本条目**地传上去。每个条目只声明
-自己那一个加载器和那一个游戏版本——这是启动器能自己挑对文件的唯一分组方式，把两个加载器的 jar
-塞进同一个条目只会让其中一侧的玩家下到错的 jar。一次性配置（一个 token secret）与手工演练方式
-见 `docs/releasing.md`。
+打一个 `mc-<minecraft>-<version>` 的 tag 就会自动发到 Modrinth，不用手动传。
+
+一次性配置在 Settings → Secrets and variables → Actions，两项都取 **repository** 作用域：配成
+environment 的话工作流看不见，而且不报错，只表现为 token 是空的。
+
+- **Repository secret `MODRINTH_TOKEN`** —— Modrinth 个人访问令牌，需要 `VERSION_CREATE` 权限，
+  在 <https://modrinth.com/settings/account> 生成。名字大小写敏感。
+- **Repository variable `MODRINTH_PROJECT`**（在 Variables 标签页，不是 Secrets 页）—— 项目的
+  slug 或 id，也就是它 Modrinth 链接的最后一段。可选，默认 `chunk-storage-optimizer`。
+
+一次发行要打 14 个 tag（每行 csv 一个），而 GitHub 是**一个 tag 起一次 workflow run**，所以
+csv **第一行**对应的那个 tag 才算发行，其余 13 个连重编都不做。为什么这么定、以及为什么是
+「一个 jar 一个版本条目」，都写在 `.github/workflows/build.yml` 的注释里。
+
+上传是**幂等**的：建版本前先问项目该（游戏版本，加载器）下是否已有这个版本号，有就跳过，所以
+中途失败重跑一次只会补没传上去的那几个。不打 tag 也可以在 Actions 里手动跑一次（默认只演练、
+不真传），已 tag 过的版本也能这样补传。
 
 ### 跨版本的编译缝
 
