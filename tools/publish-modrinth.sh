@@ -9,7 +9,7 @@
 #
 # Required environment:
 #   MODRINTH_TOKEN    personal access token with the VERSION_CREATE scope
-#   MODRINTH_PROJECT  the project's id or slug
+#   MODRINTH_PROJECT  the project's id (a slug also works, but an id cannot be renamed away)
 #   VERSION           the mod version, e.g. 1.0.7
 # Optional:
 #   JARS_DIR          where the built jars are (default: dist)
@@ -18,6 +18,9 @@
 #   VERSION_STATUS    listed | draft | unlisted | archived (default: listed)
 #   FORCE             "true" uploads even where this version already exists
 #   DRY_RUN           "true" prints the plan and calls nothing
+#
+# CHANGELOG_FILE must carry a `## [<version>]` section with content under it, or nothing is uploaded:
+# a release is not published without its notes. The heading itself is not sent — see below.
 #
 # API: https://docs.modrinth.com/api/operations/createversion/
 
@@ -100,8 +103,16 @@ game_version_tag() {
 }
 
 
-# This version's notes: from its own heading up to the next one. The field is nullable, so a miss
-# is not fatal, but a release that arrives with no notes is worse than one that says why.
+# This version's notes. Every jar of a release carries the same text, because they are one release:
+# the notes belong to the version, not to the file, and they are read once here rather than per jar.
+#
+# The heading is left out on purpose. `## [1.0.7] - 2026-10-03` is this file's own table of contents,
+# and Modrinth already shows the version number beside the changelog, so only the body goes up. Any
+# suffix on the heading (the `— unreleased` markers, say) goes with it.
+#
+# A release with no notes is not worth publishing, so a missing or empty section is fatal rather than
+# a warning. This runs before anything is uploaded, so it costs one clear message instead of a
+# release that quietly goes out blank.
 changelog=$(awk -v v="$VERSION" '
     index($0, "## [" v "]") == 1 { inside = 1; next }
     inside && index($0, "## [") == 1 { exit }
@@ -109,7 +120,9 @@ changelog=$(awk -v v="$VERSION" '
 ' "$CHANGELOG_FILE")
 
 if [ -z "${changelog//[[:space:]]/}" ]; then
-    echo "warning: no '## [$VERSION]' section in $CHANGELOG_FILE, publishing without notes" >&2
+    echo "$CHANGELOG_FILE has no '## [$VERSION]' section with content under it" >&2
+    echo "every release publishes its notes, so this is fatal rather than a warning" >&2
+    exit 1
 fi
 
 shopt -s nullglob
