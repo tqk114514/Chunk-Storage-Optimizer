@@ -440,7 +440,11 @@ tools/oldest-stable-neoforge.sh 26.3.0
 
 ### 发布
 
-打一个 `mc-<minecraft>-<version>` 的 tag 就会自动发到 Modrinth，不用手动传。
+打一个 `v<version>` 的 tag 就会自动发到 Modrinth，不用手动传。
+
+**打什么 tag 与编什么无关。** 编译矩阵来自 `supported-versions.csv`，所以**一个 tag 就会编出全部
+22 个 jar**（NeoForge 10 + Fabric 12）并全部发布——tag 只决定「什么时候触发」。tag 里的版本号必须
+与 `gradle.properties` 的 `mod_version` 一致，不一致会直接失败，免得把 jar 发成错的版本号。
 
 一次性配置在 Settings → Secrets and variables → Actions，两项都取 **repository** 作用域：配成
 environment 的话工作流看不见，而且不报错，只表现为 token 是空的。
@@ -454,9 +458,7 @@ environment 的话工作流看不见，而且不报错，只表现为 token 是�
   slug 随时可以改，id 恒定，而这条配置是要长期放着的——填 slug 的话，哪天改了项目名它就会
   静默失效，表现为 404 而不是「slug 变了」。
 
-一次发行要打 14 个 tag（每行 csv 一个），而 GitHub 是**一个 tag 起一次 workflow run**，所以
-csv **第一行**对应的那个 tag 才算发行，其余 13 个连重编都不做。为什么这么定、以及为什么是
-「一个 jar 一个版本条目」，都写在 `.github/workflows/build.yml` 的注释里。
+为什么一个 jar 一个版本条目，写在 `.github/workflows/build.yml` 的注释里。
 
 发布说明取自 `CHANGELOG.md` 里 `## [<版本>]` 那一段的**正文**：标题行本身不发（它是变更日志自己的
 目录，而 Modrinth 会在说明旁边显示版本号）。同一版本的 22 个条目用**同一份**说明——它们是一次发行，

@@ -1,15 +1,17 @@
 name: Build
 
-# A release is cut with one tag per row of supported-versions.csv, all on the same commit. Pushing
-# them is therefore fourteen separate pushes, and GitHub starts a run per tag — fourteen full builds,
-# and with publishing attached, fourteen uploads of the same jars. So the tag belonging to the
-# *first* row of the csv is the one that counts as the release; the other thirteen tags still land,
-# they just do not each rebuild and re-upload the same twenty-two jars.
+# A release is one tag, `v<version>`. What gets built does not come from the tag at all — the matrix
+# is read from supported-versions.csv — so a single tag builds every jar for every Minecraft the mod
+# ships for and publishes all of them. The earlier convention of one tag per csv row meant fourteen
+# tags per release, and because GitHub starts a run per tag that was fourteen runs, thirteen of which
+# had nothing to do.
 #
 # A manual run does everything a release does without cutting a tag, which is how the upload path
 # gets exercised. It plans by default and publishes when the box is unticked.
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -19,14 +21,13 @@ on:
         default: true
 
 jobs:
-  # Everything that decides *what* to build and *whether* to publish is worked out here, so the two
-  # jobs below stay simple and the matrix — read from supported-versions.csv so it cannot drift from
-  # the table the build scripts compile against — exists in exactly one place.
+  # The matrix and the release decision are both worked out here, so the two jobs below stay simple
+  # and the matrix — read from supported-versions.csv so it cannot drift from the table the build
+  # scripts compile against — exists in exactly one place.
   discover:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
-      build: ${{ steps.plan.outputs.build }}
       release: ${{ steps.plan.outputs.release }}
       version: ${{ steps.plan.outputs.version }}
     steps:
@@ -54,40 +55,29 @@ jobs:
           echo "matrix: $matrix"
 
           version=$(sed -n 's/^mod_version=//p' gradle.properties | tr -d '\r')
-          first_mc=$(printf '%s\n' "$rows" | head -1 | cut -d, -f1)
 
-          build=true
           release=false
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            # A tag carries the version as well (mc-<minecraft>-<version>), so one that disagrees
-            # with gradle.properties would publish jars under the wrong number. Refuse instead of
-            # quietly doing nothing, which is what a missed anchor tag would otherwise look like.
-            tag_version=${GITHUB_REF_NAME##*-}
+            # The tag carries the version as well, so one that disagrees with gradle.properties would
+            # publish jars under the wrong number. Refuse rather than quietly publishing something
+            # mislabelled.
+            tag_version=${GITHUB_REF_NAME#v}
             if [ "$tag_version" != "$version" ]; then
               echo "tag $GITHUB_REF_NAME names version $tag_version, but gradle.properties says $version" >&2
               exit 1
             fi
-            if [ "$GITHUB_REF_NAME" = "mc-${first_mc}-${version}" ]; then
-              release=true
-            else
-              # One of the other thirteen tags for this same commit: the anchor run builds and
-              # publishes everything, so this one has nothing left to do.
-              build=false
-              echo "not the anchor tag (mc-${first_mc}-${version}); nothing to build here"
-            fi
+            release=true
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             release=true
           fi
 
-          echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "build: $build, release: $release, version: $version"
+          echo "release: $release, version: $version"
 
   build:
     needs: discover
-    if: needs.discover.outputs.build == 'true'
     runs-on: ubuntu-latest
     strategy:
       # One broken combination must not hide whether the others still build — that is the whole
