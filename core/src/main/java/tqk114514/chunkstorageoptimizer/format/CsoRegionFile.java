@@ -891,15 +891,31 @@ public final class CsoRegionFile implements Closeable {
         return best >= 0 ? best : this.fileEnd;
     }
 
-    /** Bytes occupied by buckets that are no longer reachable. */
+    /** Bytes occupied by blocks no table entry still points at — interior gaps only. */
     public synchronized long wastedBytes() {
-        long used = this.dataStart;
+        // The free span after the last used block is excluded on purpose: allocate() hands it out
+        // to future writes, so it is reclaimable without rewriting the file — unlike the interior
+        // gaps superseded blocks leave behind, which only compact() can reclaim. Stranded tails do
+        // exist in practice: a crash between the data write and the table update leaves bytes past
+        // the last extent the table knows about.
+        List<long[]> used = new ArrayList<>(this.bucketCount);
         for (BucketEntry e : this.entries) {
             if (e.offset != 0 && e.compressedLength > 0) {
-                used += e.compressedLength;
+                used.add(new long[] {e.offset, e.offset + e.compressedLength});
             }
         }
-        return Math.max(0L, this.fileEnd - used);
+        used.sort(Comparator.comparingLong(a -> a[0]));
+        long cursor = this.dataStart;
+        long wasted = 0;
+        for (long[] range : used) {
+            if (range[0] > cursor) {
+                wasted += range[0] - cursor;
+            }
+            if (range[1] > cursor) {
+                cursor = range[1];
+            }
+        }
+        return wasted;
     }
 
     public synchronized long fileSize() {
