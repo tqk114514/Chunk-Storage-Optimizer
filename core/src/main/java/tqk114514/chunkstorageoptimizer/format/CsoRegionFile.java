@@ -132,7 +132,6 @@ public final class CsoRegionFile implements Closeable {
         double compactionWastedRatio
     ) throws IOException {
         CsoFormat.validateGrid(preferredGrid);
-        Compressor compressor = Compressor.create(compressionId, level);
         boolean exists = Files.isRegularFile(path) && Files.size(path) > 0;
         FileChannel channel = FileChannel.open(
             path,
@@ -140,29 +139,63 @@ public final class CsoRegionFile implements Closeable {
             StandardOpenOption.READ,
             StandardOpenOption.WRITE
         );
-        byte[] header = null;
-        // An existing file's grid always wins. Reinterpreting live data with a different bucket
-        // layout would read the wrong bytes, so the config only applies to newly created files.
-        int grid = preferredGrid;
-        if (exists) {
-            // One open and one header read: the grid must come off disk before this object can be
-            // built, and those same 128 bytes also carry everything readMetadata validates.
-            header = new byte[HEADER_SIZE];
-            readFullyStatic(channel, ByteBuffer.wrap(header), 0L);
-            grid = parseGrid(path, header);
+        try {
+            byte[] header = null;
+            // An existing file's grid always wins. Reinterpreting live data with a different bucket
+            // layout would read the wrong bytes, so the config only applies to newly created files.
+            int grid = preferredGrid;
+            if (exists) {
+                // One open and one header read: the grid must come off disk before this object can
+                // be built, and those same 128 bytes also carry everything readMetadata validates.
+                header = new byte[HEADER_SIZE];
+                readFullyStatic(channel, ByteBuffer.wrap(header), 0L);
+                grid = parseGrid(path, header);
+            }
+            // The codec wins for the same reason as the grid: everything the file holds was
+            // written with the codec its header records. The configured codec picks what new
+            // files are created with; it cannot reinterpret data already on disk — a zstd bucket
+            // read as raw bytes, or the reverse, just surfaces as corruption, and the game would
+            // quietly regenerate the chunk. The configured level still applies to new writes into
+            // an existing file, since a zstd stream decodes the same at every level.
+            Compressor compressor = exists
+                ? compressorForFile(path, header, level)
+                : Compressor.create(compressionId, level);
+            CsoRegionFile file = new CsoRegionFile(
+                path, channel, grid, compressor, verifyCrc,
+                maxCachedBuckets, compactionMinWasted, compactionWastedRatio
+            );
+            if (exists) {
+                file.readMetadata(header);
+            } else {
+                file.writeNewFile(grid);
+            }
+            // A crash during a previous batch leaves its WAL behind — replay it before serving reads.
+            file.replayWal();
+            return file;
+        } catch (IOException | RuntimeException | Error failure) {
+            // Everything above happens after the channel exists, so a rejected open must close it
+            // here — otherwise every corrupt file costs one descriptor (and a Windows file lock).
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
         }
-        CsoRegionFile file = new CsoRegionFile(
-            path, channel, grid, compressor, verifyCrc,
-            maxCachedBuckets, compactionMinWasted, compactionWastedRatio
-        );
-        if (exists) {
-            file.readMetadata(header);
-        } else {
-            file.writeNewFile(grid);
+    }
+
+    /**
+     * The codec an existing file declares in its header. An id this build does not know means the
+     * file came from a newer build — failing as corruption beats decoding the buckets as garbage.
+     */
+    private static Compressor compressorForFile(Path path, byte[] header, int level)
+        throws CsoCorruptedException {
+        int id = header[12] & 0xFF;
+        if (id != CsoFormat.COMPRESSION_NONE && id != CsoFormat.COMPRESSION_ZSTD) {
+            throw new CsoCorruptedException(
+                "Unsupported compression id " + id + " in " + path + " — written by a newer CSO build?");
         }
-        // A crash during a previous batch leaves its WAL behind — replay it before serving reads.
-        file.replayWal();
-        return file;
+        return Compressor.create(id, level);
     }
 
     /** Validates the fixed part of a header and returns the bucket grid it declares. */
@@ -191,7 +224,7 @@ public final class CsoRegionFile implements Closeable {
         while (buf.hasRemaining()) {
             int n = ch.read(buf, pos);
             if (n < 0) {
-                throw new CsoCorruptedException("Unexpected end of file in " + position);
+                throw new CsoCorruptedException("Unexpected end of file at " + pos);
             }
             pos += n;
         }
@@ -651,11 +684,28 @@ public final class CsoRegionFile implements Closeable {
             int buckets = in.readInt();
             for (int i = 0; i < buckets; i++) {
                 int bucket = in.readInt();
+                // The WAL checksum only proves the log was written whole, not that its contents
+                // are legal for this file. An out-of-range ordinal must fail as corruption, not
+                // escape as an unchecked array-index crash.
+                if (bucket < 0 || bucket >= this.bucketCount) {
+                    throw new CsoCorruptedException(
+                        "WAL for " + this.path + " names bucket " + bucket + " but this file has "
+                            + this.bucketCount + " buckets");
+                }
                 int entries = in.readInt();
                 Map<Integer, byte[]> changes = new HashMap<>();
                 for (int j = 0; j < entries; j++) {
                     int slot = in.readInt();
                     int length = in.readInt();
+                    if (slot < 0 || slot >= this.chunksPerBucket) {
+                        throw new CsoCorruptedException(
+                            "WAL for " + this.path + " names slot " + slot + " but a bucket here holds "
+                                + this.chunksPerBucket + " chunks");
+                    }
+                    if (length < -1 || length > raw.length) {
+                        throw new CsoCorruptedException(
+                            "WAL for " + this.path + " declares a " + length + "-byte chunk");
+                    }
                     byte[] data = length < 0 ? null : new byte[length];
                     if (data != null) {
                         in.readFully(data);
@@ -686,20 +736,34 @@ public final class CsoRegionFile implements Closeable {
      * <p>Output is always compact — bucket payloads never accumulate internal holes, because every
      * modification rewrites the whole bucket.
      */
-    private byte[] rebuildPayload(byte[] old, Map<Integer, byte[]> changes) {
+    private byte[] rebuildPayload(byte[] old, Map<Integer, byte[]> changes) throws CsoCorruptedException {
         int k = this.chunksPerBucket;
+        int indexBytes = k * CHUNK_ENTRY_SIZE;
         int[] offsets = new int[k];
         int[] lengths = new int[k];
         int[] stamps = new int[k];
         int total = 0;
 
         if (old != null) {
+            if (old.length < indexBytes) {
+                throw new CsoCorruptedException(
+                    "Bucket payload in " + this.path + " is shorter than its index: " + old.length
+                        + " bytes for a " + indexBytes + "-byte index");
+            }
             for (int i = 0; i < k; i++) {
                 int base = i * CHUNK_ENTRY_SIZE;
                 offsets[i] = CsoFormat.readInt(old, base);
                 lengths[i] = CsoFormat.readInt(old, base + 4);
                 stamps[i] = CsoFormat.readInt(old, base + 8);
                 if (!changes.containsKey(i) && lengths[i] > 0) {
+                    // The read path bounds-checks every index entry it serves; the write path must
+                    // check the ones it carries over, or a corrupt index turns the next save into
+                    // an unchecked arraycopy crash.
+                    if (offsets[i] < indexBytes || (long) offsets[i] + lengths[i] > old.length) {
+                        throw new CsoCorruptedException(
+                            "Chunk entry out of bounds in " + this.path + ": offset=" + offsets[i]
+                                + " length=" + lengths[i] + " payload=" + old.length);
+                    }
                     total += lengths[i];
                 }
             }
@@ -710,8 +774,8 @@ public final class CsoRegionFile implements Closeable {
             }
         }
 
-        byte[] out = new byte[k * CHUNK_ENTRY_SIZE + total];
-        int p = k * CHUNK_ENTRY_SIZE;
+        byte[] out = new byte[indexBytes + total];
+        int p = indexBytes;
         int now = (int) (System.currentTimeMillis() / 1000L);
 
         for (int i = 0; i < k; i++) {
@@ -918,7 +982,6 @@ public final class CsoRegionFile implements Closeable {
                             (long) CsoFormat.tableOffset(table, b, this.bucketCount)
                         );
                     }
-                    this.lastTable[b] = 0;
                 }
                 out.force(true);
             }
@@ -957,6 +1020,11 @@ public final class CsoRegionFile implements Closeable {
             for (int b = 0; b < this.bucketCount; b++) {
                 if (newOffsets[b] != 0) {
                     this.entries[b].offset = newOffsets[b];
+                    // Point the next write at the table copy the compaction just made stale — but
+                    // only now that the swap has committed. Marking it while the .tmp was still
+                    // being written aimed a post-failure write at the only copy still valid on
+                    // disk, leaving zero redundancy during that write window.
+                    this.lastTable[b] = 0;
                 }
             }
             this.fileEnd = newEnd;
