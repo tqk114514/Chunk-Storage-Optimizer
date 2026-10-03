@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.8] - 2026-10-03
+
+### Fixed
+- **A damaged chunk in the old `.mca` could stop the world from saving at all.** Reading a chunk the
+  legacy file cannot serve throws rather than coming back empty: vanilla's reader answers null only
+  for the damage it can see in the header, and decompression is lazy, so a corrupt stream fails at
+  the moment the bytes are actually read. Nothing caught that, and a batch that throws stays staged
+  and is retried on a timer — so a single unreadable chunk would have kept the same batch failing
+  every half second, indefinitely. The read is now caught where it happens and the chunk left out of
+  the seed, so the rest of the batch still reaches disk.
+- **A passing disk hiccup could quietly regenerate a chunk.** That catch cannot tell a damaged chunk
+  from a disk that failed for a moment — the exception types are identical — and a chunk left out of
+  the seed leaves its slot empty in a bucket that then becomes authoritative, after which the game
+  reads the chunk as absent and generates fresh terrain over it. The read is now retried before
+  anything is given up on, and the warning reports what was seen rather than asserting that the file
+  is at fault.
+
 ## [1.0.7] - 2026-10-03
 
 ### Note
