@@ -56,6 +56,20 @@ public final class CsoStorage implements AutoCloseable {
     private static final int MAX_OPEN_LEGACY = 8;
 
     /**
+     * How hard to try before giving up on a legacy chunk, and how long to wait between attempts.
+     *
+     * <p>Giving up is not harmless: a chunk left out of the seed leaves its slot empty in a bucket
+     * that is about to become authoritative, and the read path never looks at the {@code .mca} for a
+     * written bucket again — so the game reads the chunk as absent and regenerates it. That is the
+     * right answer when the bytes really are damaged, and the wrong one when the cause was the disk:
+     * a transient fault would turn into a silently regenerated chunk. The two cannot be told apart
+     * by exception type (lz4-java reports corruption as a plain {@code IOException} as well), so the
+     * only lever available is to try again.
+     */
+    private static final int LEGACY_READ_ATTEMPTS = 3;
+    private static final long LEGACY_READ_RETRY_DELAY_MS = 100L;
+
+    /**
      * One daemon thread for every storage in the process, waking often enough that no store's
      * staged data can sit longer than its configured delay by much.
      *
@@ -598,27 +612,45 @@ public final class CsoStorage implements AutoCloseable {
      * the read below, as a {@code ZipException} or an {@code EOFException}. Letting that out would
      * take the whole batch with it: the exception would leave {@code flushPending} with the batch
      * still staged, and the periodic flush would retry the same unreadable chunk every half second,
-     * so the world would stop saving altogether — far worse than the one chunk. A chunk that cannot
-     * be decompressed is one vanilla could not have served either, so leaving it out of the seed
-     * costs nothing that was not already lost. It is logged rather than swallowed in silence,
-     * because a chunk disappearing without a word is the very thing this mod exists to prevent.
+     * so the world would stop saving altogether — far worse than the one chunk.
+     *
+     * <p>Swallowing it is not free either, which is why the read is retried first. A failure here
+     * may be the bytes or may be the disk, and the two are indistinguishable by type, so a single
+     * transient fault would otherwise cost a perfectly good chunk: it would be left out of the seed,
+     * its bucket would become authoritative, and the game would regenerate it. Only after the retries
+     * are exhausted is the chunk given up on — and even then the message says what was observed
+     * rather than claiming the file is at fault, because that is not something this can know.
      */
     private static byte[] legacyChunkBytes(RegionFile legacy, ChunkPos sample, int localX, int localZ) {
         ChunkPos pos = new ChunkPos(
             sample.getRegionX() * CsoFormat.REGION_CHUNKS + localX,
             sample.getRegionZ() * CsoFormat.REGION_CHUNKS + localZ
         );
-        try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
-            return in == null ? null : in.readAllBytes();
-        } catch (IOException e) {
-            LOGGER.log(
-                System.Logger.Level.WARNING,
-                "Unreadable chunk " + pos + " in the legacy .mca — left out of the seed so the batch"
-                    + " can still be written; this chunk is one vanilla could not have read either",
-                e
-            );
-            return null;
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= LEGACY_READ_ATTEMPTS; attempt++) {
+            try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
+                return in == null ? null : in.readAllBytes();
+            } catch (IOException e) {
+                lastFailure = e;
+                if (attempt < LEGACY_READ_ATTEMPTS) {
+                    try {
+                        Thread.sleep(LEGACY_READ_RETRY_DELAY_MS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
         }
+        LOGGER.log(
+            System.Logger.Level.WARNING,
+            "Could not read chunk " + pos + " from the legacy .mca in " + LEGACY_READ_ATTEMPTS
+                + " attempts, so it was left out of the seed to let the batch through. If the legacy"
+                + " file is sound, this chunk now reads as absent and the game will regenerate it —"
+                + " worth checking the .mca",
+            lastFailure
+        );
+        return null;
     }
 
     // ------------------------------------------------------------------ internals
