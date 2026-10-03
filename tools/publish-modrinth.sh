@@ -191,6 +191,12 @@ for jar in "${jars[@]}"; do
         dependencies='[{"project_id":"P7dR8mSH","dependency_type":"required"}]'
     fi
 
+    # `featured` is sent even though the API documentation lists it as optional and nothing here ever
+    # wants it: the server's own payload struct declares it without a default, so leaving it out is a
+    # 400 rather than a false. Measured — the error names the missing field, which is how this was
+    # found. The other fields this sends line up with that struct: `name`, `changelog` and
+    # `version_type` are accepted as aliases, and `status`, `file_types` and `uploaded_images` really
+    # do have defaults.
     data=$(jq -nc \
         --arg name "Chunk Storage Optimizer ${VERSION} for ${game_version} (${loader})" \
         --arg number "$VERSION" \
@@ -209,6 +215,7 @@ for jar in "${jars[@]}"; do
           dependencies: $dependencies,
           version_type: $type,
           status: $status,
+          featured: false,
           project_id: $project,
           file_parts: ["file"],
           primary_file: "file"}')
