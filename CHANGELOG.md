@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.0.9] - 2026-10-03
+
+### Added
+- **NeoForge builds for Minecraft 1.21.2, 1.21.6, 1.21.7 and 1.21.9.** Those four never received a
+  stable NeoForge release — the loader closes a version line as soon as the next Minecraft is out, and
+  each of these lived about a week, so its line ends on a beta. The mod now builds against the last
+  beta of each line, which is what a player on those versions has available anyway.
+- **NeoForge builds for Minecraft 26.1, 26.1.1 and 26.3.** 26.3 moved to FancyModLoader 12, which
+  renamed the config type this mod registers under; both names are handled now, and the config file
+  keeps its existing name and location, so an existing config keeps being read.
+
+### Fixed
+- **Changing `compression` in the config could make existing worlds unreadable.** The codec came from
+  the config rather than from each file's own header, so a world written with zstd was decoded as raw
+  bytes after the setting changed. That reads as corruption, and the game regenerates the chunks it
+  cannot read. The header wins now, exactly as the bucket grid already did.
+- **A failed compaction could aim the next write at the only intact copy of the bucket table.** The
+  table pointer was moved before the swap had committed, so a crash in that window left no redundancy
+  at all and one torn entry was enough to lose the file. It moves only after the swap succeeds now.
+- **A rejected region file leaked a file descriptor**, one per attempt — and on Windows also held a
+  lock on the file.
+- **A corrupt chunk index could crash the write path** with an unchecked array-index error instead of
+  failing as corruption. The same for an out-of-range entry in a write-ahead log.
+- **`/cso convert` could silently drop chunks** when merging into an existing `.mca` that held slots it
+  could not decode. It skips such a file and says so now, matching the offline converter.
+- **`/cso convert <target>` with a mistyped second word ran without pruning**, leaving the original
+  files behind while the player believed they were gone. An unrecognised word is an error now.
+- **Short writes while writing `.mca` files** are retried rather than silently truncating a block.
+- **The read path no longer creates an empty region file** for every region it merely reads — about
+  16 KB of litter per region, and a hard failure on read-only storage.
+- **The compaction threshold no longer counts the free space at the end of the file**, which the
+  allocator reuses anyway. It was making compaction trigger far more often than needed.
+
+### Note
+Fabric builds are unchanged: still the whole 1.21 line, still nothing for 26.x. That gap is a build
+toolchain one, not a missing Fabric release — the mod will gain those builds when loom can target a
+Minecraft that ships without mappings.
+
 ## [1.0.8] - 2026-10-03
 
 ### Fixed
