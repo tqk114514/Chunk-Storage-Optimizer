@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.zip.CRC32;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,6 +41,22 @@ class CsoRegionFileAdversarialTest {
             dir.resolve("r.0.0.cso"), GRID, compressionId, LEVEL,
             4, true, Long.MAX_VALUE, 10.0
         );
+    }
+
+    /**
+     * Whether this platform can produce the failure the two compaction tests need: a swap that fails
+     * while the file itself stays usable.
+     *
+     * <p>On POSIX a read-only parent directory is enough — the file's own permissions are untouched,
+     * so reopening it still works, which is exactly what those tests go on to exercise. On Windows
+     * the read-only attribute belongs to the file, so blocking the replacement blocks the reopen
+     * with it and the object is left holding a closed channel. There is no third option to reach
+     * for: Java's file handles always share delete, so holding the file open cannot fail the move
+     * either. Skipped rather than asserted where it cannot be done, so a Windows run stays green
+     * while CI, on Linux, still covers the behaviour.
+     */
+    private static boolean canFailASwapAndKeepTheFileUsable() {
+        return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
     }
 
     private static byte[] chunkData(int seed, int size) {
@@ -125,6 +143,7 @@ class CsoRegionFileAdversarialTest {
     @Test
     void failedCompactionMustNotMoveWritesOntoTheNewestTableCopy(@TempDir Path dir)
         throws IOException {
+        Assumptions.assumeTrue(canFailASwapAndKeepTheFileUsable(), "no way to fail the swap here");
         Path path = dir.resolve("r.0.0.cso");
         int bucketCount = CsoFormat.bucketCount(GRID);
         byte[] first = chunkData(11, 800);
@@ -168,6 +187,7 @@ class CsoRegionFileAdversarialTest {
     @Test
     void failedCompactionLeavesZeroRedundancySoOneTornEntryIsFatal(@TempDir Path dir)
         throws IOException {
+        Assumptions.assumeTrue(canFailASwapAndKeepTheFileUsable(), "no way to fail the swap here");
         Path path = dir.resolve("r.0.0.cso");
         int bucketCount = CsoFormat.bucketCount(GRID);
 
@@ -217,6 +237,12 @@ class CsoRegionFileAdversarialTest {
 
     @Test
     void failedOpenMustNotLeakTheFileChannel(@TempDir Path dir) throws IOException {
+        // Counting descriptors has no portable equivalent: /proc/self/fd is Linux's. Skipped where it
+        // does not exist rather than asserted, so a Windows run stays green — CI, on Linux, still
+        // covers the leak itself.
+        Assumptions.assumeTrue(
+            new File("/proc/self/fd").isDirectory(), "no /proc/self/fd to count open descriptors with");
+
         Path path = dir.resolve("r.0.0.cso");
         try (CsoRegionFile file = open(dir, CsoFormat.COMPRESSION_ZSTD)) {
             file.writeChunk(1, 1, chunkData(31, 300));
