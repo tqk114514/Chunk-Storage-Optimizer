@@ -10,7 +10,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileSystems;
@@ -231,8 +230,23 @@ class CsoRegionFileAdversarialTest {
     // lock) per failed attempt.
     // ----------------------------------------------------------------------
 
-    private static int openFileDescriptors() {
-        return new File("/proc/self/fd").list().length;
+    /**
+     * Descriptors in /proc/self/fd whose symlink resolves to {@code target}. Counting ALL fds is
+     * too blunt: the JVM opens its own (class loading, jar reads) mid-test and the assertion would
+     * report that as a leak. Only channels to the file under test count.
+     */
+    private static int openFileDescriptorsTo(Path target) throws IOException {
+        int count = 0;
+        for (File fd : new File("/proc/self/fd").listFiles()) {
+            try {
+                if (Files.readSymbolicLink(fd.toPath()).equals(target)) {
+                    count++;
+                }
+            } catch (IOException ignored) {
+                // the fd closed between listFiles and readlink — not the file under test
+            }
+        }
+        return count;
     }
 
     @Test
@@ -252,13 +266,14 @@ class CsoRegionFileAdversarialTest {
             ch.write(ByteBuffer.wrap(new byte[] {'X', 'Y'}), 0L);
         }
 
-        int before = openFileDescriptors();
+        int before = openFileDescriptorsTo(path);
         for (int i = 0; i < 5; i++) {
             assertThrows(CsoCorruptedException.class, () -> open(dir, CsoFormat.COMPRESSION_ZSTD));
         }
+        int after = openFileDescriptorsTo(path);
         assertEquals(
-            before, openFileDescriptors(),
-            "each rejected open leaked a FileChannel (" + before + " -> " + openFileDescriptors() + ")");
+            before, after,
+            "each rejected open leaked a FileChannel to " + path + " (" + before + " -> " + after + ")");
     }
 
     // ----------------------------------------------------------------------
