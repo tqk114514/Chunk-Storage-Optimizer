@@ -23,8 +23,10 @@
 
 set -euo pipefail
 
+# No apostrophes inside the ${VAR:?message} words below: bash processes quotes there, and an
+# unmatched one desynchronises the rest of the file — it surfaces as a syntax error far away.
 : "${MODRINTH_TOKEN:?MODRINTH_TOKEN is required (a personal access token with VERSION_CREATE)}"
-: "${MODRINTH_PROJECT:?MODRINTH_PROJECT is required (the Modrinth project id or slug)}"
+: "${MODRINTH_PROJECT:?MODRINTH_PROJECT is required (set the MODRINTH_PROJECT repository variable to the project id)}"
 : "${VERSION:?VERSION is required}"
 
 JARS_DIR="${JARS_DIR:-dist}"

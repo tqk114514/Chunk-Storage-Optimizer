@@ -171,8 +171,10 @@ jobs:
       - name: Publish to Modrinth
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
-          # A repository variable, so the slug can be corrected without editing this file.
-          MODRINTH_PROJECT: ${{ vars.MODRINTH_PROJECT || 'chunk-storage-optimizer' }}
+          # A repository variable, and deliberately required rather than defaulted: a guessed slug
+          # that is wrong fails as a 404, which reads like the project vanished, where an empty value
+          # fails saying exactly what is missing.
+          MODRINTH_PROJECT: ${{ vars.MODRINTH_PROJECT }}
           VERSION: ${{ needs.discover.outputs.version }}
           JARS_DIR: dist
           # A tag publishes. A manual run only plans unless the box was unticked.

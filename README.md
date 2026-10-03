@@ -448,7 +448,9 @@ environment 的话工作流看不见，而且不报错，只表现为 token 是�
 - **Repository secret `MODRINTH_TOKEN`** —— Modrinth 个人访问令牌，需要 `VERSION_CREATE` 权限，
   在 <https://modrinth.com/settings/account> 生成。名字大小写敏感。
 - **Repository variable `MODRINTH_PROJECT`**（在 Variables 标签页，不是 Secrets 页）—— 项目的
-  slug 或 id，也就是它 Modrinth 链接的最后一段。可选，默认 `chunk-storage-optimizer`。
+  **id**，就是你在 Modrinth 上看到的那个 8 位串（形如 `cJqzw49d`）。**优先填 id 而不是 slug**：
+  slug 随时可以改，id 恒定，而这条配置是要长期放着的——填 slug 的话，哪天改了项目名它就会
+  静默失效，表现为 404 而不是「slug 变了」。
 
 一次发行要打 14 个 tag（每行 csv 一个），而 GitHub 是**一个 tag 起一次 workflow run**，所以
 csv **第一行**对应的那个 tag 才算发行，其余 13 个连重编都不做。为什么这么定、以及为什么是
