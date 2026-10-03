@@ -4,11 +4,16 @@ Pushing a version tag publishes to Modrinth. There is no manual upload step.
 
 ## One-time setup
 
-Two settings on GitHub (Settings → Secrets and variables → Actions):
+Two settings on GitHub (Settings → Secrets and variables → Actions). Both belong to the
+**repository** scope, not the environment scope: nothing in these workflows declares an
+`environment:`, so an environment secret would be invisible to them — and invisibly so, since the
+only symptom is an empty token.
 
-- **Secret `MODRINTH_TOKEN`** — a Modrinth personal access token with the `VERSION_CREATE` scope,
-  created at <https://modrinth.com/settings/account>. It looks like `mrp_…` and is shown once.
-- **Variable `MODRINTH_PROJECT`** — the project's slug or id. Optional; defaults to
+- **Repository secret `MODRINTH_TOKEN`** — a Modrinth personal access token with the
+  `VERSION_CREATE` scope, created at <https://modrinth.com/settings/account>. It looks like
+  `mrp_…` and is shown once. The name is case-sensitive and has to match exactly.
+- **Repository variable `MODRINTH_PROJECT`** (on the Variables tab, not the Secrets tab) — the
+  project's slug or id, i.e. the last path segment of its Modrinth URL. Optional; defaults to
   `chunk-storage-optimizer`.
 
 Without the secret the publish job fails on every release, deliberately: a release that cannot
