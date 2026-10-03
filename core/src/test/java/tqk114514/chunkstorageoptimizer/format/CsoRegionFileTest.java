@@ -191,6 +191,30 @@ class CsoRegionFileTest {
     }
 
     @Test
+    void trailingFreeSpaceIsReusableNotWaste(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        byte[] data = chunkData(3, 800);
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(0, 0, data);
+        }
+        // What a crash between the block write and the table update leaves: bytes past the last
+        // extent no entry points at. Hand-appended here; the next open sets fileEnd to the size.
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
+            channel.write(ByteBuffer.allocate(8192), channel.size());
+        }
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertEquals(0L, file.wastedBytes(),
+                "the free tail is handed out by allocate(), not unreachable waste");
+            long sizeBefore = file.fileSize();
+            file.writeChunk(4, 4, incompressible(9, 2000));
+            assertEquals(sizeBefore, file.fileSize(),
+                "the next write must reuse the stranded tail instead of growing the file");
+            assertArrayEquals(data, file.readChunk(0, 0));
+            assertArrayEquals(incompressible(9, 2000), file.readChunk(4, 4));
+        }
+    }
+
+    @Test
     void compactPreservesData(@TempDir Path dir) throws IOException {
         Map<Integer, byte[]> expected = new HashMap<>();
         try (CsoRegionFile file = open(dir, GRID)) {

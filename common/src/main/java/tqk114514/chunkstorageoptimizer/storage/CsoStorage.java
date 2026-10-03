@@ -238,8 +238,10 @@ public final class CsoStorage implements AutoCloseable {
             if (isStagedDeleted(pos)) {
                 return null;
             }
-            CsoRegionFile file = region(pos);
-            byte[] data = file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            CsoRegionFile file = regionIfExists(pos);
+            byte[] data = file == null
+                ? null
+                : file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
             if (data != null) {
                 return deserialize(data);
             }
@@ -250,7 +252,7 @@ public final class CsoStorage implements AutoCloseable {
             // there was deleted on purpose. Falling back for one would resurrect the chunk vanilla
             // cleared (emptied entity chunks are written as null), so the fallback is only correct
             // while the bucket has never been written at all.
-            if (file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
+            if (file != null && file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
                 return null;
             }
             RegionFile legacy = legacy(pos);
@@ -290,8 +292,10 @@ public final class CsoStorage implements AutoCloseable {
             if (isStagedDeleted(pos)) {
                 return;
             }
-            CsoRegionFile file = region(pos);
-            byte[] data = file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            CsoRegionFile file = regionIfExists(pos);
+            byte[] data = file == null
+                ? null
+                : file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
             if (data != null) {
                 NbtIo.parse(new DataInputStream(new ByteArrayInputStream(data)), visitor, NbtAccounter.unlimitedHeap());
                 return;
@@ -300,7 +304,7 @@ public final class CsoStorage implements AutoCloseable {
                 return;
             }
             // Same reasoning as read(): a written bucket is authoritative for its empty slots.
-            if (file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
+            if (file != null && file.hasBucket(pos.getRegionLocalX(), pos.getRegionLocalZ())) {
                 return;
             }
             RegionFile legacy = legacy(pos);
@@ -668,6 +672,23 @@ public final class CsoStorage implements AutoCloseable {
 
     private static CompoundTag deserialize(byte[] data) throws IOException {
         return NbtIo.read(new DataInputStream(new ByteArrayInputStream(data)));
+    }
+
+    /**
+     * The region handle for a pure read: {@code null} when no {@code .cso} exists yet. Opening with
+     * CREATE (as {@link #region(ChunkPos)} does) would drop a ~16 KB empty file for every region a
+     * read merely touches — litter on the write side and an outright failure on read-only storage.
+     * A missing file also answers the hasBucket question for free: nothing here was ever written.
+     */
+    private CsoRegionFile regionIfExists(ChunkPos pos) throws IOException {
+        CsoRegionFile cached = this.regions.get(CsoFormat.coordKey(pos.getRegionX(), pos.getRegionZ()));
+        if (cached != null) {
+            return cached; // already open — skip the filesystem stat on every read
+        }
+        if (!Files.isRegularFile(regionPath(pos, ".cso"))) {
+            return null;
+        }
+        return region(pos);
     }
 
     private CsoRegionFile region(ChunkPos pos) throws IOException {
