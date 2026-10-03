@@ -170,7 +170,7 @@ public final class AnvilRegionFile {
         try (FileChannel channel = FileChannel.open(
             path, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
         )) {
-            channel.write(ByteBuffer.allocate(HEADER_BYTES), 0L);
+            writeFully(channel, ByteBuffer.allocate(HEADER_BYTES), 0L);
 
             for (Chunk chunk : chunks) {
                 byte[] compressed = deflate(chunk.nbt(), deflateLevel);
@@ -181,7 +181,7 @@ public final class AnvilRegionFile {
                 block.put((byte) 2); // zlib
                 block.put(compressed);
                 block.flip();
-                channel.write(block, (long) sector * SECTOR_BYTES);
+                writeFully(channel, block, (long) sector * SECTOR_BYTES);
                 offsets[chunk.index()] = (sector << 8) | sectorCount;
                 sector += sectorCount;
             }
@@ -194,7 +194,7 @@ public final class AnvilRegionFile {
                 header.putInt(offsets[i] == 0 ? 0 : now);
             }
             header.flip();
-            channel.write(header, 0L);
+            writeFully(channel, header, 0L);
         }
     }
 
@@ -240,6 +240,15 @@ public final class AnvilRegionFile {
             deflater.end();
         }
         return out.toByteArray();
+    }
+
+    private static void writeFully(FileChannel channel, ByteBuffer buffer, long position) throws IOException {
+        long pos = position;
+        while (buffer.hasRemaining()) {
+            // FileChannel.write is allowed to short-write; a partial block would silently corrupt
+            // the file, so keep writing until the buffer drains.
+            pos += channel.write(buffer, pos);
+        }
     }
 
     private static void readFully(FileChannel channel, ByteBuffer buffer, long position) throws IOException {

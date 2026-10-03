@@ -202,7 +202,15 @@ public final class CsoCommands {
                 + " .mca files this session still holds open would hide behind the new .cso ones."));
             return 0;
         }
-        boolean prune = isPruneRequested(context);
+        String pruneArg = pruneArgument(context);
+        if (pruneArg != null && !"prune".equalsIgnoreCase(pruneArg)) {
+            // An unrecognized second word ran the conversion WITHOUT pruning before, which is the
+            // worst outcome of a typo: the user believes the originals are gone while they linger.
+            context.getSource().sendFailure(Component.literal(
+                "Unknown convert option '" + pruneArg + "' — did you mean 'prune'?"));
+            return 0;
+        }
+        boolean prune = pruneArg != null;
         long startedAt = System.nanoTime();
         try {
             // The game keeps its own queue of unwritten chunks. Get those to disk before moving any
@@ -274,9 +282,21 @@ public final class CsoCommands {
                             continue;
                         }
                         Path out = folder.resolve(Converter.swapExtension(csoFile.getFileName().toString(), ".mca"));
-                        // And here too: a .mca already on disk may carry chunks this .cso never had.
-                        List<AnvilRegionFile.Chunk> merged = Files.exists(out)
-                            ? Converter.prefer(in, AnvilRegionFile.read(out))
+                        // And here too: a .mca already on disk may carry chunks this .cso never
+                        // had. It must be read with the reporting reader, not plain read(): a slot
+                        // that cannot decode is still a chunk, and unioning without it drops those
+                        // bytes — the offline Converter hard-stops on exactly this case. Leave both
+                        // files untouched and report the skip.
+                        AnvilRegionFile.ReadResult existing = Files.exists(out)
+                            ? AnvilRegionFile.readReporting(out)
+                            : null;
+                        if (existing != null && existing.unreadable() > 0) {
+                            unreadableFiles++;
+                            unreadableChunks += existing.unreadable();
+                            continue;
+                        }
+                        List<AnvilRegionFile.Chunk> merged = existing != null
+                            ? Converter.prefer(in, existing.chunks())
                             : in;
                         AnvilRegionFile.write(out, merged);
                         verify(out, merged.size(), target);
@@ -322,11 +342,12 @@ public final class CsoCommands {
         }
     }
 
-    private static boolean isPruneRequested(CommandContext<CommandSourceStack> context) {
+    /** The optional second word after {@code convert <target>}, or null when omitted. */
+    private static String pruneArgument(CommandContext<CommandSourceStack> context) {
         try {
-            return "prune".equalsIgnoreCase(StringArgumentType.getString(context, "prune"));
+            return StringArgumentType.getString(context, "prune");
         } catch (IllegalArgumentException e) {
-            return false; // optional argument not supplied
+            return null; // optional argument not supplied
         }
     }
 
