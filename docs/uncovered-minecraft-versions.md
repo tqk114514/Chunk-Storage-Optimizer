@@ -1,7 +1,7 @@
 # 未覆盖的 Minecraft 版本
 
 支持范围是 Minecraft 1.21 至 26.3。`supported-versions.csv` 是已经提供构建的版本；本文件记录该范围内
-**仍未提供**的部分及原因。1.20.x 及更早的版本不在支持范围内，见第 5 节。
+**仍未提供**的部分及原因。1.20.x 及更早的版本不在支持范围内，见第 4 节。
 
 数据取自 2026-10-03，来源为 `maven.neoforged.net` 的版本 API、Mojang 的 `version_manifest_v2.json`、
 `maven.fabricmc.net`、`meta.fabricmc.net` 与 `maven.terraformersmc.com`，以及本机缓存的 Minecraft jar。
@@ -12,13 +12,13 @@ tools/neoforge-floor.sh <minecraft 版本号>     # 该 loader 线的下限（�
 tools/check-loader-versions.sh                 # 把 csv 的 pin 与上游逐一核对
 ```
 
-1.21 至 26.3 共 **17 个正式版**。NeoForge 侧覆盖 16 行、Fabric 侧 12 行。缺口有两处：NeoForge 的
-26.3（第 2 节，loader 改了配置 API）与 Fabric 的 26.x（第 3 节，loom 不支持「无映射」）。
+1.21 至 26.3 共 **17 个正式版**。NeoForge 侧覆盖 17 行、Fabric 侧 12 行——**唯一的缺口是 Fabric 的
+26.x**，见第 2 节。
 
-## 1. NeoForge：1.21 线没有缺口了，但其中 6 行以 beta 为下限
+## 1. NeoForge：没有缺口，但 6 行以 beta 为下限
 
-NeoForge 一有新 Minecraft 就关掉旧线，所以只活了一周的版本会留下一条**以 beta 收尾**的线。这些线不会
-再有稳定版，等下去等于永远不支持，所以下限取该线**最新 beta**：
+NeoForge 一有新 Minecraft 就关掉旧线，所以只活了一周的版本会留下一条**以 beta 收尾**、永远不会有稳定
+版的线。等下去等于永远不支持，所以下限取该线**最新 beta**：
 
 | Minecraft | loader 线 | 稳定版 | 下限（= 该线最新 beta） | 该线最后构建 |
 |---|---|---|---|---|
@@ -29,8 +29,8 @@ NeoForge 一有新 Minecraft 就关掉旧线，所以只活了一周的版本会
 | 26.1.0 | 26.1.0 | 无 | `26.1.0.19-beta` | 2026-03-31 |
 | 26.1.1 | 26.1.1 | 无 | `26.1.1.15-beta` | 2026-04-08 |
 
-六条线都已冻结（不再收构建），所以这些下限是定值，检查脚本可以精确比对。**26.3.0 不在此列，见
-第 2 节。**
+六条线都已冻结（不再收构建），所以这些下限是定值，检查脚本可以精确比对。**26.3.0 的线仍在收构建**，
+所以它的下限会漂；检查脚本对这种情况只警告不报错——下限是下界，落后了仍然成立。
 
 **为什么用最新而不是最老 beta**：最老那个更可能带着「编不过的构建输入」。先例是 21.10.63——它发布的
 binpatch 是用被改过的 base jar 生成的，任何走 binpatch 的环境都编不过，四天后才由 21.10.64 修好。最新
@@ -39,10 +39,9 @@ beta 离这类问题最远。
 **1.21.10 是唯一的例外行**：该线的最老稳定版是 21.10.63，也就是上面那个编不过的构建，所以 csv 用
 21.10.64。检查脚本里单独列了这条例外。
 
-## 2. NeoForge 26.3：FancyModLoader 12 改了配置 API
+### 26.3 起还有一条配置类型的版本缝
 
-26.3 的 loader 线仍在收构建（最新 `26.3.0.43-beta`），但**它编不过**，原因是 NeoForge 26.3 把
-FancyModLoader 从 **11.0.16 升到 12.0.8**，而 FML 12 重构了配置类型：
+NeoForge 26.3 把 FancyModLoader 从 **11.0.16 升到 12.0.8**，而 FML 12 重构了配置类型枚举：
 
 | FML 11 | FML 12 | 语义 |
 |---|---|---|
@@ -51,25 +50,14 @@ FancyModLoader 从 **11.0.16 升到 12.0.8**，而 FML 12 重构了配置类型�
 | `CLIENT` | `CLIENT` | 不变 |
 | `STARTUP` | `STARTUP` | 不变 |
 
-CI 实测（run `37091086268`）：`26.3.0` 的 `:neoforge:compileJava` 报
+旧常量在新版本里**不存在**，所以共享代码无法命名它。按仓库既有的做法做了一条**编译期缝**：
+`neoforge/src/version/fml11/java` 与 `fml12/java` 各提供一个同签名的 `CsoConfigType`，由 csv 的
+**FML 列**决定编译哪一份（`11` / `12`）。用 per-row 的列而不是版本阈值比较，是因为阈值会**静默**选错一侧。
 
-```
-ChunkStorageOptimizer.java:27: error: cannot find symbol
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
-                                          ^ symbol: variable COMMON  location: class Type
-```
+配置文件名是**显式传入**的（`chunkstorageoptimizer-common.toml`），否则重命名会把它变成
+`-local.toml`，让已有的配置文件悄悄失效。
 
-**不是 csv 能解决的**：`COMMON` 与 `LOCAL` 的**配置文件后缀不同**（`-common` / `-local`），所以换过去
-之后 `config/chunkstorageoptimizer-common.toml` 会被忽略——这是用户可见的迁移。加入条件：
-
-1. 给配置类型加一条**版本缝**（`common/src/version/<family>/java` 已有这套机制，目前只用于命令权限），
-   让 26.2 及更早用 `COMMON`、26.3 起用 `LOCAL`；
-2. 处理配置文件名从 `-common` 到 `-local` 的迁移（至少要在日志里提示）；
-3. 26.3 的 loader 仍是 beta，API 还可能再动——等它出稳定版更稳妥。
-
-第 1 节里那六条线的构建**已在 CI 验证通过**（同一个 run，六个 build job 全绿）。
-
-## 3. Fabric：26.x 无构建
+## 2. Fabric：26.x 无构建
 
 26.1.0 / 26.1.1 / 26.1.2 / 26.2.0 / 26.3.0 五行的 Fabric API 列都是 `-`。1.21 至 26.3 的 17 个正式版
 Fabric 侧**全都有**稳定版加载器、Fabric API 与 Mod Menu，所以缺口来自构建工具链，不来自生态：
@@ -88,7 +76,7 @@ Fabric 侧**全都有**稳定版加载器、Fabric API 与 Mod Menu，所以缺�
 1.21.2 / 1.21.6 / 1.21.7 / 1.21.9 四行反过来曾经是只有 Fabric 有构建：NeoForge 从未为这四版发布稳定
 构建。第 1 节之后它们两侧都有了。
 
-## 4. 版本号的两种写法
+## 3. 版本号的两种写法
 
 两段式的正式版号省略了 patch 位：游戏版本号为 `26.2`，NeoForge 的 artifact 线为 `26.2.0`
 （`neoforge-26.2.0.57` 的 moddev-config 指向 `neoform:26.2-2`）。当前行键采用 loader 的写法，jar 中
@@ -104,6 +92,6 @@ Fabric 侧**全都有**稳定版加载器、Fabric API 与 Mod Menu，所以缺�
 **但 Modrinth 用的是游戏写法**：`26.2.0` 不是它认得的 game_version，`26.2` 才是。发布脚本因此把标签
 取回来解析，去掉结尾的 `.0` 再匹配，而不是直接把行键发出去。
 
-## 5. 1.20.x 及更早
+## 4. 1.20.x 及更早
 
 不在支持范围内。跨大版本不做格式兼容是既定政策，见 README 开头第二条。

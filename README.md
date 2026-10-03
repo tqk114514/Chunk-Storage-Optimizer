@@ -469,7 +469,7 @@ environment 的话工作流看不见，而且不报错，只表现为 token 是�
 为什么一个 jar 一个版本条目，写在 `.github/workflows/build.yml` 的注释里。
 
 发布说明取自 `CHANGELOG.md` 里 `## [<版本>]` 那一段的**正文**：标题行本身不发（它是变更日志自己的
-目录，而 Modrinth 会在说明旁边显示版本号）。同一版本的 22 个条目用**同一份**说明——它们是一次发行，
+目录，而 Modrinth 会在说明旁边显示版本号）。同一版本的 28 个条目用**同一份**说明——它们是一次发行，
 说明属于版本而不属于文件。这一段必须存在**且有内容**，否则**整个发布会失败**：没有说明的发行不值得发，
 而这个检查跑在上传之前，所以代价是一条明确的消息，而不是一个悄悄空着发出去的版本。
 
@@ -479,13 +479,21 @@ environment 的话工作流看不见，而且不报错，只表现为 token 是�
 
 ### 跨版本的编译缝
 
-1.21 到 26.x 之间不兼容的 API 只有一处：命令权限。`common/src/version/legacy/java` 与
-`common/src/version/modern/java` 各提供一个签名相同的 `CsoPermissions.operatorOnly()`，构建时按 csv 中的
-family 只将其中一个放入编译路径。运行期没有条件分支，也没有反射，两者的判定标准都是权限等级 3。
+1.21 到 26.x 之间不兼容的 API 有两处，各一条缝。每条缝都是「两个目录、同一个签名」，构建时按 csv 只把
+其中一个放进编译路径，所以运行期没有条件分支，也没有反射。
+
+**命令权限**：`common/src/version/legacy/java` 与 `modern/java` 各提供一个签名相同的
+`CsoPermissions.operatorOnly()`，由 csv 的 **family 列**选择。两者的判定标准都是权限等级 3。
+
+**配置类型**：`neoforge/src/version/fml11/java` 与 `fml12/java` 各提供一个签名相同的
+`CsoConfigType.common()`，由 csv 的 **FML 列**选择。FancyModLoader 12（NeoForge 26.3 起）把
+`ModConfig.Type.COMMON` 改名为 `LOCAL`，旧常量在新版本里不存在，所以共享代码无法命名它。注册时
+**显式传入文件名**（`chunkstorageoptimizer-common.toml`），否则这次改名会把它变成 `-local.toml`，
+让已有的配置文件悄悄失效。这条缝只在 NeoForge 侧，Fabric 不读该列。
 
 另一处差异是 26.1 将 `ChunkPos` 改为 record（`pack`/`unpack`/`x()`/`z()`）。写入批处理用的坐标键不
 来自游戏数据，`CsoStorage` 因此使用自己的打包方式，这条差异不再需要缝。其余部分里
-`RegionFileStorage` 的方法签名在整个范围内没有变化，这是只有一处缝的原因。
+`RegionFileStorage` 的方法签名在整个范围内没有变化，这是只有两处缝的原因。
 
 ### 各版本行的实测状态
 

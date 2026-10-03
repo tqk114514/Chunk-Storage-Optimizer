@@ -1,6 +1,6 @@
 # Minecraft versions this mod ships for — one row per game version, one jar per row per loader.
 #
-#   minecraft, Java level, command-permission API family, NeoForge floor, Fabric API, Mod Menu
+#   minecraft, Java level, command-permission API family, NeoForge floor, Fabric API, Mod Menu, FML
 #
 # The NeoForge floor is what tools/neoforge-floor.sh prints: the OLDEST STABLE build of that loader
 # line. When a line never got one — NeoForge closes a line the moment the next Minecraft is out, so
@@ -16,6 +16,12 @@
 # Java level comes from Mojang's own version manifest. The family selects the seam in
 # common/src/version/<family>/java: 'legacy' gates commands on a numeric permission level,
 # 'modern' on the PermissionCheck tree (first shipped in 1.21.11).
+#
+# The FML column selects the other seam, in neoforge/src/version/fml<N>/java: FancyModLoader 12
+# (NeoForge 26.3 onwards) renamed ModConfig.Type.COMMON to LOCAL, and the old constant cannot be
+# named in code that also has to build for FML 11. It is stated per row rather than derived from a
+# version threshold, because a threshold picks a side silently and would do so wrongly the day
+# NeoForge ships FML 12 for a line nobody was watching. Fabric ignores the column.
 #
 # .github/workflows/build.yml reads the first column, so this file — not a hand-copied matrix —
 # decides what gets built.
@@ -36,23 +42,20 @@
 # Every beta floor here sits on a closed line, so it is a frozen fact and the check compares it
 # exactly. The check still tolerates a lagging floor on the newest line, because a line that is
 # still receiving builds has a floor that moves — no such line is listed today.
-# 26.3.0 is deliberately absent: NeoForge 26.3 moved to FancyModLoader 12, which replaced
-# ModConfig.Type.COMMON with LOCAL (same meaning — both sides, not synced — but a different file
-# suffix, "-local" instead of "-common", so an existing config would be ignored). Supporting it
-# needs a version seam for the config type, not a row. See docs/uncovered-minecraft-versions.md.
-1.21,     21, legacy, 21.0.143,        0.102.0+1.21,     11.0.5
-1.21.1,   21, legacy, 21.1.1,          0.116.17+1.21.1,  11.0.5
-1.21.2,   21, legacy, 21.2.1-beta,     0.106.1+1.21.2,   12.0.1
-1.21.3,   21, legacy, 21.3.56,         0.114.1+1.21.3,   12.0.1
-1.21.4,   21, legacy, 21.4.121,        0.119.4+1.21.4,   13.0.4
-1.21.5,   21, legacy, 21.5.74,         0.128.2+1.21.5,   14.0.2
-1.21.6,   21, legacy, 21.6.20-beta,    0.128.2+1.21.6,   15.0.2
-1.21.7,   21, legacy, 21.7.25-beta,    0.129.0+1.21.7,   15.0.2
-1.21.8,   21, legacy, 21.8.9,          0.136.1+1.21.8,   15.0.2
-1.21.9,   21, legacy, 21.9.16-beta,    0.134.1+1.21.9,   16.0.1
-1.21.10,  21, legacy, 21.10.64,        0.138.4+1.21.10,  16.0.1
-1.21.11,  21, modern, 21.11.42,        0.141.6+1.21.11,  17.0.1
-26.1.0,   25, modern, 26.1.0.19-beta,  -,                -
-26.1.1,   25, modern, 26.1.1.15-beta,  -,                -
-26.1.2,   25, modern, 26.1.2.71,       -,                -
-26.2.0,   25, modern, 26.2.0.57,       -,                -
+1.21,     21, legacy, 21.0.143,        0.102.0+1.21,     11.0.5,   11
+1.21.1,   21, legacy, 21.1.1,          0.116.17+1.21.1,  11.0.5,   11
+1.21.2,   21, legacy, 21.2.1-beta,     0.106.1+1.21.2,   12.0.1,   11
+1.21.3,   21, legacy, 21.3.56,         0.114.1+1.21.3,   12.0.1,   11
+1.21.4,   21, legacy, 21.4.121,        0.119.4+1.21.4,   13.0.4,   11
+1.21.5,   21, legacy, 21.5.74,         0.128.2+1.21.5,   14.0.2,   11
+1.21.6,   21, legacy, 21.6.20-beta,    0.128.2+1.21.6,   15.0.2,   11
+1.21.7,   21, legacy, 21.7.25-beta,    0.129.0+1.21.7,   15.0.2,   11
+1.21.8,   21, legacy, 21.8.9,          0.136.1+1.21.8,   15.0.2,   11
+1.21.9,   21, legacy, 21.9.16-beta,    0.134.1+1.21.9,   16.0.1,   11
+1.21.10,  21, legacy, 21.10.64,        0.138.4+1.21.10,  16.0.1,   11
+1.21.11,  21, modern, 21.11.42,        0.141.6+1.21.11,  17.0.1,   11
+26.1.0,   25, modern, 26.1.0.19-beta,  -,                -,        11
+26.1.1,   25, modern, 26.1.1.15-beta,  -,                -,        11
+26.1.2,   25, modern, 26.1.2.71,       -,                -,        11
+26.2.0,   25, modern, 26.2.0.57,       -,                -,        11
+26.3.0,   25, modern, 26.3.0.43-beta,  -,                -,        12

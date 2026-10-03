@@ -24,7 +24,9 @@ repositories {
 // ------------------------------------------------------------------ what we build for
 
 // supported-versions.csv is the one list of Minecraft builds this mod ships for. Columns:
-// minecraft, Java level, command-permission family, NeoForge floor, Fabric API, Mod Menu.
+// minecraft, Java level, command-permission family, NeoForge floor, Fabric API, Mod Menu, FML major.
+// The seventh column is NeoForge's business (it selects that side's config-type seam); Groovy drops
+// the extra value here, and the destructuring below stays as it is.
 // Rows whose Fabric API column is '-' are not covered by this loader.
 def supportedVersions = [:]
 def versionTable = rootProject.file('supported-versions.csv')

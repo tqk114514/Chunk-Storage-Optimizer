@@ -8,7 +8,6 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -23,8 +22,18 @@ public class ChunkStorageOptimizer {
     /** C2ME rewrites chunk IO wholesale and would bypass this mod's storage layer. */
     private static final String C2ME_MOD_ID = "c2me";
 
+    /**
+     * Given explicitly rather than left to the config type, which decides it otherwise.
+     *
+     * <p>FancyModLoader 12 renamed that type — {@code COMMON} became {@code LOCAL} — and the name is
+     * what the default file name is built from, so leaving it implicit would have moved the file to
+     * {@code chunkstorageoptimizer-local.toml} on 26.3 and silently stopped reading the existing one.
+     * See {@link CsoConfigType} for the seam itself.
+     */
+    private static final String CONFIG_FILE = "chunkstorageoptimizer-common.toml";
+
     public ChunkStorageOptimizer(IEventBus modEventBus, ModContainer modContainer) {
-        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        modContainer.registerConfig(CsoConfigType.common(), Config.SPEC, CONFIG_FILE);
         // Everything below the loader reads config through these two suppliers, so the storage and
         // command layers never name a ModConfigSpec.
         CsoRuntime.install(Config.ENABLED::getAsBoolean, Config::settings);
