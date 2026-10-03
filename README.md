@@ -423,11 +423,11 @@ csv 的那两列，`-` 的那侧根本不 include。不传 `-Pminecraft_version`
 "会被发布的版本"不可能各说各话。加一个新版本只要两步：
 
 ```bash
-tools/neoforge-floor.sh 26.3.0
+tools/neoforge-floor.sh 26.2.0
 # ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <java>, <legacy|modern>,
 #    <NeoForge 下限>, <Fabric API>, <Mod Menu>；某个加载器没有该游戏版本的构建就在该列写 -
 #    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
-# ② 逐个模块验证：./gradlew :neoforge:build -Pminecraft_version=26.3.0，再 :fabric:build
+# ② 逐个模块验证：./gradlew :neoforge:build -Pminecraft_version=26.2.0，再 :fabric:build
 #    同一版本；某一列写 '-' 时那个模块不会被 include，请求它会得到 "project not found"
 ```
 
