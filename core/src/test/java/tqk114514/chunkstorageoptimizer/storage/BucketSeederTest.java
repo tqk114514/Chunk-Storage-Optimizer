@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -42,6 +43,27 @@ class BucketSeederTest {
 
     private static CsoRegionFile open(Path path) throws IOException {
         return CsoRegionFile.open(path, GRID, CsoFormat.COMPRESSION_ZSTD, 3, 4, true, Long.MAX_VALUE, 10.0);
+    }
+
+    /**
+     * The legacy source must not be able to fail, and this is asserted rather than only written down
+     * because re-adding {@code throws IOException} compiles perfectly well everywhere else.
+     *
+     * <p>A source that threw would abort the whole batch, and a batch that failed stays staged and is
+     * retried on a timer — so one unreadable chunk in the legacy {@code .mca} would stop the world
+     * from saving anything at all. Vanilla's reader only returns null for damage visible in the
+     * header, because decompression is lazy, so a corrupt stream surfaces exactly here.
+     */
+    @Test
+    void theLegacySourceCannotFail() throws NoSuchMethodException {
+        Method read = BucketSeeder.LegacySource.class.getMethod("read", int.class, int.class);
+        for (Class<?> thrown : read.getExceptionTypes()) {
+            assertTrue(
+                RuntimeException.class.isAssignableFrom(thrown) || Error.class.isAssignableFrom(thrown),
+                "LegacySource.read declares the checked exception " + thrown.getName()
+                    + " — a failure there would take the whole batch, and the batch is retried forever"
+            );
+        }
     }
 
     @Test

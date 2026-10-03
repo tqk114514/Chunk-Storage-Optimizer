@@ -1,6 +1,5 @@
 package tqk114514.chunkstorageoptimizer.storage;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,10 +29,19 @@ public final class BucketSeeder {
     private BucketSeeder() {
     }
 
-    /** Reads one region-local chunk from the legacy {@code .mca}; null when it is not there. */
+    /**
+     * Reads one region-local chunk from the legacy {@code .mca}; null when it is not there, or when
+     * it cannot be read at all.
+     *
+     * <p>Deliberately not allowed to fail. A source that threw would abort the whole batch — and a
+     * failed batch stays staged and is retried on a timer, so a single unreadable chunk in the
+     * legacy file would stop the world from saving anything. Answering null says the same thing
+     * without that consequence: this slot has nothing to contribute. An implementation that has
+     * something to report should say so itself, where it knows the file and the position.
+     */
     @FunctionalInterface
     public interface LegacySource {
-        byte[] read(int localX, int localZ) throws IOException;
+        byte[] read(int localX, int localZ);
     }
 
     /**
@@ -43,7 +51,7 @@ public final class BucketSeeder {
      */
     public static Map<Integer, byte[]> seed(
         Map<Integer, byte[]> changes, int bucket, int grid, LegacySource legacy
-    ) throws IOException {
+    ) {
         int span = CsoFormat.span(grid);
         int bucketX = bucket % grid;
         int bucketZ = bucket / grid;

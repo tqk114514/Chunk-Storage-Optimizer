@@ -555,10 +555,15 @@ public final class CsoStorage implements AutoCloseable {
      *
      * <p>The cost is bounded and paid once per bucket: at most {@code chunksPerBucket - 1} extra
      * reads the first time a bucket is touched, which at grid 16 is three.
+     *
+     * <p>Declares no failure of its own, and that is deliberate: a batch that throws stays staged and
+     * is retried on a timer, so anything escaping here would stop the world from saving. An
+     * unreadable legacy chunk is reported and left out instead — see
+     * {@link #legacyChunkBytes(RegionFile, ChunkPos, int, int)}.
      */
     private void seedNewBuckets(
         CsoRegionFile file, ChunkPos sample, int grid, Map<Integer, Map<Integer, byte[]>> byBucket
-    ) throws IOException {
+    ) {
         RegionFile legacy = null;
         for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : byBucket.entrySet()) {
             if (file.hasBucketIndex(bucketEntry.getKey())) {
@@ -581,21 +586,38 @@ public final class CsoStorage implements AutoCloseable {
     }
 
     /**
-     * Raw NBT bytes of one chunk in the legacy {@code .mca}, or null when it is not there.
+     * Raw NBT bytes of one chunk in the legacy {@code .mca}, or null when it cannot be read.
      *
      * <p>Read as bytes rather than parsed and re-serialized: the {@code .cso} payload stores exactly
      * what {@code NbtIo.write} produced and the legacy stream holds those same bytes, so a round
-     * trip through NBT would only cost time. A chunk vanilla itself cannot read comes back null and
-     * is simply not seeded, which loses nothing — the fallback could not have read it either.
+     * trip through NBT would only cost time.
+     *
+     * <p>Nothing escapes from here, and that is the point. Vanilla's reader returns null for the
+     * damage it can see in the header — a truncated sector, an unknown compression id, a missing
+     * {@code .mcc} — but decompression is lazy, so damage <em>inside</em> the stream only surfaces on
+     * the read below, as a {@code ZipException} or an {@code EOFException}. Letting that out would
+     * take the whole batch with it: the exception would leave {@code flushPending} with the batch
+     * still staged, and the periodic flush would retry the same unreadable chunk every half second,
+     * so the world would stop saving altogether — far worse than the one chunk. A chunk that cannot
+     * be decompressed is one vanilla could not have served either, so leaving it out of the seed
+     * costs nothing that was not already lost. It is logged rather than swallowed in silence,
+     * because a chunk disappearing without a word is the very thing this mod exists to prevent.
      */
-    private static byte[] legacyChunkBytes(RegionFile legacy, ChunkPos sample, int localX, int localZ)
-        throws IOException {
+    private static byte[] legacyChunkBytes(RegionFile legacy, ChunkPos sample, int localX, int localZ) {
         ChunkPos pos = new ChunkPos(
             sample.getRegionX() * CsoFormat.REGION_CHUNKS + localX,
             sample.getRegionZ() * CsoFormat.REGION_CHUNKS + localZ
         );
         try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
             return in == null ? null : in.readAllBytes();
+        } catch (IOException e) {
+            LOGGER.log(
+                System.Logger.Level.WARNING,
+                "Unreadable chunk " + pos + " in the legacy .mca — left out of the seed so the batch"
+                    + " can still be written; this chunk is one vanilla could not have read either",
+                e
+            );
+            return null;
         }
     }
 
