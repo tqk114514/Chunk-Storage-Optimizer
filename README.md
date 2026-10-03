@@ -423,7 +423,7 @@ csv 的那两列，`-` 的那侧根本不 include。不传 `-Pminecraft_version`
 "会被发布的版本"不可能各说各话。加一个新版本只要两步：
 
 ```bash
-tools/oldest-stable-neoforge.sh 26.3.0
+tools/neoforge-floor.sh 26.3.0
 # ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <java>, <legacy|modern>,
 #    <NeoForge 下限>, <Fabric API>, <Mod Menu>；某个加载器没有该游戏版本的构建就在该列写 -
 #    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
@@ -431,8 +431,16 @@ tools/oldest-stable-neoforge.sh 26.3.0
 #    同一版本；某一列写 '-' 时那个模块不会被 include，请求它会得到 "project not found"
 ```
 
-下限只取**稳定版**：带 `-beta` / `-alpha` 后缀的构建没有正式发布，玩家无法安装。未覆盖的版本及原因
-记录在 `docs/uncovered-minecraft-versions.md`。
+下限取**该 loader 线最老的稳定版**。整条线都没出过稳定版时取**最新 beta**——NeoForge 一有新 MC 就关掉
+旧线，所以只活了一周的 MC（1.21.2 / 1.21.6 / 1.21.7 / 1.21.9 / 26.1 / 26.1.1）会留下一条以 beta 收尾
+的线。beta 不理想，但那是存在的唯一选择，而最新那个最不可能带着「编不过的构建输入」——21.10.63 的
+binpatch 是用被改过的 base jar 生成的，谁都编不过。
+
+`tools/check-loader-versions.sh` 把 csv 的 pin 与上游逐一核对：NeoForge 下限、Fabric API 的 `+<mc>`
+后缀、Mod Menu 是否存在、以及 build 里 pin 的 Fabric loader 是否支持该 MC。CI 每次 push 都跑它。
+1.21.10 是唯一刻意的例外（21.10.63 编不过，故用 21.10.64），脚本里写明了原因。
+
+未覆盖的版本及原因记录在 `docs/uncovered-minecraft-versions.md`。
 
 版本范围是**精确单版本**（NeoForge 的 `[26.1.2]`、Fabric 的 `"minecraft": "1.21.11"`），不是 `>=`。
 因为 `mixins.json` 里 `defaultRequire: 1`，签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前

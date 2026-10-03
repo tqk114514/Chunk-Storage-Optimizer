@@ -2,9 +2,13 @@
 #
 #   minecraft, Java level, command-permission API family, NeoForge floor, Fabric API, Mod Menu
 #
-# The NeoForge floor is what tools/oldest-stable-neoforge.sh prints: builds with a -beta/-alpha
-# suffix never count, because a player cannot install them. '-' means that loader has nothing for
-# this Minecraft, so no jar is published for it from that side.
+# The NeoForge floor is what tools/neoforge-floor.sh prints: the OLDEST STABLE build of that loader
+# line. When a line never got one — NeoForge closes a line the moment the next Minecraft is out, so
+# a Minecraft that lived for a week leaves a line whose last build is a -beta — the floor is the
+# NEWEST beta of that line instead. That is a last resort, not a preference: a beta is what exists,
+# and the newest is the least likely to carry the kind of broken build input that got 21.10.63
+# withdrawn. '-' means that loader has nothing for this Minecraft, so no jar is published from that
+# side.
 #
 # Fabric API and Mod Menu are the versions this mod is compiled and tested against; both are
 # published per Minecraft version, and Mod Menu only exists on maven.terraformersmc.com.
@@ -19,28 +23,33 @@
 # Rows are keyed with the loader's spelling of a two-part Minecraft version (MC 26.2 is served by
 # the 26.2.0 line); measured: a range of [26.2.0] accepts the game's own "26.2".
 #
-# One row does not use the oldest stable build. Minecraft 1.21.10 is the first line assembled with
-# NeoForge's binpatching tooling, and 21.10.63 published binpatches generated from a modified base
-# jar; 21.10.64 fixed that four days later ("When creating the joined patches, use the clean jar as
-# base.", #2849). Environments that assemble artifacts through binpatches cannot build against
-# 21.10.63 at all — CI does, while a local build takes the decompile -> patch -> recompile path and
-# does not hit it. The floor stays at 21.10.64: separating the player-facing floor from the version
-# we compile against would add a column for one loader build. Effect: a 1.21.10 player on 21.10.63
-# is asked to update the loader.
+# One row deliberately does NOT match what tools/neoforge-floor.sh prints. Minecraft 1.21.10 is the
+# first line assembled with NeoForge's binpatching tooling, and 21.10.63 published binpatches
+# generated from a modified base jar; 21.10.64 fixed that four days later ("When creating the joined
+# patches, use the clean jar as base.", #2849). Environments that assemble artifacts through
+# binpatches cannot build against 21.10.63 at all — CI does, while a local build takes the
+# decompile -> patch -> recompile path and does not hit it. The floor stays at 21.10.64, the next
+# stable build: separating the player-facing floor from the version we compile against would add a
+# column for one loader build. Effect: a 1.21.10 player on 21.10.63 is asked to update the loader.
+# tools/check-loader-versions.sh knows about this one exception.
 #
-# 1.21.2, 1.21.6, 1.21.7 and 1.21.9 have no NeoForge floor: that loader never shipped a stable
-# build for them. They are not gaps in coverage — see docs/uncovered-minecraft-versions.md.
-1.21,     21, legacy, 21.0.143,   0.102.0+1.21,     11.0.5
-1.21.1,   21, legacy, 21.1.1,     0.116.17+1.21.1,  11.0.5
-1.21.2,   21, legacy, -,          0.106.1+1.21.2,   12.0.1
-1.21.3,   21, legacy, 21.3.56,    0.114.1+1.21.3,   12.0.1
-1.21.4,   21, legacy, 21.4.121,   0.119.4+1.21.4,   13.0.4
-1.21.5,   21, legacy, 21.5.74,    0.128.2+1.21.5,   14.0.2
-1.21.6,   21, legacy, -,          0.128.2+1.21.6,   15.0.2
-1.21.7,   21, legacy, -,          0.129.0+1.21.7,   15.0.2
-1.21.8,   21, legacy, 21.8.9,     0.136.1+1.21.8,   15.0.2
-1.21.9,   21, legacy, -,          0.134.1+1.21.9,   16.0.1
-1.21.10,  21, legacy, 21.10.64,   0.138.4+1.21.10,  16.0.1
-1.21.11,  21, modern, 21.11.42,   0.141.6+1.21.11,  17.0.1
-26.1.2,   25, modern, 26.1.2.71,  -,                -
-26.2.0,   25, modern, 26.2.0.57,  -,                -
+# Beta floors are a frozen fact on a closed line, so they can be checked exactly. 26.3.0 is the
+# exception to that too: its line is still receiving builds, so the beta recorded here goes stale
+# every time NeoForge publishes one. See docs/uncovered-minecraft-versions.md.
+1.21,     21, legacy, 21.0.143,        0.102.0+1.21,     11.0.5
+1.21.1,   21, legacy, 21.1.1,          0.116.17+1.21.1,  11.0.5
+1.21.2,   21, legacy, 21.2.1-beta,     0.106.1+1.21.2,   12.0.1
+1.21.3,   21, legacy, 21.3.56,         0.114.1+1.21.3,   12.0.1
+1.21.4,   21, legacy, 21.4.121,        0.119.4+1.21.4,   13.0.4
+1.21.5,   21, legacy, 21.5.74,         0.128.2+1.21.5,   14.0.2
+1.21.6,   21, legacy, 21.6.20-beta,    0.128.2+1.21.6,   15.0.2
+1.21.7,   21, legacy, 21.7.25-beta,    0.129.0+1.21.7,   15.0.2
+1.21.8,   21, legacy, 21.8.9,          0.136.1+1.21.8,   15.0.2
+1.21.9,   21, legacy, 21.9.16-beta,    0.134.1+1.21.9,   16.0.1
+1.21.10,  21, legacy, 21.10.64,        0.138.4+1.21.10,  16.0.1
+1.21.11,  21, modern, 21.11.42,        0.141.6+1.21.11,  17.0.1
+26.1.0,   25, modern, 26.1.0.19-beta,  -,                -
+26.1.1,   25, modern, 26.1.1.15-beta,  -,                -
+26.1.2,   25, modern, 26.1.2.71,       -,                -
+26.2.0,   25, modern, 26.2.0.57,       -,                -
+26.3.0,   25, modern, 26.3.0.43-beta,  -,                -

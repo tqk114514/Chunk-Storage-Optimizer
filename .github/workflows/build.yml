@@ -21,6 +21,18 @@ on:
         default: true
 
 jobs:
+  # The pins in supported-versions.csv are checked against upstream rather than trusted, so a row
+  # that has gone stale fails here instead of shipping a jar no player can load. It runs beside the
+  # matrix rather than before it: a stale pin is worth knowing about, but it should not stop the jars
+  # from being built and tested.
+  pins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Check the loader pins against upstream
+        run: bash tools/check-loader-versions.sh
+
   # The matrix and the release decision are both worked out here, so the two jobs below stay simple
   # and the matrix — read from supported-versions.csv so it cannot drift from the table the build
   # scripts compile against — exists in exactly one place.
