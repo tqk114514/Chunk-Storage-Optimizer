@@ -218,10 +218,10 @@ bucket 表存**两份同构副本**。表 `t` 中第 `i` 项的偏移 = `128 + (
 
 | 缓存 | 内容 | 默认容量 |
 |---|---|---|
-| bucket 解压缓存 | 解压后的 bucket payload | LRU 4 个/region 文件（可配） |
+| bucket 解压缓存 | 解压后的 bucket payload | LRU 64 个/region 文件（可配），另有每文件 8 MB 字节上限 |
 | region 文件句柄 | `CsoRegionFile` 实例 | LRU 256（对齐原版 `RegionFileStorage`） |
 
-bucket 解压后可能达数 MB，缓存容量必须设上限并在配置中可调。缓存未命中时的写操作会产生一次"读+解压"的读放大——这是分桶方案的主要代价。
+bucket 解压后可能达数 MB，所以缓存有**两道**上限：桶数（`cachedBuckets`，默认取满 64——玩家周围的工作集在默认 grid 下就是几十个桶，而一次未命中的代价是整桶解压）和每文件 8 MB 的字节上限（小 grid 时单个 payload 可达数 MB，桶数约束会放大成 GB 级堆占用，由字节上限兜底；单个 payload 超过上限则干脆不缓存）。缓存未命中时的写操作会产生一次"读+解压"的读放大——这是分桶方案的主要代价。
 
 ---
 
@@ -299,7 +299,7 @@ grid 16 是 3 次。播种时读不出来的邻居（vanilla 自己也读不了�
 | `grid` | `16` | bucket 网格边长，1–32 的 2 的幂（非法值向下取整）。只对新建文件生效，已有文件保持自己的 grid |
 | `compression` | `zstd` | `zstd` / `none` |
 | `zstdLevel` | `3` | 1..22，热写入路径等级 |
-| `cachedBuckets` | `4` | 每个 region 文件缓存的解压 bucket 数（0..64）。越大 = 读放大越低、堆占用越高 |
+| `cachedBuckets` | `64` | 每个 region 文件缓存的解压 bucket 数（0..64）。越大 = 读放大越低、堆占用越高；另有每文件 8 MB 字节上限兜底（见 §9） |
 | `verifyCrc` | `true` | 读取时校验 CRC32 |
 | `fallbackToMca` | `true` | `.cso` 中无该区块时回退读同名 `.mca`。**仅在该区块所属 bucket 从未被写过时**才回退：bucket 一旦写过，它的空槽即「已删除」，回退会把删掉的区块读回来。首次写一个桶时会先用 `.mca` 播种同桶的邻居（见 §10），所以写过之后同桶不会有「未迁移」的空槽 |
 | `compactionMinBytes` | `4194304` | 触发 compaction 的最小浪费字节数 |

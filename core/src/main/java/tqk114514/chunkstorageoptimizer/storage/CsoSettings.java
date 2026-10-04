@@ -49,7 +49,12 @@ public record CsoSettings(
     public static final long MAX_BATCH_DELAY_MS = 600_000L;
 
     public static CsoSettings defaults() {
-        return normalized(16, CsoFormat.COMPRESSION_ZSTD, 3, 4, true, true, 4L * 1024 * 1024, 0.25, 16, 5000L);
+        // cachedBuckets defaults to the top of its range: the working set around one player
+        // is dozens of buckets at the default grid (render distance 12 covers ~150 of them),
+        // and the cost of a miss is a full bucket decompress per chunk read. The per-file
+        // byte ceiling in CsoRegionFile is what keeps small grids safe where one payload is
+        // huge; at grid=16 the count knob stays the effective limit.
+        return normalized(16, CsoFormat.COMPRESSION_ZSTD, 3, 64, true, true, 4L * 1024 * 1024, 0.25, 16, 5000L);
     }
 
     /**

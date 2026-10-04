@@ -194,7 +194,7 @@ on Fabric — same keys, same defaults:
 | `grid` | `16` | Bucket grid edge (1/2/4/8/16/32). See below |
 | `compression` | `zstd` | `zstd` or `none` |
 | `zstdLevel` | `3` | 1–22. Higher compresses better and writes slower |
-| `cachedBuckets` | `4` | Decompressed buckets kept in memory per region file |
+| `cachedBuckets` | `64` | Decompressed buckets kept in memory per region file, with an 8 MB per-file byte ceiling |
 | `verifyCrc` | `true` | Verify CRC32 on read. Turning it off removes corruption detection |
 | `fallbackToMca` | `true` | Read missing chunks from `.mca`. **Do not disable** |
 | `compactionMinBytes` | `4194304` | Minimum wasted bytes before reclaiming space |

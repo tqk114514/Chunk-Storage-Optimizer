@@ -40,7 +40,7 @@ public final class Config {
         .defineInRange("zstdLevel", 3, 1, 22);
 
     public static final ModConfigSpec.IntValue CACHED_BUCKETS = BUILDER
-        .defineInRange("cachedBuckets", 4, 0, 64);
+        .defineInRange("cachedBuckets", 64, 0, 64);
 
     public static final ModConfigSpec.BooleanValue VERIFY_CRC = BUILDER
         .define("verifyCrc", true);

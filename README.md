@@ -104,7 +104,7 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 | `grid` | `16` | bucket 网格边长（1/2/4/8/16/32）。见下方说明 |
 | `compression` | `zstd` | 压缩算法，`zstd` 或 `none` |
 | `zstdLevel` | `3` | zstd 等级 1–22。等级越高压缩越好、写入越慢 |
-| `cachedBuckets` | `4` | 每个 region 文件缓存的解压 bucket 数 |
+| `cachedBuckets` | `64` | 每个 region 文件缓存的解压 bucket 数；另有每文件 8 MB 的字节上限兜底 |
 | `verifyCrc` | `true` | 读取时校验 CRC32。关闭可获得少量性能，但失去损坏检测 |
 | `fallbackToMca` | `true` | `.cso` 中没有的区块回退读取 `.mca`。**不要关闭** |
 | `compactionMinBytes` | `4194304` | 触发空间整理的最小浪费字节数 |

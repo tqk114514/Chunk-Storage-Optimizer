@@ -579,4 +579,32 @@ class CsoRegionFileTest {
             }
         }
     }
+
+    @Test
+    void cacheIsBoundedByBytesNotJustCount(@TempDir Path dir) throws IOException {
+        // 64 buckets of headroom on the count, but three ~3 MB incompressible payloads blow
+        // past the per-file byte ceiling: the least recently used payload must go, even
+        // though the count limit alone would happily keep all three. This is the guard that
+        // lets the default count sit at the top of its range — a small grid makes one bucket
+        // a whole region's worth of chunks, and a count alone would pin gigabytes.
+        Path path = dir.resolve("r.0.0.cso");
+        try (CsoRegionFile file = CsoRegionFile.open(path, GRID, COMPRESSION, LEVEL,
+            64, true, 4096, 0.25)) {
+            file.writeChunk(0, 0, incompressible(1, 3_000_000));
+            file.writeChunk(4, 0, incompressible(2, 3_000_000));
+            assertEquals(2, file.cachedBucketCount(), "two payloads fit the byte budget");
+
+            file.writeChunk(8, 0, incompressible(3, 3_000_000));
+            assertEquals(2, file.cachedBucketCount(),
+                "the third put must evict the eldest to stay inside the budget");
+        }
+
+        // A payload bigger than the whole budget is not cacheable at all: nothing else gets
+        // evicted for its sake, and re-reading that bucket decompresses again.
+        try (CsoRegionFile file = CsoRegionFile.open(path, GRID, COMPRESSION, LEVEL,
+            64, true, 4096, 0.25)) {
+            file.writeChunk(0, 4, incompressible(4, 9_000_000));
+            assertEquals(0, file.cachedBucketCount(), "a payload over the ceiling must not be pinned");
+        }
+    }
 }
