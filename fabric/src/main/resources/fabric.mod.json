@@ -3,7 +3,7 @@
   "id": "${mod_id}",
   "version": "${mod_version}",
   "name": "${mod_name}",
-  "description": "Replaces Minecraft's Anvil region storage with a bucket-grouped, zstd-compressed format (.cso): smaller saves and faster reads and writes.",
+  "description": "Replaces Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — smaller saves, faster chunk IO.",
   "authors": [
     "${mod_author}"
   ],
