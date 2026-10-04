@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.0.10] - 2026-10-05
+
+### Fixed
+- **One failed bucket-table write could permanently destroy a bucket.** The write path committed
+  its in-memory entry before the durable table-entry write, so a failure between the two — a
+  transient I/O error, a full disk after the data block landed — let the automatic batch retry
+  (500 ms later) reuse the old block's space and overwrite the only intact copy a valid table
+  entry still pointed at. The region then refused every chunk of that bucket with a corruption
+  error. The write path now defers the in-memory commit until the table entry has landed, the
+  same rule compaction already follows since 1.0.9.
+- **A chunk larger than ~1 MiB compressed corrupted the .mca written for it.** The Anvil header
+  stores the sector count in eight bits; the writer let a count of 256 or more wrap into the
+  sector field, producing a file not even this mod's own reader could read back. Vanilla moves
+  such chunks to an external .mcc; this writer has no external path, so it now refuses the
+  write before touching the file. .mca writes also go through a temp file and an atomic move
+  now, so a mid-write I/O error can no longer replace a whole region with a half-written one;
+  the offline converter skips a refused file, keeps the original, and says why.
+- **A corrupt chunk index could crash the read path with an unchecked exception** instead of the
+  documented corruption error: the bounds check added the offset and length as ints, so a pair
+  that wrapped the int slipped past it. The write path's copy of the same check was hardened
+  with a long cast in 1.0.9; the read path now matches.
+- **A locked or read-only .mca silently regenerated the world over it.** A legacy file that
+  exists but cannot be opened — a read-only attribute, a backup tool's exclusive lock — was
+  answered exactly like a missing one: seeding skipped it, the first bucket write became
+  authoritative over chunks still living only in there, and the game regenerated terrain over
+  them without one log line. Measured on a live save: all 900 slots the two formats shared had
+  silently diverged. An unopenable .mca now fails loudly — the batch about to write its first
+  bucket stays staged and is retried on the timer, so saving stalls visibly until the file
+  opens again, and a failed read reaches the game the same way vanilla reports its own
+  unreadable region files. Re-run after the fix: the locked window left the disk untouched,
+  and the original chunks came back byte-identical.
+- **A failed `/cso convert mca` had already switched the world to vanilla storage.** The
+  cso.disabled marker was written before the conversion loop, so a mid-loop failure left the
+  save claiming a conversion that never finished: on restart the converted half served its
+  .mca files while the rest of the world lived only in .cso, and the error message said
+  nothing about it. The marker is now written only after every file made it; a failed run
+  leaves the world exactly as it was and says so.
+- The mod's warnings now reach the game log. CsoStorage and CsoCommands logged through
+  System.Logger, which no loader environment routes to the log file — including the
+  "timed flush failed" warning that had existed all along. Both now use the same slf4j setup
+  as the rest of the mod.
+
+### Note
+The file format is unchanged — every .cso written by any 1.x version stays readable, so this is
+a drop-in upgrade. Existing config files are not rewritten, and the bucket-cache default
+(cachedBuckets=4) is unchanged.
+
 ## [1.0.9] - 2026-10-03
 
 ### Added
