@@ -40,8 +40,8 @@
 # tools/check-loader-versions.sh knows about this one exception.
 #
 # Every beta floor here sits on a closed line, so it is a frozen fact and the check compares it
-# exactly. The check still tolerates a lagging floor on the newest line, because a line that is
-# still receiving builds has a floor that moves — no such line is listed today.
+# exactly — with one live exception: 26.3.0 is still receiving builds, so its floor moves with
+# the newest beta of that line, and the check only warns when it lags.
 1.21,     21, legacy, 21.0.143,        0.102.0+1.21,     11.0.5,   11
 1.21.1,   21, legacy, 21.1.1,          0.116.17+1.21.1,  11.0.5,   11
 1.21.2,   21, legacy, 21.2.1-beta,     0.106.1+1.21.2,   12.0.1,   11
@@ -58,4 +58,4 @@
 26.1.1,   25, modern, 26.1.1.15-beta,  -,                -,        11
 26.1.2,   25, modern, 26.1.2.71,       -,                -,        11
 26.2.0,   25, modern, 26.2.0.57,       -,                -,        11
-26.3.0,   25, modern, 26.3.0.43-beta,  -,                -,        12
+26.3.0,   25, modern, 26.3.0.48-beta,  -,                -,        12
