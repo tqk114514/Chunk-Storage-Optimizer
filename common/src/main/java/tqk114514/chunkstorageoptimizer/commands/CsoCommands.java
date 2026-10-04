@@ -7,11 +7,15 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import org.slf4j.Logger;
+
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+
+import com.mojang.logging.LogUtils;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -36,6 +40,13 @@ import tqk114514.chunkstorageoptimizer.tools.Converter;
  * helping on a given world, since the vanilla JFR region hooks are bypassed.
  */
 public final class CsoCommands {
+
+    /**
+     * slf4j, like the rest of common — deliberately not {@link System.Logger}: without a
+     * JUL-to-log4j bridge on the classpath (Fabric ships none), System.Logger output never
+     * reaches the game log, and this class's failure reports are the ones that have to.
+     */
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private CsoCommands() {
     }
@@ -218,7 +229,9 @@ public final class CsoCommands {
             saveAll(source);
 
             if ("mca".equals(target)) {
-                CsoRuntime.disableWorld(root, "converted back to .mca");
+                // Detached for the rest of the session BEFORE any byte moves: a storage that
+                // stays attached goes on writing .cso into the directories being converted.
+                // The durable marker deliberately does NOT happen here — see below the loop.
                 CsoRegistry.releaseWorld(root);
             } else {
                 CsoRegistry.pauseWorld(root);
@@ -310,6 +323,19 @@ public final class CsoCommands {
                 }
             }
 
+            if ("mca".equals(target)) {
+                // The durable marker only once every file made it. Written up front, a
+                // mid-conversion failure left the save claiming a conversion that never
+                // finished: a restart served vanilla .mca for the files that had been
+                // converted while the rest of the world still lived only in .cso — half a
+                // world, silently chosen for the player (reproduced in-game on 2026-10-04:
+                // the marker's timestamp matched the failed run to the second). Released
+                // without a marker is safe for the failure case: the released storages stay
+                // detached for this session, and a restart re-enters with the mod serving
+                // the .cso/.mca union — exactly the pre-conversion state.
+                CsoRuntime.disableWorld(root, "converted back to .mca");
+            }
+
             long millis = (System.nanoTime() - startedAt) / 1_000_000;
             StringBuilder message = new StringBuilder("CSO: converted ")
                 .append(files).append(" files (").append(chunks).append(" chunks) to .").append(target)
@@ -336,7 +362,13 @@ public final class CsoCommands {
             source.sendSuccess(() -> Component.literal(text), false);
             return files;
         } catch (Exception e) {
-            String message = "CSO conversion failed: " + e;
+            String message = "CSO conversion failed: " + e
+                + ". The world keeps its current storage — nothing was switched by the failed"
+                + " run; fix the cause and run /cso convert again.";
+            // Chat is where the player reads it; the log is where it has to survive. A
+            // conversion aborted mid-way leaves the save in a state only the message
+            // explains: files before the failure converted, the rest untouched.
+            LOGGER.error(message, e);
             source.sendFailure(Component.literal(message));
             return 0;
         }
