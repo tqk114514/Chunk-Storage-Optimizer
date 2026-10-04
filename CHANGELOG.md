@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.1.0] - 2026-10-05
+
+### Changed
+- **The bucket cache now defaults to 64 buckets per region file (was 4), with a new 8 MB
+  per-file byte ceiling.** A player's working set at the default grid is dozens of buckets —
+  render distance 12 covers roughly 150 of them — and a cache miss costs a full bucket
+  decompress per chunk read; measured on a roaming-shaped workload, the new default reads
+  5.9x faster than the old one. The byte ceiling is what makes raising the count safe: at
+  small grids one bucket holds a whole region's worth of chunks, so a count alone could pin
+  gigabytes of heap. The ceiling evicts by bytes there, and a single payload larger than the
+  whole budget is not cached at all; at the default grid the count knob stays the effective
+  limit. **Existing config files are not rewritten** — raise `cachedBuckets` by hand to get
+  this.
+- **Chunk reads no longer copy the chunk out of the cached bucket before parsing.** The
+  parser now reads straight out of the cached payload, which is never mutated in place,
+  removing one allocation and one copy per chunk load — the storage layer's warm-path read
+  drops by 93% (measured 675 → 45 ns). Small per read, but it is the only avoidable part of
+  the hottest path.
+- **NBT parsing and serialization moved outside the storage lock.** Parsing a real chunk's
+  NBT costs ~29 µs — two orders of magnitude more than the locked lookup it was holding the
+  lock through — so every concurrent thread (other readers, the scan pool, the batch timer)
+  queued behind work that protects nothing: the bytes being parsed are immutable once
+  published. Measured on real chunk data with two readers and a writer: concurrent read
+  throughput up to 2x, p99 read latency down 2-3x, and a writer that the old code starved
+  under read load (484 writes in 8 s) now sustains 9,704 while reads are also faster.
+
+### Note
+- NeoForge builds for Minecraft 26.3.0 now require NeoForge 26.3.0.48-beta or newer (was
+  26.3.0.43-beta). The 26.3 line has not shipped a stable build yet, so its floor follows
+  the newest beta — the same policy every closed beta-only line already had.
+- The file format is unchanged — every .cso written by any 1.x version stays readable, so
+  this is a drop-in upgrade.
+
 ## [1.0.10] - 2026-10-05
 
 ### Fixed
