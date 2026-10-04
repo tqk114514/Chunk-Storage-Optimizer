@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.slf4j.Logger;
+
+import com.mojang.logging.LogUtils;
+
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -87,7 +91,13 @@ public final class CsoStorage implements AutoCloseable {
     );
     private static final long TIMER_PERIOD_MS = 500L;
 
-    private static final System.Logger LOGGER = System.getLogger(CsoStorage.class.getName());
+    /**
+     * slf4j, like the rest of common — deliberately not {@link System.Logger}: without a
+     * JUL-to-log4j bridge on the classpath (Fabric ships none), System.Logger output never
+     * reaches the game log, and the warnings this class emits are exactly the ones someone
+     * has to see when a save misbehaves.
+     */
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private final RegionStorageInfo info;
     private final Path folder;
@@ -157,8 +167,7 @@ public final class CsoStorage implements AutoCloseable {
             }
             flushPending();
         } catch (IOException e) {
-            LOGGER.log(System.Logger.Level.WARNING,
-                "Timed flush failed for " + this.folder + "; the batch stays staged", e);
+            LOGGER.warn("Timed flush failed for {}; the batch stays staged", this.folder, e);
         } finally {
             this.lock.unlock();
         }
@@ -574,14 +583,19 @@ public final class CsoStorage implements AutoCloseable {
      * <p>The cost is bounded and paid once per bucket: at most {@code chunksPerBucket - 1} extra
      * reads the first time a bucket is touched, which at grid 16 is three.
      *
-     * <p>Declares no failure of its own, and that is deliberate: a batch that throws stays staged and
-     * is retried on a timer, so anything escaping here would stop the world from saving. An
-     * unreadable legacy chunk is reported and left out instead — see
-     * {@link #legacyChunkBytes(RegionFile, ChunkPos, int, int)}.
+     * <p>Per-chunk reads from the legacy file still declare no failure of their own, and that
+     * is deliberate: a batch that throws stays staged and is retried on a timer, so a single
+     * unreadable chunk escaping would stop the world from saving — an unreadable chunk is
+     * reported and left out instead, see {@link #legacyChunkBytes(RegionFile, ChunkPos, int, int)}.
+     * The legacy file itself is the one deliberate exception: a {@code .mca} that exists but
+     * cannot be opened at all propagates from here, precisely because seeding without it would
+     * make this bucket authoritative over chunks that are still only in there. The batch stays
+     * staged and the timer retries, so the save stalls loudly until the file opens again
+     * instead of silently destroying the neighbours (reproduced in-game on 2026-10-04).
      */
     private void seedNewBuckets(
         CsoRegionFile file, ChunkPos sample, int grid, Map<Integer, Map<Integer, byte[]>> byBucket
-    ) {
+    ) throws IOException {
         RegionFile legacy = null;
         for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : byBucket.entrySet()) {
             if (file.hasBucketIndex(bucketEntry.getKey())) {
@@ -646,13 +660,11 @@ public final class CsoStorage implements AutoCloseable {
                 }
             }
         }
-        LOGGER.log(
-            System.Logger.Level.WARNING,
-            "Could not read chunk " + pos + " from the legacy .mca in " + LEGACY_READ_ATTEMPTS
-                + " attempts, so it was left out of the seed to let the batch through. If the legacy"
-                + " file is sound, this chunk now reads as absent and the game will regenerate it —"
-                + " worth checking the .mca",
-            lastFailure
+        LOGGER.warn(
+            "Could not read chunk {} from the legacy .mca in {} attempts, so it was left out of the"
+                + " seed to let the batch through. If the legacy file is sound, this chunk now reads"
+                + " as absent and the game will regenerate it — worth checking the .mca",
+            pos, LEGACY_READ_ATTEMPTS, lastFailure
         );
         return null;
     }
@@ -713,8 +725,22 @@ public final class CsoStorage implements AutoCloseable {
         return file;
     }
 
-    /** Legacy handle for read-through. Null when there is no {@code .mca} to fall back to. */
-    private RegionFile legacy(ChunkPos pos) {
+    /**
+     * Legacy handle for read-through. Null when there is no {@code .mca} to fall back to.
+     *
+     * <p>A file that exists but cannot be opened propagates its {@link IOException} rather
+     * than being answered as absence. Answering absence is what turned a locked or
+     * read-only .mca into silent terrain regeneration (reproduced in-game on 2026-10-04: a
+     * read-only .mca beside live .cso storage regenerated every chunk over it, with no log
+     * line at all): the seeding path treated it as "nothing to migrate", wrote the bucket
+     * without it, and the bucket became authoritative over chunks that existed only there —
+     * while the read path reported every chunk it held as never-generated. Propagating
+     * instead means a batch about to write its first bucket stays staged and is retried on
+     * the timer, so the save stalls visibly until the file opens again; a failed read
+     * reaches the game the same way vanilla's own read of an unopenable region file does —
+     * as an error, never as "this chunk never existed".
+     */
+    private RegionFile legacy(ChunkPos pos) throws IOException {
         Path path = regionPath(pos, ".mca");
         if (!Files.isRegularFile(path)) {
             return null;
@@ -724,12 +750,7 @@ public final class CsoStorage implements AutoCloseable {
         if (file != null) {
             return file;
         }
-        try {
-            file = new RegionFile(this.info, path, this.folder, this.sync);
-        } catch (IOException e) {
-            // A broken legacy file must not break the new format: skip the fallback.
-            return null;
-        }
+        file = new RegionFile(this.info, path, this.folder, this.sync);
         evictIfNeeded(this.legacyRegions, MAX_OPEN_LEGACY);
         this.legacyRegions.put(key, file);
         return file;
