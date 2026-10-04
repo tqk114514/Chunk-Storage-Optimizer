@@ -2,7 +2,9 @@ package tqk114514.chunkstorageoptimizer.format;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -207,6 +209,27 @@ class AnvilRegionFileTest {
 
         assertTrue(result.chunks().isEmpty());
         assertEquals(1, result.unreadable(), "an allocated slot with no stream is a loss, not an absence");
+    }
+
+    @Test
+    void writeRefusesAChunkTooLargeForTheEightBitSectorCount(@TempDir Path dir) throws IOException {
+        // The Anvil header packs the sector count into eight bits. A chunk whose zlib stream
+        // needs 256+ sectors used to wrap the count into the sector field, and the file this
+        // writer produced could not be read back by its own reader — let alone by the game.
+        // Vanilla externalizes such chunks to a .mcc; this writer has no external path, so it
+        // refuses before touching the file instead.
+        Path mca = dir.resolve("r.0.0.mca");
+        byte[] huge = new byte[1_500_000];
+        new Random(42).nextBytes(huge); // incompressible: stays > 1 MiB through zlib
+
+        IOException refused = assertThrows(IOException.class, () -> AnvilRegionFile.write(
+            mca, List.of(new AnvilRegionFile.Chunk(5, huge))));
+        assertTrue(refused.getMessage().contains("255"), refused.getMessage());
+        assertFalse(Files.exists(mca), "a refusal must happen before anything is written");
+
+        // Normal chunks still write after the refusal; nothing was poisoned.
+        AnvilRegionFile.write(mca, List.of(new AnvilRegionFile.Chunk(5, chunkData(5))));
+        assertEquals(1, AnvilRegionFile.read(mca).size());
     }
 
     /**

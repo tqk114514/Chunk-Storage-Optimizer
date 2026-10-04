@@ -739,7 +739,16 @@ public final class Converter {
                         + " existing .mca slot(s) are not decodable, and merging would drop them");
                 }
                 List<AnvilRegionFile.Chunk> merged = existing != null ? prefer(chunks, existing.chunks()) : chunks;
-                AnvilRegionFile.write(out, merged);
+                try {
+                    AnvilRegionFile.write(out, merged);
+                } catch (IOException e) {
+                    // The .mca is guaranteed untouched: the writer validates before it writes
+                    // and swaps through a temp file, so both a refusal and an I/O failure leave
+                    // whatever was there before. The .cso source holds the whole union, so
+                    // fixing the cause and re-running picks up exactly where this stopped.
+                    System.out.println(source.getFileName() + " SKIPPED: " + e.getMessage());
+                    continue;
+                }
                 total += merged.size();
                 System.out.println(out.getFileName() + " <- " + merged.size() + " chunks");
             }

@@ -7,7 +7,9 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -163,38 +165,74 @@ public final class AnvilRegionFile {
     }
 
     public static void write(Path path, List<Chunk> chunks, int deflateLevel) throws IOException {
+        // Deflate and validate everything BEFORE touching the target. A chunk whose stream
+        // needs more than 255 sectors cannot be represented: the header packs the sector
+        // count into eight bits, and a count of 256 wraps into the sector field — the slot
+        // then names the wrong offset and the chunk is lost in place. Vanilla never writes
+        // such a chunk inline (it externalizes to a .mcc), and this writer has no external
+        // path, so it refuses instead of producing a file even its own reader cannot read
+        // back. Validating up front also means a refusal never leaves a partial file.
+        byte[][] streams = new byte[chunks.size()][];
+        int[] sectorCounts = new int[chunks.size()];
+        for (int i = 0; i < chunks.size(); i++) {
+            Chunk chunk = chunks.get(i);
+            byte[] compressed = deflate(chunk.nbt(), deflateLevel);
+            int sectorCount = (compressed.length + 5 + SECTOR_BYTES - 1) / SECTOR_BYTES;
+            if (sectorCount > 255) {
+                throw new IOException("chunk at slot " + chunk.index() + " is " + compressed.length
+                    + " bytes compressed and needs " + sectorCount + " sectors, but the Anvil"
+                    + " header stores only 255. Vanilla would have written it to an external"
+                    + " .mcc; refusing rather than writing a header entry the game could not"
+                    + " read back");
+            }
+            streams[i] = compressed;
+            sectorCounts[i] = sectorCount;
+        }
+
         int[] offsets = new int[CHUNKS];
         int sector = 2;
         int now = (int) (System.currentTimeMillis() / 1000L);
 
-        try (FileChannel channel = FileChannel.open(
-            path, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
-        )) {
-            writeFully(channel, ByteBuffer.allocate(HEADER_BYTES), 0L);
+        // Through a sibling temp and an atomic move, the same shape Converter.writeCso uses:
+        // a genuine I/O error mid-write must leave whatever .mca was there before untouched,
+        // not a half-written region in its place.
+        Path temp = path.resolveSibling(path.getFileName() + ".tmp");
+        try {
+            try (FileChannel channel = FileChannel.open(
+                temp, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
+            )) {
+                writeFully(channel, ByteBuffer.allocate(HEADER_BYTES), 0L);
 
-            for (Chunk chunk : chunks) {
-                byte[] compressed = deflate(chunk.nbt(), deflateLevel);
-                int total = compressed.length + 5;
-                int sectorCount = (total + SECTOR_BYTES - 1) / SECTOR_BYTES;
-                ByteBuffer block = ByteBuffer.allocate(sectorCount * SECTOR_BYTES).order(ByteOrder.BIG_ENDIAN);
-                block.putInt(compressed.length + 1);
-                block.put((byte) 2); // zlib
-                block.put(compressed);
-                block.flip();
-                writeFully(channel, block, (long) sector * SECTOR_BYTES);
-                offsets[chunk.index()] = (sector << 8) | sectorCount;
-                sector += sectorCount;
-            }
+                for (int i = 0; i < chunks.size(); i++) {
+                    Chunk chunk = chunks.get(i);
+                    ByteBuffer block = ByteBuffer.allocate(sectorCounts[i] * SECTOR_BYTES).order(ByteOrder.BIG_ENDIAN);
+                    block.putInt(streams[i].length + 1);
+                    block.put((byte) 2); // zlib
+                    block.put(streams[i]);
+                    block.flip();
+                    writeFully(channel, block, (long) sector * SECTOR_BYTES);
+                    offsets[chunk.index()] = (sector << 8) | sectorCounts[i];
+                    sector += sectorCounts[i];
+                }
 
-            ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
-            for (int offset : offsets) {
-                header.putInt(offset);
+                ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
+                for (int offset : offsets) {
+                    header.putInt(offset);
+                }
+                for (int i = 0; i < CHUNKS; i++) {
+                    header.putInt(offsets[i] == 0 ? 0 : now);
+                }
+                header.flip();
+                writeFully(channel, header, 0L);
             }
-            for (int i = 0; i < CHUNKS; i++) {
-                header.putInt(offsets[i] == 0 ? 0 : now);
+            Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException failure) {
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
             }
-            header.flip();
-            writeFully(channel, header, 0L);
+            throw failure;
         }
     }
 
