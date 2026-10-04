@@ -159,7 +159,7 @@ bucket 表存**两份同构副本**。表 `t` 中第 `i` 项的偏移 = `128 + (
 3. 读 `BucketTable[b]`：若 `offset == 0` 或 `chunkCount == 0` → 区块不存在。
 4. 从文件读 `compressedLength` 字节 → zstd 解压 → 校验 `rawLength` 与 CRC32 → 存入缓存。
 5. 读 `ChunkEntry[idx]`：`length == 0` → 区块不存在。
-6. 切出 `[offset, offset+length)` 字节 → `NbtIo.read`。
+6. 以零拷贝切片 `[offset, offset+length)` 直接交给 `NbtIo.read`——桶 payload 从不被原地修改（重写装的是新数组），视图可安全共享，读取路径不做区块级的拷贝与分配。
 
 ### 写一个区块
 

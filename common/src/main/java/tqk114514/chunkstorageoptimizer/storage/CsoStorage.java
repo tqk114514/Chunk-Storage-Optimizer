@@ -242,17 +242,19 @@ public final class CsoStorage implements AutoCloseable {
             this.chunksRead.increment();
             byte[] staged = staged(pos);
             if (staged != null) {
-                return deserialize(staged);
+                return deserialize(staged, 0, staged.length);
             }
             if (isStagedDeleted(pos)) {
                 return null;
             }
             CsoRegionFile file = regionIfExists(pos);
-            byte[] data = file == null
+            CsoRegionFile.ChunkSlice slice = file == null
                 ? null
-                : file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
-            if (data != null) {
-                return deserialize(data);
+                : file.readChunkSlice(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            if (slice != null) {
+                // Zero-copy: the parse reads straight out of the cached bucket payload, which
+                // is never mutated in place — one allocation and one memcpy less per chunk load.
+                return deserialize(slice.payload(), slice.offset(), slice.length());
             }
             if (!this.settings.fallbackToMca()) {
                 return null;
@@ -302,11 +304,14 @@ public final class CsoStorage implements AutoCloseable {
                 return;
             }
             CsoRegionFile file = regionIfExists(pos);
-            byte[] data = file == null
+            CsoRegionFile.ChunkSlice slice = file == null
                 ? null
-                : file.readChunk(pos.getRegionLocalX(), pos.getRegionLocalZ());
-            if (data != null) {
-                NbtIo.parse(new DataInputStream(new ByteArrayInputStream(data)), visitor, NbtAccounter.unlimitedHeap());
+                : file.readChunkSlice(pos.getRegionLocalX(), pos.getRegionLocalZ());
+            if (slice != null) {
+                // Zero-copy, same as read(): the parse reads straight out of the cached payload.
+                NbtIo.parse(
+                    new DataInputStream(new ByteArrayInputStream(slice.payload(), slice.offset(), slice.length())),
+                    visitor, NbtAccounter.unlimitedHeap());
                 return;
             }
             if (!this.settings.fallbackToMca()) {
@@ -682,8 +687,13 @@ public final class CsoStorage implements AutoCloseable {
         return this.serializeSink.toByteArray();
     }
 
-    private static CompoundTag deserialize(byte[] data) throws IOException {
-        return NbtIo.read(new DataInputStream(new ByteArrayInputStream(data)));
+    /**
+     * Parses NBT straight out of the given bytes, which may be a slice into a cached bucket
+     * payload — {@link ByteArrayInputStream} wraps the range without copying, so the hot read
+     * path never pays for a chunk-sized copy it would only hand to the parser.
+     */
+    private static CompoundTag deserialize(byte[] data, int offset, int length) throws IOException {
+        return NbtIo.read(new DataInputStream(new ByteArrayInputStream(data, offset, length)));
     }
 
     /**

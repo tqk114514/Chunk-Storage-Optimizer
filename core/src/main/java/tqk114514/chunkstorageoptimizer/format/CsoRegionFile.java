@@ -526,8 +526,27 @@ public final class CsoRegionFile implements Closeable {
         return crc.getValue();
     }
 
-    /** Returns the raw NBT bytes for a chunk, or {@code null} when absent. */
-    public synchronized byte[] readChunk(int localX, int localZ) throws IOException {
+    /**
+     * The chunk's bytes as an immutable view into the cached bucket payload — no copy.
+     *
+     * @param payload the bucket's decompressed payload, shared with the cache
+     * @param offset  where the chunk starts inside {@code payload}
+     * @param length  the chunk's byte count
+     */
+    public record ChunkSlice(byte[] payload, int offset, int length) {
+    }
+
+    /**
+     * The chunk's bytes as a zero-copy view, or {@code null} when absent.
+     *
+     * <p>The array is the bucket's decompressed payload, shared with the cache; it is never
+     * mutated in place (a bucket rewrite installs a new array), so the view stays valid for
+     * however long the caller holds it — it simply shows the version read. That is what makes
+     * it safe to parse straight out of: the parse reads the bytes where they live, and the
+     * copy the hot read path used to make per chunk goes away. Callers that need an owned
+     * copy, like the offline converter, keep {@link #readChunk}.
+     */
+    public synchronized ChunkSlice readChunkSlice(int localX, int localZ) throws IOException {
         CsoStats.chunkRead();
         int bucket = CsoFormat.bucketIndex(localX, localZ, this.grid);
         int idx = CsoFormat.chunkIndexInBucket(localX, localZ, this.grid);
@@ -543,7 +562,7 @@ public final class CsoRegionFile implements Closeable {
         int offset = CsoFormat.readInt(payload, base);
         int indexBytes = this.chunksPerBucket * CHUNK_ENTRY_SIZE;
         // The long cast matters: offset + length can wrap an int and slip past this check,
-        // turning a corrupt index into an unchecked exception from the copy below instead of
+        // turning a corrupt index into an unchecked exception at the parse site instead of
         // the typed failure FORMAT.md promises. rebuildPayload casts for the same reason on
         // the write path.
         if (offset < indexBytes || (long) offset + length > payload.length) {
@@ -552,7 +571,15 @@ public final class CsoRegionFile implements Closeable {
                     + " payload=" + payload.length
             );
         }
-        return Arrays.copyOfRange(payload, offset, offset + length);
+        return new ChunkSlice(payload, offset, length);
+    }
+
+    /** Returns the raw NBT bytes for a chunk, or {@code null} when absent. */
+    public synchronized byte[] readChunk(int localX, int localZ) throws IOException {
+        ChunkSlice slice = readChunkSlice(localX, localZ);
+        return slice == null
+            ? null
+            : Arrays.copyOfRange(slice.payload(), slice.offset(), slice.offset() + slice.length());
     }
 
     public synchronized boolean hasChunk(int localX, int localZ) throws IOException {

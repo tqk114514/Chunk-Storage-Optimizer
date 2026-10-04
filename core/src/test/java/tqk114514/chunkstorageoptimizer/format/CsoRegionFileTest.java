@@ -3,6 +3,7 @@ package tqk114514.chunkstorageoptimizer.format;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,6 +14,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -605,6 +607,27 @@ class CsoRegionFileTest {
             64, true, 4096, 0.25)) {
             file.writeChunk(0, 4, incompressible(4, 9_000_000));
             assertEquals(0, file.cachedBucketCount(), "a payload over the ceiling must not be pinned");
+        }
+    }
+
+    @Test
+    void readChunkSliceExposesTheSameBytesWithoutCopying(@TempDir Path dir) throws IOException {
+        byte[] data = chunkData(77, 5000);
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunk(2, 3, data);
+
+            CsoRegionFile.ChunkSlice slice = file.readChunkSlice(2, 3);
+            assertNotNull(slice, "a written chunk must come back as a view");
+            assertArrayEquals(data, Arrays.copyOfRange(
+                slice.payload(), slice.offset(), slice.offset() + slice.length()),
+                "the view must expose exactly the chunk's bytes");
+            // The view aliases the cached payload: same array, positioned at the chunk.
+            assertTrue(slice.offset() >= 0 && slice.offset() + slice.length() <= slice.payload().length,
+                "the view must stay inside its payload");
+
+            // The owned-copy API agrees with the view, and unwritten positions read as absent.
+            assertArrayEquals(data, file.readChunk(2, 3));
+            assertNull(file.readChunkSlice(1, 1), "an unwritten position reads as absent");
         }
     }
 }
