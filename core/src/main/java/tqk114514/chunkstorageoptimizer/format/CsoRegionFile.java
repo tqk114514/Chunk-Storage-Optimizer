@@ -392,11 +392,14 @@ public final class CsoRegionFile implements Closeable {
      * Writes to the table copy that is NOT currently newest for this bucket, then flips
      * {@link #lastTable}. The previous copy stays valid until this write lands, so a crash
      * mid-write always leaves one intact copy behind.
+     *
+     * <p>Takes the entry to record as a parameter, so a writer may durable-commit a state it
+     * has not applied in memory yet — see {@link #storeBucket} for why that ordering matters.
      */
-    private void writeBucketEntry(int bucket) throws IOException {
+    private void writeBucketEntry(int bucket, BucketEntry entry) throws IOException {
         int table = 1 - this.lastTable[bucket];
-        byte[] entry = encodeEntry(this.entries[bucket]);
-        writeFully(ByteBuffer.wrap(entry), (long) CsoFormat.tableOffset(table, bucket, this.bucketCount));
+        byte[] bytes = encodeEntry(entry);
+        writeFully(ByteBuffer.wrap(bytes), (long) CsoFormat.tableOffset(table, bucket, this.bucketCount));
         this.lastTable[bucket] = table;
     }
 
@@ -497,7 +500,11 @@ public final class CsoRegionFile implements Closeable {
         }
         int offset = CsoFormat.readInt(payload, base);
         int indexBytes = this.chunksPerBucket * CHUNK_ENTRY_SIZE;
-        if (offset < indexBytes || offset + length > payload.length) {
+        // The long cast matters: offset + length can wrap an int and slip past this check,
+        // turning a corrupt index into an unchecked exception from the copy below instead of
+        // the typed failure FORMAT.md promises. rebuildPayload casts for the same reason on
+        // the write path.
+        if (offset < indexBytes || (long) offset + length > payload.length) {
             throw new CsoCorruptedException(
                 "Chunk entry out of bounds in " + this.path + ": offset=" + offset + " length=" + length
                     + " payload=" + payload.length
@@ -813,16 +820,37 @@ public final class CsoRegionFile implements Closeable {
         writeFully(ByteBuffer.wrap(this.compressScratch, 0, compressedLength), offset);
         CsoStats.bucketCompressed(elapsedNanos, payload.length, compressedLength);
         CsoStats.ioWrite(compressedLength);
-
-        BucketEntry e = this.entries[bucket];
-        e.sequence = ++this.sequenceCounter;
-        e.offset = offset;
-        e.compressedLength = compressedLength;
-        e.rawLength = payload.length;
-        e.crc32 = (int) crc32(payload);
-        e.chunkCount = countChunks(payload);
-        writeBucketEntry(bucket);
+        // The block is on disk but no table copy names it yet, so nothing can reach it. The
+        // extent bookkeeping covers it from here on: if the table write below fails, this is
+        // dead space — a gap or tail the next allocate() may freely reuse, because no entry
+        // anywhere points at it.
         this.fileEnd = Math.max(this.fileEnd, offset + compressedLength);
+
+        // The next state is built WITHOUT touching entries[bucket]: that entry is what keeps
+        // the old block marked in use for allocate(), and it is the copy a recovery falls back
+        // to. Committing it in memory before the durable table write meant that a failure
+        // between the two freed the old block, and the retry — CsoStorage re-runs a failed
+        // batch on its 500 ms timer — overwrote the last intact copy a valid on-disk table
+        // entry still pointed at. compact() already follows this deferred-commit rule; this is
+        // the write path's copy of it.
+        BucketEntry next = new BucketEntry();
+        next.sequence = this.sequenceCounter + 1;
+        next.offset = offset;
+        next.compressedLength = compressedLength;
+        next.rawLength = payload.length;
+        next.crc32 = (int) crc32(payload);
+        next.chunkCount = countChunks(payload);
+        writeBucketEntry(bucket, next);
+
+        // The durable commit landed; only now does the in-memory state follow the disk.
+        this.sequenceCounter++;
+        BucketEntry e = this.entries[bucket];
+        e.sequence = next.sequence;
+        e.offset = next.offset;
+        e.compressedLength = next.compressedLength;
+        e.rawLength = next.rawLength;
+        e.crc32 = next.crc32;
+        e.chunkCount = next.chunkCount;
         this.bucketCache.put(bucket, payload);
         this.dirty = true;
     }

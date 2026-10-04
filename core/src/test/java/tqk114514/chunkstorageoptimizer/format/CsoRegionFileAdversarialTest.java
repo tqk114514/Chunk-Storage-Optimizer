@@ -10,8 +10,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -401,5 +406,198 @@ class CsoRegionFileAdversarialTest {
             CsoCorruptedException.class,
             () -> open(dir, CsoFormat.COMPRESSION_ZSTD).close(),
             "a well-formed WAL naming a nonexistent bucket must fail as corruption");
+    }
+
+    // ----------------------------------------------------------------------
+    // Bug 6: storeBucket committed the in-memory BucketEntry (entries[bucket]) BEFORE
+    // the durable table-entry write. A failure between the two — a transient I/O error,
+    // a full disk after the data block landed — left the OLD block unmarked, so the next
+    // allocate() (CsoStorage retries a failed batch on its 500 ms timer) handed that
+    // space to another write and overwrote the only intact copy a valid on-disk table
+    // entry still pointed at. compact() already follows the deferred-commit rule ("applied
+    // only once compaction succeeds"); storeBucket now does too.
+    //
+    // The failure is injected by swapping the private channel for a wrapper that rejects
+    // writes into the bucket-table region only — deterministic on every platform, with no
+    // /proc or POSIX permissions required.
+    // ----------------------------------------------------------------------
+
+    /** Delegates everything to a real channel, but rejects writes aimed at chosen offsets. */
+    private static final class FailingChannel extends FileChannel {
+        private final FileChannel delegate;
+        private final int dataStart;
+        private boolean failTableWrites;
+        private boolean failNextDataWrite;
+
+        FailingChannel(FileChannel delegate, int dataStart) {
+            this.delegate = delegate;
+            this.dataStart = dataStart;
+        }
+
+        @Override
+        public int write(ByteBuffer src, long position) throws IOException {
+            if (this.failTableWrites && position >= CsoFormat.HEADER_SIZE && position < this.dataStart) {
+                throw new IOException("injected failure: bucket-table entry write");
+            }
+            if (this.failNextDataWrite && position >= this.dataStart) {
+                this.failNextDataWrite = false;
+                throw new IOException("injected failure: bucket data write");
+            }
+            return this.delegate.write(src, position);
+        }
+
+        @Override public int read(ByteBuffer dst) throws IOException { return this.delegate.read(dst); }
+        @Override public int read(ByteBuffer dst, long position) throws IOException { return this.delegate.read(dst, position); }
+        @Override public long read(ByteBuffer[] dsts, int offset, int length) throws IOException { return this.delegate.read(dsts, offset, length); }
+        @Override public int write(ByteBuffer src) throws IOException { return this.delegate.write(src); }
+        @Override public long write(ByteBuffer[] srcs, int offset, int length) throws IOException { return this.delegate.write(srcs, offset, length); }
+        @Override protected void implCloseChannel() throws IOException { this.delegate.close(); }
+        @Override public long position() throws IOException { return this.delegate.position(); }
+        @Override public FileChannel position(long newPosition) throws IOException { return this.delegate.position(newPosition); }
+        @Override public long size() throws IOException { return this.delegate.size(); }
+        @Override public FileChannel truncate(long size) throws IOException { return this.delegate.truncate(size); }
+        @Override public void force(boolean metaData) throws IOException { this.delegate.force(metaData); }
+        @Override public FileLock lock(long position, long size, boolean shared) throws IOException { return this.delegate.lock(position, size, shared); }
+        @Override public FileLock tryLock(long position, long size, boolean shared) throws IOException { return this.delegate.tryLock(position, size, shared); }
+        @Override public MappedByteBuffer map(MapMode mode, long position, long size) throws IOException { return this.delegate.map(mode, position, size); }
+        @Override public long transferTo(long position, long count, WritableByteChannel target) throws IOException { return this.delegate.transferTo(position, count, target); }
+        @Override public long transferFrom(ReadableByteChannel src, long position, long count) throws IOException { return this.delegate.transferFrom(src, position, count); }
+    }
+
+    /** Replaces the region file's private channel with a wrapper configured for a test. */
+    private static FailingChannel swapChannel(
+        CsoRegionFile file, boolean failTableWrites, boolean failNextDataWrite) throws Exception {
+        Field channelField = CsoRegionFile.class.getDeclaredField("channel");
+        channelField.setAccessible(true);
+        FailingChannel wrapper = new FailingChannel(
+            (FileChannel) channelField.get(file), CsoFormat.dataStart(CsoFormat.bucketCount(GRID)));
+        wrapper.failTableWrites = failTableWrites;
+        wrapper.failNextDataWrite = failNextDataWrite;
+        channelField.set(file, wrapper);
+        return wrapper;
+    }
+
+    @Test
+    void failedTableEntryWriteMustNotFreeTheRecoveryBlock(@TempDir Path dir) throws Exception {
+        Path path = dir.resolve("r.0.0.cso");
+        int dataStart = CsoFormat.dataStart(CsoFormat.bucketCount(GRID));
+        byte[] first = chunkData(61, 100_000);
+        byte[] second = chunkData(62, 100_000);
+        byte[] third = chunkData(63, 1_000);
+
+        CsoRegionFile file = open(dir, CsoFormat.COMPRESSION_ZSTD);
+        try {
+            file.writeChunk(0, 0, first); // the healthy write a recovery falls back to
+
+            swapChannel(file, true, false);
+
+            byte[] recoveryBlock = readFully(path, dataStart, 2048);
+            assertThrows(IOException.class, () -> file.writeChunk(0, 0, second),
+                "the injected channel must fail the bucket-table entry write");
+            assertEquals(0, file.wastedBytes(),
+                "the old block is still the on-disk recovery point, so the allocator must not"
+                    + " treat its space as reclaimable");
+
+            // What CsoStorage does with a failed batch: retry it on the next timer tick.
+            assertThrows(IOException.class, () -> file.writeChunk(0, 0, third),
+                "the table write is still failing, as a not-yet-over transient fault would be");
+            assertArrayEquals(recoveryBlock, readFully(path, dataStart, 2048),
+                "the retry overwrote the recovery block: the old extent must stay in use until"
+                    + " the new table entry lands");
+        } finally {
+            file.close();
+        }
+
+        // A fresh open — what a crash-then-restart does — must still serve the bucket.
+        try (CsoRegionFile reopened = open(dir, CsoFormat.COMPRESSION_ZSTD)) {
+            assertArrayEquals(first, reopened.readChunk(0, 0),
+                "the file must fall back to the intact previous version, not throw");
+        }
+    }
+
+    @Test
+    void failedDataWriteLeavesTheRecoveryBlockAndHealsOnRetry(@TempDir Path dir) throws Exception {
+        byte[] first = chunkData(64, 100_000);
+        byte[] second = chunkData(65, 100_000);
+        byte[] third = chunkData(66, 1_000);
+
+        CsoRegionFile file = open(dir, CsoFormat.COMPRESSION_ZSTD);
+        try {
+            file.writeChunk(0, 0, first);
+
+            swapChannel(file, false, true); // fails the first data write, then passes
+
+            assertThrows(IOException.class, () -> file.writeChunk(0, 0, second),
+                "the injected channel must fail the data write");
+            assertEquals(0, file.wastedBytes(),
+                "a failure before the in-memory commit must leave the old extent in use");
+
+            file.writeChunk(0, 0, third); // the retry, this time succeeding end to end
+        } finally {
+            file.close();
+        }
+
+        try (CsoRegionFile reopened = open(dir, CsoFormat.COMPRESSION_ZSTD)) {
+            assertArrayEquals(third, reopened.readChunk(0, 0),
+                "a failure before the in-memory commit must leave nothing behind");
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // Bug 7: readChunk bounds-checked its chunk index with int arithmetic — offset+length
+    // can wrap negative and slip past the check — so a corrupt index escaped as an
+    // unchecked IllegalArgumentException from Arrays.copyOfRange instead of the
+    // CsoCorruptedException FORMAT.md section 11 promises. The write path's copy of the
+    // same check already casts to long (rebuildPayload); this is the read path's.
+    // ----------------------------------------------------------------------
+
+    @Test
+    void chunkIndexWhoseExtentWrapsAnIntMustFailAsCorruption(@TempDir Path dir) throws IOException {
+        int grid = 16;
+        int bucketCount = grid * grid;
+        int indexBytes = CsoFormat.chunksPerBucket(grid) * CsoFormat.CHUNK_ENTRY_SIZE;
+        Path path = dir.resolve("r.0.0.cso");
+        byte[] real = chunkData(71, 100);
+
+        try (CsoRegionFile file = CsoRegionFile.open(path, grid, CsoFormat.COMPRESSION_ZSTD, LEVEL,
+            4, true, Long.MAX_VALUE, 10.0)) {
+            file.writeChunk(0, 0, real); // a healthy file whose tables get patched below
+        }
+
+        // A payload whose slot-0 entry says offset=0x7FFFFFF0 length=0x20: the payload CRC
+        // and the table-entry self CRC are both valid by construction, but offset+length
+        // wraps the int and skipped the old check.
+        byte[] payload = new byte[indexBytes + 8];
+        CsoFormat.writeInt(payload, 0, 0x7FFFFFF0);
+        CsoFormat.writeInt(payload, 4, 0x20);
+        CsoFormat.writeInt(payload, 8, 1);
+        byte[] compressed = Compressor.create(CsoFormat.COMPRESSION_ZSTD, LEVEL).compress(payload);
+        CRC32 payloadCrc = new CRC32();
+        payloadCrc.update(payload);
+
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
+            long blockOffset = channel.size();
+            channel.write(ByteBuffer.wrap(compressed), blockOffset);
+            byte[] entry = new byte[CsoFormat.BUCKET_ENTRY_SIZE];
+            CsoFormat.writeLong(entry, CsoFormat.ENTRY_OFFSET, blockOffset);
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_COMP_LEN, compressed.length);
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_RAW_LEN, payload.length);
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_CRC32, (int) payloadCrc.getValue());
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_CHUNKS, 1);
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_SEQUENCE, 999);
+            CRC32 entryCrc = new CRC32();
+            entryCrc.update(entry, 4, CsoFormat.BUCKET_ENTRY_SIZE - 4);
+            CsoFormat.writeInt(entry, CsoFormat.ENTRY_CRC, (int) entryCrc.getValue());
+            for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
+                channel.write(ByteBuffer.wrap(entry), CsoFormat.tableOffset(table, 0, bucketCount));
+            }
+        }
+
+        try (CsoRegionFile file = CsoRegionFile.open(path, grid, CsoFormat.COMPRESSION_ZSTD, LEVEL,
+            4, true, Long.MAX_VALUE, 10.0)) {
+            assertThrows(CsoCorruptedException.class, () -> file.readChunk(0, 0),
+                "an index entry whose offset+length wraps the int must still fail as the typed"
+                    + " corruption the format documents, not as an unchecked exception");
+        }
     }
 }
