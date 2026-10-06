@@ -16,7 +16,7 @@
   "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "zstd level for the hot write path. 3 is the default trade-off; higher levels compress better and write slower.",
 
   "chunkstorageoptimizer.configuration.cachedBuckets": "Cached Buckets",
-  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Decompressed buckets kept in memory per region file. Higher values reduce read amplification near the player, at the cost of heap. A bucket holds up to (32/grid)^2 chunks; at grid=8 that is 16 chunks.",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Decompressed buckets kept in memory per region file. Higher values reduce read amplification near the player, at the cost of heap. The cache is also bounded by an 8 MB per-file budget — at small grids a single bucket can hold a whole region's worth of chunks, and one larger than the budget is not cached at all. A bucket holds up to (32/grid)^2 chunks; at grid=8 that is 16 chunks.",
 
   "chunkstorageoptimizer.configuration.verifyCrc": "Verify CRC",
   "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "Verify bucket CRC32 on read. Detects corruption instead of silently returning garbage or empty chunks. Keep this on unless you are benchmarking.",
@@ -34,5 +34,11 @@
   "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "Writing one chunk means recompressing its whole bucket, so writes are staged and flushed per bucket: N chunks in one bucket cost one compression, not N. This is how many chunks to stage before flushing early. Set to 1 to disable batching.",
 
   "chunkstorageoptimizer.configuration.batchMaxDelayMs": "Batch Max Delay (ms)",
-  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "Maximum time staged writes may sit in memory before being forced to disk. Bounds how much is lost if the process dies. Autosave flushes regardless."
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "Maximum time staged writes may sit in memory before being forced to disk. Bounds how much is lost if the process dies. Autosave flushes regardless.",
+
+  "modmenu.nameTranslation.chunkstorageoptimizer": "Chunk Storage Optimizer",
+  "modmenu.summaryTranslation.chunkstorageoptimizer": "Replaces Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — smaller saves, faster chunk IO.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer": "Replaces Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — smaller saves, faster chunk IO.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer": "Replaces Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — smaller saves, faster chunk IO.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer": "Replaces Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — smaller saves, faster chunk IO."
 }

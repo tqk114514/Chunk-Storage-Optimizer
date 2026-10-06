@@ -1,0 +1,44 @@
+{
+  "chunkstorageoptimizer.configuration.title": "Configuración de Optimizador de almacenamiento de chunks",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "Configuración de Optimizador de almacenamiento de chunks",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "Configuración de Optimizador de almacenamiento de chunks",
+
+  "chunkstorageoptimizer.configuration.enabled": "Activado",
+  "chunkstorageoptimizer.configuration.enabled.tooltip": "Interruptor principal. Al desactivarlo, se usan los archivos de región Anvil del juego sin cambios. El interruptor NO convierte nada: los archivos .cso existentes permanecen en el disco, y los datos que solo existen en ellos se vuelven invisibles para el juego.",
+
+  "chunkstorageoptimizer.configuration.grid": "Cuadrícula de buckets",
+  "chunkstorageoptimizer.configuration.grid.tooltip": "Longitud del lado de la cuadrícula de buckets. Una región de 32×32 se divide en grid × grid buckets. Cuadrícula mayor = buckets más pequeños = menor amplificación de escritura, pero peor compresión. Solo aplica a archivos de región nuevos; los existentes conservan su cuadrícula. Medido (mundo urbano de 889 MB): la cuadrícula 16 reduce a la mitad el volumen y el tiempo de escritura frente a la 8, por ~7,5 % más de espacio. La 32 es peor que la 16 — un chunk por bucket pierde el beneficio del contexto de compresión compartido. 1 = toda la región en un bucket (mejor compresión, mayor coste de escritura; archivos fríos). 8 = 16 chunks por bucket. 16 = 4 chunks por bucket (predeterminado: menor coste de escritura).",
+
+  "chunkstorageoptimizer.configuration.compression": "Compresión",
+  "chunkstorageoptimizer.configuration.compression.tooltip": "Códec de compresión: zstd o none.",
+
+  "chunkstorageoptimizer.configuration.zstdLevel": "Nivel zstd",
+  "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "Nivel zstd para la ruta de escritura. 3 es el equilibrio por defecto; niveles más altos comprimen mejor y escriben más despacio.",
+
+  "chunkstorageoptimizer.configuration.cachedBuckets": "Buckets en caché",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Buckets descomprimidos retenidos en memoria por archivo de región. Valores más altos reducen la amplificación de lectura cerca del jugador, a costa de memoria. La caché además está limitada a un presupuesto de 8 MB por archivo de región — con cuadrículas pequeñas un solo bucket puede contener los chunks de una región entera, y un bucket que supere ese presupuesto no se cachea. Un bucket contiene hasta (32/grid)^2 chunks; con grid=8 son 16.",
+
+  "chunkstorageoptimizer.configuration.verifyCrc": "Verificar CRC",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "Verifica el CRC32 del bucket al leer. Detecta corrupción en lugar de devolver en silencio datos basura o chunks vacíos. Déjalo activado salvo al hacer pruebas de rendimiento.",
+
+  "chunkstorageoptimizer.configuration.fallbackToMca": "Recurrir a .mca",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "Si un chunk no está en el archivo .cso, se recurre al .mca original. Esto permite activar el mod con seguridad en un mundo existente: no se pierde nada de lo ya guardado, y las escrituras nuevas migran gradualmente al nuevo formato.",
+
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "Bytes mín. de compactación",
+  "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "Bytes desperdiciados mínimos antes de compactar un archivo de región.",
+
+  "chunkstorageoptimizer.configuration.compactionRatio": "Umbral de compactación",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "Ratio desperdicio/datos vivos mínimo para compactar (0.25 = 25 % de desperdicio).",
+
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "Chunks máx. por lote",
+  "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "Escribir un chunk implica recomprimir todo su bucket, así que las escrituras se acumulan y se aplican por bucket: N chunks del mismo bucket cuestan una compresión, no N. Esto define cuántos chunks acumular antes de un volcado anticipado. Ponlo a 1 para desactivar el procesado por lotes.",
+
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "Retraso máx. del lote (ms)",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "Tiempo máximo que las escrituras acumuladas pueden permanecer en memoria antes de forzarse a disco. Acota cuánto se pierde si el proceso muere. El autoguardado vacía igualmente.",
+
+  "modmenu.nameTranslation.chunkstorageoptimizer": "Optimizador de almacenamiento de chunks",
+  "modmenu.summaryTranslation.chunkstorageoptimizer": "Sustituye los archivos de región Anvil de Minecraft por un formato propio basado en buckets comprimido con zstd — partidas más pequeñas, E/S de chunks más rápida.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer": "Sustituye los archivos de región Anvil de Minecraft por un formato propio basado en buckets comprimido con zstd — partidas más pequeñas, E/S de chunks más rápida.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer": "Sustituye los archivos de región Anvil de Minecraft por un formato propio basado en buckets comprimido con zstd — partidas más pequeñas, E/S de chunks más rápida.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer": "Sustituye los archivos de región Anvil de Minecraft por un formato propio basado en buckets comprimido con zstd — partidas más pequeñas, E/S de chunks más rápida."
+}

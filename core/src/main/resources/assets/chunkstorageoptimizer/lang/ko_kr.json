@@ -1,0 +1,44 @@
+{
+  "chunkstorageoptimizer.configuration.title": "청크 스토리지 최적화 설정",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "청크 스토리지 최적화 설정",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "청크 스토리지 최적화 설정",
+
+  "chunkstorageoptimizer.configuration.enabled": "활성화",
+  "chunkstorageoptimizer.configuration.enabled.tooltip": "마스터 스위치. 끄면 바닐라 Anvil 리전 파일을 그대로 사용합니다. 꺼도 아무것도 변환되지 않습니다: .cso에만 존재하던 데이터는 바닐라에서 보이지 않게 됩니다.",
+
+  "chunkstorageoptimizer.configuration.grid": "버킷 그리드",
+  "chunkstorageoptimizer.configuration.grid.tooltip": "버킷 그리드의 변 길이. 32×32 리전은 grid × grid개 버킷으로 나뉩니다. 그리드가 클수록 버킷이 작아져 쓰기 증폭은 줄지만 압축률은 나빠집니다. 새로 생성되는 리전 파일에만 적용되며, 기존 파일은 생성 시점의 그리드를 유지합니다. 실측(889 MB 도시 맵): 그리드 16은 8 대비 쓰기량과 쓰기 시간을 절반가량 줄이고, 용량은 약 7.5% 더 사용합니다. 32는 16보다 오히려 나쁩니다——버킷당 청크 1개는 압축 컨텍스트 공유의 이점을 잃기 때문입니다. 1 = 리전 전체가 하나의 버킷(최고 압축률, 최대 쓰기 비용; 콜드 아카이브용). 8 = 버킷당 16청크. 16 = 버킷당 4청크(기본값, 최저 쓰기 비용).",
+
+  "chunkstorageoptimizer.configuration.compression": "압축 방식",
+  "chunkstorageoptimizer.configuration.compression.tooltip": "압축 코덱: zstd 또는 none.",
+
+  "chunkstorageoptimizer.configuration.zstdLevel": "zstd 레벨",
+  "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "쓰기 경로에서 사용하는 zstd 레벨. 3이 기본 균형점입니다. 레벨이 높을수록 압축률은 좋아지지만 쓰기는 느려집니다.",
+
+  "chunkstorageoptimizer.configuration.cachedBuckets": "캐시 버킷 수",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "리전 파일당 메모리에 유지하는 압축 해제 버킷 수. 클수록 플레이어 주변의 읽기 증폭이 줄고, 힙을 더 사용합니다. 캐시는 리전 파일당 8 MB 바이트 예산으로도 제한됩니다——작은 그리드에서는 버킷 하나가 리전 전체의 청크를 담을 수 있으며, 예산보다 큰 버킷은 캐시되지 않습니다. 버킷 하나에는 최대 (32/grid)^2개 청크가 들어갑니다. grid=8이면 16청크입니다.",
+
+  "chunkstorageoptimizer.configuration.verifyCrc": "CRC 검증",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "읽기 시 버킷의 CRC32를 검증합니다. 손상을 탐지하여 쓰레기 데이터나 빈 청크를 조용히 반환하는 일을 막습니다. 벤치마크 중이 아니라면 켜 두세요.",
+
+  "chunkstorageoptimizer.configuration.fallbackToMca": ".mca 폴백",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": ".cso 파일에 청크가 없을 때 기존 .mca를 다시 읽습니다. 기존 월드에서도 안전하게 활성화할 수 있습니다: 이미 저장된 데이터는 잃지 않으며, 새 쓰기는 점차 새 형식으로 이동합니다.",
+
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "컴팩션 최소 바이트",
+  "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "리전 파일을 컴팩션하기 위해 필요한 최소 낭비 바이트 수.",
+
+  "chunkstorageoptimizer.configuration.compactionRatio": "컴팩션 비율",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "컴팩션이 발동하는 낭비/실데이터 비율(0.25 = 25% 낭비).",
+
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "배치 최대 청크 수",
+  "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "청크 하나를 쓰는 것은 해당 버킷 전체를 다시 압축하는 것이므로, 쓰기는 메모리에 모았다가 버킷 단위로 묶어 반영합니다: 같은 버킷의 N개 청크는 N회가 아닌 1회 압축으로 끝납니다. 조기 기록 전에 모을 청크 수를 설정합니다. 1로 설정하면 배칭이 꺼집니다.",
+
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "배치 최대 지연(ms)",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "모아둔 쓰기가 메모리에 머물 수 있는 최대 시간. 이를 넘으면 강제로 디스크에 기록됩니다. 프로세스가 죽을 때 잃을 수 있는 양을 제한합니다. 오토세이브는 이와 무관하게 기록합니다.",
+
+  "modmenu.nameTranslation.chunkstorageoptimizer": "청크 스토리지 최적화",
+  "modmenu.summaryTranslation.chunkstorageoptimizer": "Minecraft의 Anvil 리전 파일을 zstd로 압축하는 독자적인 버킷 기반 형식으로 교체합니다——세이브는 작아지고, 청크 IO는 빨라집니다.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer": "Minecraft의 Anvil 리전 파일을 zstd로 압축하는 독자적인 버킷 기반 형식으로 교체합니다——세이브는 작아지고, 청크 IO는 빨라집니다.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer": "Minecraft의 Anvil 리전 파일을 zstd로 압축하는 독자적인 버킷 기반 형식으로 교체합니다——세이브는 작아지고, 청크 IO는 빨라집니다.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer": "Minecraft의 Anvil 리전 파일을 zstd로 압축하는 독자적인 버킷 기반 형식으로 교체합니다——세이브는 작아지고, 청크 IO는 빨라집니다."
+}

@@ -16,7 +16,7 @@
   "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "熱寫入路徑使用的 zstd 等級。3 是預設的折衷；等級越高壓縮越好、寫入越慢。",
 
   "chunkstorageoptimizer.configuration.cachedBuckets": "快取桶數量",
-  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "每個 region 檔案在記憶體中快取的已解壓桶數量。越大越能降低玩家附近的讀放大，代價是堆記憶體。一個桶最多裝 (32/grid)^2 個區塊；grid=8 時是 16 個。",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "每個 region 檔案在記憶體中快取的已解壓桶數量。越大越能降低玩家附近的讀放大，代價是堆記憶體。快取另受每檔案 8 MB 的位元組預算約束——小網格時單一桶可能裝著整個 region 的區塊，超過預算的桶不會被快取。一個桶最多裝 (32/grid)^2 個區塊；grid=8 時是 16 個。",
 
   "chunkstorageoptimizer.configuration.verifyCrc": "驗證 CRC32",
   "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "讀取時驗證桶的 CRC32，用來發現損壞，而不是靜默回傳垃圾數據或空區塊。除非在做基準測試，否則請保持開啟。",
@@ -34,5 +34,11 @@
   "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "寫入一個區塊意味著重壓它所在的整個桶，所以寫入先在記憶體暫存、再按桶合併寫入磁碟：同一個桶裡的 N 個區塊只壓縮一次，而不是 N 次。這裡設定攢夠多少個區塊就提前寫入磁碟。設為 1 可關閉批次處理。",
 
   "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批次處理最長延遲（毫秒）",
-  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "暫存寫入在記憶體中的最長停留時間，逾時即強制寫入磁碟。它決定發生意外中斷時最多會遺失多少。自動儲存時一律會寫入磁碟。"
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "暫存寫入在記憶體中的最長停留時間，逾時即強制寫入磁碟。它決定發生意外中斷時最多會遺失多少。自動儲存時一律會寫入磁碟。",
+
+  "modmenu.nameTranslation.chunkstorageoptimizer": "區塊儲存優化器",
+  "modmenu.summaryTranslation.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。",
+  "fml.menu.mods.info.description.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。"
 }

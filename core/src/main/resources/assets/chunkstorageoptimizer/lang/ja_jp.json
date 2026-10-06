@@ -1,0 +1,44 @@
+{
+  "chunkstorageoptimizer.configuration.title": "チャンクストレージ最適化の設定",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "チャンクストレージ最適化の設定",
+  "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "チャンクストレージ最適化の設定",
+
+  "chunkstorageoptimizer.configuration.enabled": "有効",
+  "chunkstorageoptimizer.configuration.enabled.tooltip": "マスタースイッチ。オフにするとバニラの Anvil リージョンファイルをそのまま使用します。切り替えても何も変換されません：.cso にしか存在しないデータは、バニラからは見えなくなります。",
+
+  "chunkstorageoptimizer.configuration.grid": "バケットグリッド",
+  "chunkstorageoptimizer.configuration.grid.tooltip": "バケットグリッドの辺の長さ。32×32 のリージョンは grid × grid 個のバケットに分割されます。グリッドが大きいほどバケットは小さくなり、書き込み増幅は減りますが圧縮率は下がります。新規作成されるリージョンファイルにのみ適用され、既存のファイルは作成時のグリッドを保持します。実測（889 MB の都市ワールド）：グリッド 16 は 8 と比べて書き込み量と書き込み時間をほぼ半分にしますが、容量は約 7.5% 余分に使います。32 は 16 よりも悪くなります——バケットあたり 1 チャンクでは、圧縮コンテキストの共有による利益が失われるためです。1 = リージョン全体が 1 バケット（最高の圧縮率、最大の書き込みコスト。コールドアーカイブ向け）。8 = バケットあたり 16 チャンク。16 = バケットあたり 4 チャンク（デフォルト。書き込みコスト最小）。",
+
+  "chunkstorageoptimizer.configuration.compression": "圧縮方式",
+  "chunkstorageoptimizer.configuration.compression.tooltip": "圧縮コーデック：zstd または none。",
+
+  "chunkstorageoptimizer.configuration.zstdLevel": "zstd レベル",
+  "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "書き込み経路で使用する zstd レベル。3 がデフォルトのバランスです。レベルを上げると圧縮率は良くなりますが、書き込みは遅くなります。",
+
+  "chunkstorageoptimizer.configuration.cachedBuckets": "キャッシュバケット数",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "リージョンファイルごとにメモリに保持する解凍済みバケットの数。大きいほどプレイヤー周辺での読み取り増幅が減りますが、ヒープをより消費します。キャッシュはさらにリージョンファイルごとに 8 MB の予算でも制限されます——小さいグリッドでは 1 バケットがリージョン全体のチャンクを占めることがあり、予算を超えるバケットはキャッシュされません。1 バケットには最大 (32/grid)^2 チャンクが入ります。grid=8 では 16 チャンクです。",
+
+  "chunkstorageoptimizer.configuration.verifyCrc": "CRC を検証",
+  "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "読み取り時にバケットの CRC32 を検証します。破損を検出でき、ゴミデータや空のチャンクを黙って返すことがなくなります。ベンチマーク中以外はオンのままにしてください。",
+
+  "chunkstorageoptimizer.configuration.fallbackToMca": ".mca へフォールバック",
+  "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": ".cso ファイルにチャンクがないとき、旧式の .mca を読みに戻ります。既存のワールドでも安全に有効化できます：保存済みのデータは失われず、新しい書き込みは徐々に新フォーマットへ移行します。",
+
+  "chunkstorageoptimizer.configuration.compactionMinBytes": "コンパクション最小バイト数",
+  "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "リージョンファイルをコンパクションするのに必要な最小の無駄バイト数。",
+
+  "chunkstorageoptimizer.configuration.compactionRatio": "コンパクション比率",
+  "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "コンパクションが発生するのに必要な無駄／実データ比（0.25 = 25% の無駄）。",
+
+  "chunkstorageoptimizer.configuration.batchMaxChunks": "バッチ最大チャンク数",
+  "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "1 チャンクの書き込みは属するバケット全体の再圧縮を意味するため、書き込みは一旦メモリに蓄積され、バケットごとにまとめて書き出されます：同じバケットの N チャンクは N 回ではなく 1 回の圧縮で済みます。ここでは、早期書き出しまでに蓄積するチャンク数を設定します。1 にするとバッチ処理を無効化します。",
+
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs": "バッチ最大遅延（ミリ秒）",
+  "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "蓄積された書き込みがメモリに留まれる最大時間。この時間を超えると強制的にディスクへ書き出されます。プロセスが死亡したときに失われる量を制限します。オートセーブはこの設定に関係なく書き出します。",
+
+  "modmenu.nameTranslation.chunkstorageoptimizer": "チャンクストレージ最適化",
+  "modmenu.summaryTranslation.chunkstorageoptimizer": "Minecraft の Anvil リージョンファイルを、zstd で圧縮する独自のバケット形式に置き換えます——セーブを小さく、チャンク IO を高速化。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer": "Minecraft の Anvil リージョンファイルを、zstd で圧縮する独自のバケット形式に置き換えます——セーブを小さく、チャンク IO を高速化。",
+  "fml.menu.mods.info.description.chunkstorageoptimizer": "Minecraft の Anvil リージョンファイルを、zstd で圧縮する独自のバケット形式に置き換えます——セーブを小さく、チャンク IO を高速化。",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer": "Minecraft の Anvil リージョンファイルを、zstd で圧縮する独自のバケット形式に置き換えます——セーブを小さく、チャンク IO を高速化。"
+}
