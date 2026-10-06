@@ -8,6 +8,10 @@
     "${mod_author}"
   ],
   "license": "${mod_license}",
+  "contact": {
+    "homepage": "https://github.com/tqk114514/Chunk-Storage-Optimizer",
+    "issues": "https://github.com/tqk114514/Chunk-Storage-Optimizer/issues"
+  },
   "icon": "assets/chunkstorageoptimizer/icon.png",
   "environment": "*",
   "entrypoints": {
