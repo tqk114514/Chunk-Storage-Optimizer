@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.1] - 2026-10-05
+
+### Added
+- **12-language localization.** The config screen now speaks English, Simplified Chinese,
+  Traditional Chinese (TW and HK), Japanese, Korean, Russian, German, French, Spanish,
+  Brazilian Portuguese and Italian — every label and tooltip translated in full. Mod Menu's
+  list follows suit: the mod's name, the summary line under it and the description on the
+  metadata screen localize through Mod Menu's own translation keys (its
+  translate-descriptions option is on by default). The NeoForge Mods screen description
+  localizes on both loader generations — FML 11 (Minecraft 1.21–26.2) and FML 12 (26.3+)
+  each look up their own description key — so the translated description shows on every
+  supported NeoForge version, not just the newest.
+- **Homepage and issue links.** The NeoForge 26.3 Mods screen ships a Homepage and an Issues
+  button for every mod, greyed out when the metadata carries no URL — this mod had neither
+  filled in. Both now point at the GitHub repository, which also lights up the Website link
+  in older NeoForge's mod info panel, puts the issue URL into every crash report ("Mod
+  issues URL", previously "<No issues URL found>"), and gives Mod Menu's Links section
+  something to show on Fabric.
+
+### Note
+- The `cachedBuckets` tooltip now mentions the 8 MB per-file cache budget added in 1.1.0;
+  the option's meaning is unchanged. Every other tooltip was reviewed against the recent
+  changes and left alone — none had gone stale.
+- NeoForge builds for Minecraft 26.3.0 now require NeoForge 26.3.0.51-beta or newer (was
+  26.3.0.48-beta). The 26.3 line still has no stable build, so its floor keeps tracking the
+  newest beta.
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.0] - 2026-10-05
 
 ### Changed
