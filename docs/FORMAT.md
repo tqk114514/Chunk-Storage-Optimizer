@@ -60,7 +60,7 @@ Chunk Storage Optimizer 的自有区块存储格式。**不与原版 Anvil 兼�
 
 | 偏移 | 大小 | 字段 | 说明 |
 |---|---|---|---|
-| 0 | 8 | `magic` | ASCII `CSOREG01`，第 8 字节 `\0` |
+| 0 | 8 | `magic` | ASCII `CSOREG01`，结尾的 `01` 是格式代号 |
 | 8 | 2 | `formatVersion` | `1` |
 | 10 | 2 | `grid` | bucket 网格边长，取值 1/2/4/8/16/32，且必须能整除 32 |
 | 12 | 1 | `compression` | `0`=none，`1`=zstd |
@@ -289,9 +289,9 @@ grid 16 是 3 次。播种时读不出来的邻居（vanilla 自己也读不了�
 
 ---
 
-## 12. 配置项（NeoForge COMMON config）
+## 12. 配置项
 
-键名与默认值以 `Config.java` 为准：
+键名与默认值以 `CsoSettings` 为准（两个加载器的配置文件键名完全同名）：
 
 | 键 | 默认 | 说明 |
 |---|---|---|
