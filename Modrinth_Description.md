@@ -1,20 +1,20 @@
 # Chunk Storage Optimizer
 
-> ## ⚠️ Read this before installing
+> ## ⚠️ Pre-installation notes
 >
 > **1. A world this mod has written to is no longer a vanilla-readable world.** Remove the mod and
 > any progress stored only in `.cso` is invisible to the game; tools like MCA Selector cannot open
-> it either. To go back, run `/cso convert mca prune` first. **Back up the save first.**
+> it either. To go back, run `/cso convert mca prune` first. Back up the save first.
 >
-> **2. Major versions do not read each other's files, and backwards compatibility is not the
-> goal.** The rule for this project: **any format change or incompatibility jumps the major
-> version** (1.0.1 → 2.0.0). Within one major line (1.0.1 → 1.4.3 → 1.100.0) the format is fully
-> compatible, so the new jar replaces the old one directly. **2.x will not read a world written
-> by 1.x** —
-> the only way across is to convert back with the old version (`/cso convert mca`), swap the mod,
-> then convert again. Check `CHANGELOG.md` before upgrading.
+> **2. Major versions do not read each other's files, and no cross-major compatibility is
+> provided.** Version rule: any format change or incompatibility jumps the major version
+> (1.0.1 → 2.0.0). Within one major line (1.0.1 → 1.4.3 → 1.100.0) the format is fully compatible,
+> so the new jar replaces the old one directly. 2.x will not read a world written by 1.x; the only
+> path across is to convert back with the old version (`/cso convert mca`), swap the mod, then
+> convert again. Check `CHANGELOG.md` before upgrading.
 
-Replace Minecraft's Anvil region files with a custom bucket-based format compressed by zstd — **smaller saves, faster chunk loading and saving**.
+Replace Minecraft's Anvil region files with a custom bucket-based format compressed by zstd:
+smaller saves, faster chunk loading and saving.
 
 Measured on a real 889 MB city world (201,321 chunks):
 
@@ -34,8 +34,8 @@ until everything loaded:
 | Vanilla `.mca` | 16 | **8,281** | 54.44 MB | 6,893 B |
 | This mod `.cso` | 16 | **8,281** | 36.48 MB | 4,619 B |
 
-Both hold exactly the same 8,281 chunks, so the **33.0% difference comes purely from the
-format** — no content differences mixed in. (Entities: −61.3%. POI: −20.9%.)
+Both hold exactly the same 8,281 chunks, so the 33.0% difference comes purely from the format,
+with no content differences mixed in. (Entities: −61.3%. POI: −20.9%.)
 
 ### Savings depend on chunk size
 
@@ -46,14 +46,14 @@ format** — no content differences mixed in. (Entities: −61.3%. POI: −20.9%
 | Group survival world | 7.6 KB | 38.4% |
 | "Epic terrain" style world | 9.15 KB | 29.6% |
 
-The larger and more complex each chunk is, the less there is to gain — once a chunk is well
-past 4 KiB, vanilla's padding overhead is already a minor share, so there is less slack for a
-better codec to recover.
+The larger and more complex each chunk is, the less there is to gain. Once a chunk is well past
+4 KiB, vanilla's padding overhead is already a minor share, so a better codec has less slack to
+recover.
 
-### A 1.73 GB world a group actually plays on
+### A 1.73 GB multiplayer survival world
 
-A friend-group survival world (vanilla + performance mods, carpet farms, 170,217 overworld chunks,
-7.6 KB per chunk). Measured on its existing Anvil files:
+A multiplayer survival world (vanilla + performance mods, carpet farms, 170,217 overworld chunks,
+7.6 KB per chunk), measured on its existing Anvil files:
 
 | Store | Vanilla | This mod | Saved |
 |---|---|---|---|
@@ -64,93 +64,93 @@ A friend-group survival world (vanilla + performance mods, carpet farms, 170,217
 | POI (all dimensions) | 7.44 MB | 2.92 MB | 60.8% |
 | **Whole save** | **1.727 GB** | **889 MB** | **48.5%** |
 
-The End wins biggest because its chunks are generated but mostly empty — precisely the case where
-vanilla's 4 KiB floor per chunk costs the most.
+The End shows the largest saving because its chunks are generated but mostly empty, which is the
+case where vanilla's 4 KiB floor per chunk costs the most.
 
 ---
 
 ## How it works
 
-Vanilla stores each chunk independently, padded to a 4 KiB sector. Sparse data pays a heavy
-price: a 100-byte chunk still occupies 4 KiB.
+Vanilla stores each chunk independently, padded to a 4 KiB sector. Sparse data wastes the most:
+a 100-byte chunk still occupies 4 KiB.
 
-This mod instead splits every 32×32 region into `grid × grid` **buckets**. Each bucket is
-stored as a single zstd stream containing all of its chunks:
+This mod splits every 32×32 region into `grid × grid` buckets. Each bucket is stored as a single
+zstd stream containing all of its chunks:
 
 ```
 [FileHeader 128 B][BucketTable A][BucketTable B][compressed blocks]
 ```
 
-- **No sector padding** — blocks are packed contiguously.
-- **No free list** — free space is derived from the bucket table, so there is less metadata to corrupt.
-- **One compression context per bucket** — chunks share context instead of compressing in isolation.
+- No sector padding: blocks are packed contiguously.
+- No free list: free space is derived from the bucket table, so there is less metadata to corrupt.
+- One compression context per bucket: chunks share context instead of compressing in isolation.
 - `grid` is configurable: larger values mean smaller buckets and cheaper writes.
 
 ## Features
 
-- **Smaller saves.** Up to 82% on sparse data (POI), 55% on dense city worlds.
-- **Faster IO.** Fewer bytes on disk and fewer decompression calls per chunk served.
-- **Crash safe.** Two copies of the bucket table (each entry carries a sequence number and its
-  own CRC) plus a write-ahead log. The file always stays readable, and a completed batch is
-  never lost.
-- **Batched writes.** Multiple chunk changes in the same bucket cost one compression instead of many.
-- **Gradual migration.** Chunks missing from the new format fall back to the original `.mca`,
-  so enabling this on an existing world loses nothing.
-- **Two-way conversion.** Convert in-game or offline, with optional deletion of the originals.
+- Smaller saves: up to 82% on sparse data (POI), 55% on dense city worlds.
+- Faster IO: fewer bytes on disk and fewer decompression calls per chunk served.
+- Crash safety: two copies of the bucket table (each entry carries a sequence number and its own
+  CRC) plus a write-ahead log. The file always stays readable, and a completed batch is never lost.
+- Batched writes: multiple chunk changes in the same bucket cost one compression instead of many.
+- Gradual migration: chunks missing from the new format are read from the original `.mca`, so
+  existing worlds keep all their data.
+- Two-way conversion: convert in-game or offline, with optional deletion of the originals.
 
 ## Requirements
 
-One jar per Minecraft version per loader — select the file whose name carries both tokens, e.g.
+One jar per Minecraft version per loader. Select the file whose name carries both tokens, e.g.
 `chunkstorageoptimizer-neoforge-26.1.2-1.0.4.jar` or `chunkstorageoptimizer-fabric-1.21.11-1.0.4.jar`.
 
-- **NeoForge**: Minecraft **26.2.0**, **26.1.2**, **1.21.11**, **1.21.10**, **1.21.8**, **1.21.5**,
-  **1.21.4**, **1.21.3**, **1.21.1**, **1.21** — with the loader at least the first stable build for
-  that Minecraft (26.1.2 → 26.1.2.71, 1.21 → 21.0.143, and so on)
-- **Fabric**: the whole **1.21** line, **1.21** through **1.21.11** — including 1.21.2, 1.21.6,
-  1.21.7 and 1.21.9 — with Fabric API for the same Minecraft. Mod Menu is optional and contributes
-  the config screen only. No particular Fabric Loader version is needed beyond the one that Fabric API
-  itself requires.
-- Java 21 for the 1.21 line, Java 25 for 26.x — i.e. whatever Minecraft itself requires
+- NeoForge: every Minecraft from 1.21 to 26.3 (the whole 1.21 line, 1.21 through 1.21.11, plus
+  26.1.0, 26.1.1, 26.1.2, 26.2.0 and 26.3.0), with the loader at least the floor for that
+  Minecraft: the oldest stable build of its line, or the newest beta where the line never shipped
+  a stable one (26.1.2 → 26.1.2.71, 1.21 → 21.0.143, and so on)
+- Fabric: the whole 1.21 line, 1.21 through 1.21.11, with Fabric API for the same Minecraft.
+  Mod Menu is optional and provides the config screen only. No particular Fabric Loader version
+  is needed beyond the one that Fabric API itself requires.
+- Java 21 for the 1.21 line, Java 25 for 26.x, i.e. whatever Minecraft itself requires
 
-There are no Fabric jars for 26.x yet: those Minecraft versions ship an unobfuscated client, so the
-mapping set a fabric-loom build needs no longer exists and no stable loom accepts that. Minecraft
-26.1 never got a stable NeoForge build either, so it has no jar on either loader.
+There are no Fabric jars for 26.x yet: those Minecraft versions ship an unobfuscated client, so
+the mapping set a fabric-loom build needs no longer exists and no stable loom release supports
+this. Minecraft 26.1 and 26.1.1 never received a stable NeoForge build, so their jars require
+the newest beta of that line.
 
 ## Installation
 
 1. Download the jar named after the target Minecraft and loader.
-2. Install NeoForge — or Fabric Loader plus Fabric API — for that version, then place the jar in the
-   `mods/` folder.
+2. Install NeoForge, or Fabric Loader plus Fabric API, for that version, then place the jar in
+   the `mods/` folder.
 3. Start the game; the config is generated at `config/chunkstorageoptimizer-common.toml` on
-   NeoForge and `config/chunkstorageoptimizer.properties` on Fabric. The keys are identical, so the
-   tables below apply to both.
+   NeoForge and `config/chunkstorageoptimizer.properties` on Fabric. The keys are identical, so
+   the tables below apply to both.
 
-**Who needs it: the side that holds the world.** The mod registers no network payloads — its only client-side
-code is the config screen — and everything it changes lives on disk. A dedicated server needs it and
-its players need nothing; on LAN or in singleplayer the host installs it. A modded client joining a
-server without the mod works as well. The one real constraint is that a given save must always
-be opened by a side that has the mod (see the warning at the top).
+Only the side that holds the world needs the mod. It registers no network payloads, its only
+client-side code is the config screen, and everything it changes lives on disk: a dedicated
+server needs it and its players need nothing, and on LAN or in singleplayer the host installs
+it. A modded client joining a server without the mod also works. The one real constraint is
+that a given save must always be opened by a side that has the mod (see the notes at the top).
 
 ## Getting started
 
 ### New worlds
 
-Just play. Everything is written to `.cso` files; no `.mca` is created.
+No action is needed. Everything is written to `.cso` files; no `.mca` is created.
 
 ### Existing worlds
 
-Existing data keeps working — chunks not yet migrated are read from the original `.mca`.
-New and modified chunks are written to `.cso`.
+Existing data keeps working: chunks not yet migrated are read from the original `.mca`, and new
+and modified chunks are written to `.cso`.
 
-Note that old data stays in the `.mca` files, so **both copies occupy disk space** until the
-migration is done. To convert everything and drop the originals:
+Old data stays in the `.mca` files, so both copies occupy disk space until the migration is done.
+To convert everything and drop the originals:
 
 ```
 /cso convert cso prune
 ```
 
-This converts every dimension and every store (`region`, `poi`, `entities`), verifies each
-file by reading it back, and only then deletes the originals.
+This converts every dimension and every store (`region`, `poi`, `entities`), verifies each file
+by reading it back, and only then deletes the originals.
 
 ## Commands
 
@@ -166,27 +166,27 @@ Requires admin permission.
 | `/cso convert mca [prune]` | Convert `.cso` → `.mca` and take **this world** out of the mod by writing `cso.disabled` next to its `level.dat`; the choice holds across restarts. `prune` also deletes the `.cso` files |
 
 Conversion runs `save-all flush` first, then closes all file handles before moving any bytes.
-`cso.disabled` is per world: the config's `enabled` key stays as it is, and other saves in the same
-folder keep using `.cso`. To come back, delete the file, re-enter the world, then run
-`/cso convert cso prune`. Converting without re-entering is refused on purpose — region files the
+`cso.disabled` is per world: the config's `enabled` key stays as it is, and other saves in the
+same folder keep using `.cso`. To come back, delete the file, re-enter the world, then run
+`/cso convert cso prune`. Converting without re-entering is refused because region files the
 running session still has open would keep being written to `.mca` behind the fresh `.cso` ones.
 
-Conversion is synchronous, deliberately: the flush waits for the game's chunk-write queue to drain,
-then the files move while the server thread is held, so no write can land halfway through a
-conversion. The cost is a tick stall roughly proportional to the bytes moved. `/cso report` samples in
-the background instead; when a chunk is being written while it samples, it prints `CSO report failed`
-and changes nothing — running it again is fine.
+Conversion is synchronous: the flush waits for the game's chunk-write queue to drain, then the
+files move while the server thread is held, so no write can land halfway through a conversion.
+The cost is a tick stall roughly proportional to the bytes moved. `/cso report` samples in the
+background; when a chunk is being written while it samples, it prints `CSO report failed`,
+changes nothing, and can simply be re-run.
 
-Two numbers in `/cso stats` are worth watching:
+Two numbers in `/cso stats` directly reflect the mechanism:
 
-- **chunks per decompression** — how many chunk reads one bucket decompression serves. Higher
-  means caching and batching are working.
-- **ratio** — raw bytes in vs. bytes actually stored, i.e. the effective compression ratio.
+- Chunks per decompression: how many chunk reads one bucket decompression serves. Higher means
+  caching and batching are working.
+- Ratio: raw bytes in vs. bytes actually stored, i.e. the effective compression ratio.
 
 ## Configuration
 
-`config/chunkstorageoptimizer-common.toml` on NeoForge, `config/chunkstorageoptimizer.properties`
-on Fabric — same keys, same defaults:
+`config/chunkstorageoptimizer-common.toml` on NeoForge,
+`config/chunkstorageoptimizer.properties` on Fabric — same keys, same defaults:
 
 | Key | Default | Description |
 |---|---|---|
@@ -202,8 +202,8 @@ on Fabric — same keys, same defaults:
 | `batchMaxChunks` | `16` | Number of pending chunk changes that triggers an early flush |
 | `batchMaxDelayMs` | `5000` | Maximum time writes may stay staged |
 
-> Upgrading does **not** overwrite an existing config file. If `grid` still shows an old value,
-> edit it manually.
+Upgrading does not overwrite an existing config file. If `grid` still shows an old value, edit
+it manually.
 
 ### Choosing `grid`
 
@@ -216,42 +216,36 @@ Measured on the 889 MB city world:
 | **16** | **4** | **55.4%** | **Lowest** |
 | 32 | 1 | Worse | Rises again (no context to share) |
 
-- **Active worlds** → keep `16` (default).
-- **Archives, rarely modified** → `8` or lower for a smaller file.
-- **Sparse worlds where individual chunks are large** (e.g. a lightly explored Nether) → try `1` or `2`.
+- Active worlds: keep `16` (default).
+- Archives, rarely modified: `8` or lower for a smaller file.
+- Sparse worlds where individual chunks are large (e.g. a lightly explored Nether): `1` or `2`.
 
 ## Important notes
 
-**1. Saves are no longer vanilla-readable.** After removing the mod, progress stored only in
-`.cso` is invisible to vanilla, and tools like MCA Selector cannot read it. Run
-`/cso convert mca prune` before uninstalling.
-
-**2. Do not set `fallbackToMca` to `false`.** Chunks missing from the `.cso` would be treated as
-ungenerated and **terrain would be silently regenerated**.
-
-**3. Not compatible with C2ME.** If C2ME is detected the mod disables itself and falls back to
-vanilla storage, logging the reason. Both rewrite chunk IO, and running them together would
-split a world across two formats.
-
-**4. What decides the sign is density, not dimension.** A lightly explored Nether measured **−2%**:
-chunks near or above 4 KiB spread thin, so vanilla's padding waste is already small while the bucket
-table adds a fixed 16 KB per region file. The same dimension, worked hard (tunnels, big digs), saved
-**49.7%** in the world above. The most extreme case we found was an End `poi` folder holding 3 chunks
-across 81 region files: **−35.5% at `grid = 16`** but **+97.2% at `grid = 1`** — same bytes, only the
-table size changed. So if a dimension or store is sparse, lower `grid`. Note that `grid` applies to
-newly created files: to change an existing world's grid, convert back to `.mca`, set `grid`, and
-convert again.
-
-**5. Automatic fallback if zstd is unavailable.** If the native library cannot load, the mod
-falls back to vanilla Anvil instead of failing to start.
+1. Saves are no longer vanilla-readable; see the pre-installation notes at the top.
+2. **Do not set `fallbackToMca` to `false`.** Chunks missing from the `.cso` would be treated as
+   ungenerated and terrain would be silently regenerated.
+3. Not compatible with C2ME. If C2ME is detected the mod disables itself and falls back to
+   vanilla storage, logging the reason. Both rewrite chunk IO, and running them together would
+   split a world across two formats.
+4. Density, not the dimension, decides whether the saving is positive. A lightly explored Nether
+   measured −2%: chunks near or above 4 KiB spread thin, so vanilla's padding waste is already
+   small while the bucket table adds a fixed 16 KB per region file. The same dimension, worked
+   hard (tunnels, big digs), saved 49.7% in the world above. The most extreme case found was an
+   End `poi` folder holding 3 chunks across 81 region files: −35.5% at `grid = 16` but +97.2% at
+   `grid = 1`, same bytes, only the table size changed. If a dimension or store is sparse, lower
+   `grid`. `grid` applies to newly created files: to change an existing world's grid, convert
+   back to `.mca`, set `grid`, and convert again.
+5. Automatic fallback if zstd is unavailable: if the native library cannot load, the mod falls
+   back to vanilla Anvil instead of failing to start.
 
 ## Advanced: offline tools
 
 A CLI can convert and benchmark saves without launching the game. It operates on raw NBT bytes
 and never parses them. See the project README for full usage.
 
-It also ships a read-only `count` command that reports how many chunks a directory holds. Use
-it before comparing two saves by size — if the chunk counts differ, the size difference is not
+It also ships a read-only `count` command that reports how many chunks a directory holds. Use it
+before comparing two saves by size: if the chunk counts differ, the size difference is not
 measuring the format.
 
 ## Links

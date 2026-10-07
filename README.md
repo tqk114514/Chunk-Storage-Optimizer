@@ -1,35 +1,24 @@
 # Chunk Storage Optimizer
 
-> ## ⚠️ 动手前先读这两条
+> ## ⚠️ 使用前须知
 >
-> **1. 存档一旦被本 mod 写入，就不再是原版能读的存档。** 卸载 mod 后，只存在于 `.cso` 里的
-> 进度对原版不可见，MCA Selector 等外部工具也打不开。要回到原版，先执行
-> `/cso convert mca prune`。**操作前请备份存档。**
+> **1. 存档一旦被本 mod 写入，就不再是原版能读的存档。** 卸载 mod 后，只存在于 `.cso` 中的进度
+> 对原版不可见，MCA Selector 等外部工具也无法读取。要回到原版，先执行
+> `/cso convert mca prune`。操作前请备份存档。
 >
-> **2. 大版本之间格式不互通，且不打算做兼容。** 本项目的版本规则是：**只要动了文件格式或
-> 任何不兼容的东西，就跳大版本**（1.0.1 → 2.0.0）；同一大版本内（1.0.1 → 1.4.3 → 1.100.0）
-> 格式完全互通，直接覆盖升级即可。也就是说 **2.x 不会去读 1.x 写的存档**。跨大版本只有一条
-> 路：先用旧版本 `/cso convert mca` 转回原版格式，换版本，再转回来。升级前看 `CHANGELOG.md`。
+> **2. 大版本之间格式不互通，不提供跨大版本兼容。** 版本规则：文件格式或任何不兼容的内容发生
+> 变动时跳大版本（1.0.1 → 2.0.0）；同一大版本内（1.0.1 → 1.4.3 → 1.100.0）格式完全互通，新版本
+> 可直接覆盖安装。2.x 不读取 1.x 写的存档。跨大版本升级的步骤：先用旧版本执行 `/cso convert mca`
+> 转回原版格式，更换版本，再转换回来。升级前查看 `CHANGELOG.md`。
 
-用自定义的区块存储格式替换 Minecraft 的 `.mca` region 文件：把 32×32 的 region 切成多个
-bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB 扇区对齐带来的填充。
-结果是**更小的存档**和**更快的读写**。
-
-在一个 889 MB 的城市存档上实测：体积减少 55%，写入快 8.1 倍，读取快 3.1 倍。
-
-- 加载器：NeoForge 与 Fabric，**每个游戏版本、每个加载器各一个 jar**
-- NeoForge：Minecraft 1.21 / 1.21.1 / 1.21.3 / 1.21.4 / 1.21.5 / 1.21.8 / 1.21.10 / 1.21.11
-  / 26.1.2 / 26.2.0
-- Fabric：1.21 线的 12 个版本（1.21 至 1.21.11，含 NeoForge 没有稳定构建的 1.21.2 / 1.21.6 /
-  1.21.7 / 1.21.9）。26.x 暂无 Fabric 构建，原因见 `docs/uncovered-minecraft-versions.md`
-- Fabric 侧需要 Fabric API。设置界面由 Mod Menu 提供，Mod Menu 是可选依赖：没有它时配置
-  仍然可用，改文件即可
-- 运行环境：Java 21（1.21.x）或 Java 25（26.x），跟随 Minecraft 本身的要求
-
----
+本 mod 用自定义的区块存储格式替换 Minecraft 的 `.mca` region 文件：将 32×32 的 region 划分为
+多个 bucket，每个 bucket 用一条 zstd 流整体压缩，并去除原版按 4 KiB 扇区对齐产生的填充，从而
+得到更小的存档和更快的读写。在一个 889 MB 的城市存档上实测：体积减少 55%，写入快 8.1 倍，
+读取快 3.1 倍。
 
 ## 目录
 
+- [支持版本](#支持版本)
 - [安装](#安装)
 - [开始使用](#开始使用)
 - [配置](#配置)
@@ -40,64 +29,71 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 - [注意事项](#注意事项)
 - [从源码构建](#从源码构建)
 
----
+## 支持版本
+
+- 加载器：NeoForge 与 Fabric，每个游戏版本、每个加载器各一个 jar
+- NeoForge：Minecraft 1.21 至 26.3 之间全部 17 个正式版本，即 1.21 至 1.21.11 的 12 个，加上
+  26.1.0 / 26.1.1 / 26.1.2 / 26.2.0 / 26.3.0
+- Fabric：1.21 线的 12 个版本（1.21 至 1.21.11）。26.x 暂无 Fabric 构建，原因见
+  [`docs/uncovered-minecraft-versions.md`](docs/uncovered-minecraft-versions.md)
+- Fabric 侧需要 Fabric API。设置界面由 Mod Menu 提供；Mod Menu 是可选依赖，没有它时配置仍然
+  可用，直接编辑配置文件即可
+- 运行环境：Java 21（1.21.x）或 Java 25（26.x），跟随 Minecraft 本身的要求
 
 ## 安装
 
-1. 按加载器和游戏版本挑 jar：文件名中间两段就是加载器与 Minecraft 版本，例如
-   `chunkstorageoptimizer-neoforge-26.1.2-1.0.4.jar` 与 `chunkstorageoptimizer-fabric-1.21.11-1.0.4.jar`。
-   放进 `mods/` 目录即可。
-2. 每个 jar 只认自己那个 Minecraft 版本。NeoForge 侧还要求加载器不低于**该版本的第一个稳定构建**，
-   逐版列在 `supported-versions.csv` 里，加载器也会在版本不够时直接拒绝启动而不是崩在半路。
-   Minecraft 26.1.2 对应的下限是 NeoForge 26.1.2.71。Fabric 侧需要同一行的 Fabric API
-   （同样列在 `supported-versions.csv`）。
-3. 启动游戏，配置文件按加载器生成：NeoForge 写 `config/chunkstorageoptimizer-common.toml`，
-   Fabric 写 `config/chunkstorageoptimizer.properties`。两者的键完全同名。
+1. 按加载器和游戏版本选择 jar：文件名中间两段就是加载器与 Minecraft 版本，例如
+   `chunkstorageoptimizer-neoforge-26.1.2-1.0.4.jar` 与
+   `chunkstorageoptimizer-fabric-1.21.11-1.0.4.jar`。放入 `mods/` 目录即可。
+2. 每个 jar 只适用于其对应的 Minecraft 版本。NeoForge 侧要求加载器不低于该版本的下限：下限取
+   该 loader 线最老的稳定版，整条线都没有稳定版时取最新 beta，逐版列在
+   `supported-versions.csv` 中；加载器版本不足时会在启动时直接拒绝加载。Minecraft 26.1.2 对应的
+   下限是 NeoForge 26.1.2.71。Fabric 侧需要同一行的 Fabric API（同样列在
+   `supported-versions.csv`）。
+3. 启动游戏后，配置文件按加载器生成：NeoForge 写
+   `config/chunkstorageoptimizer-common.toml`，Fabric 写
+   `config/chunkstorageoptimizer.properties`。两者的键完全同名。
 
-> 与 **C2ME** 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。
-> 两者都改写了区块 IO，混用会造成存档割裂。
+与 C2ME 同时安装时，本 mod 会自动停用并退回原版存储，同时在游戏中给出提示。不兼容的原因见
+[注意事项](#注意事项)。
 
-> **只需要装在世界所在的那一侧。** 这个 mod 不注册任何网络通道，客户端侧的代码只有配置界面，
-> 改的纯粹是磁盘上的区块存储。所以专用服务器只装服务端就行；联机时房主装、房客什么都不用装；
-> 房客装了而房主没装也不会变成"必须一致"。唯一的前提是同一个存档只能由装了 mod 的一侧读写
-> （见开头第一条警告）。
-
----
+本 mod 只需要安装在世界所在的一侧：不注册任何网络通道，客户端侧代码只有配置界面，改动的只是
+磁盘上的区块存储。专用服务器安装服务端即可；联机时房主安装，房客无需安装，房客单独安装也不
+要求房主安装。前提是同一个存档只能由安装了 mod 的一侧读写（见开头「使用前须知」）。
 
 ## 开始使用
 
 ### 新世界
 
-直接开始游戏即可。所有区块数据都会写入 `.cso` 文件，不会产生任何 `.mca`。
+直接开始游戏。所有区块数据都会写入 `.cso` 文件，不会产生任何 `.mca`。
 
 ### 已有世界
 
-本 mod 采用**渐进迁移**：`.cso` 里没有的区块会自动回退读取同名的 `.mca`，所以启用后
-已有的存档数据不会丢失，新的写入会逐步迁移到新格式。
+本 mod 采用渐进迁移：`.cso` 中没有的区块会自动回退读取同名的 `.mca`，因此启用后已有的存档
+数据不会丢失，新的写入会逐步迁移到新格式。
 
-需要注意：随着区块被修改，旧数据仍留在 `.mca` 中，而新版本写入 `.cso`，
-**两份数据会同时占用磁盘**。推荐做一次完整迁移：
+随着区块被修改，旧数据仍留在 `.mca` 中，新版本写入 `.cso`，两份数据会同时占用磁盘。可执行
+一次完整迁移：
 
 ```
 /cso convert cso prune
 ```
 
-这会把当前世界各维度、各目录的 `.mca` 全部转成 `.cso`，**验证后删除原文件**，
-避免双份占用。转换前会自动执行一次 `save-all flush`；整个转换在主线程上跑完，期间不会有
-新的区块写入排队（细节见命令表下的说明）。
-
----
+该命令把当前世界各维度、各目录的 `.mca` 全部转成 `.cso`，验证后删除原文件。执行前会先运行
+`save-all flush`，转换在主线程上同步完成。转换的执行细节与删除的安全机制见
+[游戏内命令](#游戏内命令)。
 
 ## 配置
 
-配置文件的键在两个加载器之间完全同名，只是容器格式不同：NeoForge 用
-`config/chunkstorageoptimizer-common.toml`，Fabric 用 `config/chunkstorageoptimizer.properties`。
+配置文件的键在两个加载器之间完全同名，仅容器格式不同：NeoForge 使用
+`config/chunkstorageoptimizer-common.toml`，Fabric 使用
+`config/chunkstorageoptimizer.properties`。
 
-> NeoForge 生成的 toml 里**没有注释**：它只会把代码里的 comment 写进文件，而选项说明需要按语言
-> 各出一份，所以它们放在语言文件里。含义见下表，或游戏内 **Mods → 选中本 mod → Config** 界面
-> （英 / 简中 / 繁中 TW / 繁中 HK / 日 / 韩 / 俄 / 德 / 法 / 西 / 葡萄牙 BR / 意 均有）——两个加
-> 载器的界面读同一批语言键；Mod Menu 的列表摘要、名称与 NeoForge Mods 界面的描述也走同一批键。
-> Fabric 的 properties 文件自带取值范围注释，手改后重启生效。
+NeoForge 生成的 toml 文件中没有注释：NeoForge 只写入代码中声明的 comment，而本 mod 的选项说明
+按语言各提供一份，存放在语言文件里。各键含义见下表，或游戏内 Mods → 选中本 mod → Config 界面
+（英 / 简中 / 繁中 TW / 繁中 HK / 日 / 韩 / 俄 / 德 / 法 / 西 / 葡萄牙 BR / 意均有）。两个加载器
+的界面读取同一批语言键，Mod Menu 的列表摘要、名称与 NeoForge Mods 界面的描述也使用同一批键。
+Fabric 的 properties 文件自带取值范围注释，手动修改后重启生效。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -113,12 +109,11 @@ bucket，每个 bucket 用一条 zstd 流整体压缩，并去掉原版按 4 KiB
 | `batchMaxChunks` | `16` | 攒够多少个区块变更后提前写入。设为 1 可关闭批处理 |
 | `batchMaxDelayMs` | `5000` | 暂存写入的最长停留时间，超时即落盘 |
 
-> 升级本 mod 后，已存在的配置文件**不会**被新的默认值覆盖。
-> 若 `grid` 等项仍是旧值，需要手动修改。
+升级本 mod 后，已存在的配置文件不会被新的默认值覆盖；`grid` 等配置项仍为旧值时需要手动修改。
 
-### grid 怎么选
+### grid 的取值
 
-grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档上实测：
+grid 决定压缩率与写入代价的平衡。在 889 MB 城市存档上实测：
 
 | grid | 每 bucket 区块数 | 体积 | 写入代价 |
 |---|---|---|---|
@@ -127,12 +122,10 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 | **16** | **4** | **省 55.4%** | **最低** |
 | 32 | 1 | 更差 | 反而上升（失去跨区块共享上下文） |
 
-- **活跃世界**（持续写入）用默认的 `16`，写入量与耗时最低。
-- **归档或极少改动**用 `8` 或更小，体积优先。
-- **区块稀疏且单区块数据较大的世界/维度**（例如只加载了少量区块的下界），
-  建议调到 `1` 或 `2`。详见[性能](#性能)中的说明。
-
----
+- 活跃世界（持续写入）使用默认的 `16`，写入量与耗时最低。
+- 归档或极少改动的世界用 `8` 或更小，体积优先。
+- 区块稀疏且单区块数据较大的世界或维度（例如只加载了少量区块的下界）建议调到 `1` 或 `2`，
+  详见[性能](#性能)。
 
 ## 游戏内命令
 
@@ -147,35 +140,31 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 | `/cso convert cso [prune]` | 把 `.mca` 转成 `.cso`；同名 `.cso` 已存在时两侧取并集（`.cso` 的版本优先，与读取顺序一致）。加 `prune` 会在验证后删除 `.mca` |
 | `/cso convert mca [prune]` | 把 `.cso` 转回 `.mca`，并在世界目录写下 `cso.disabled`——**只有这个世界**退出本 mod，重启后仍认。加 `prune` 会删除 `.cso` |
 
-`/cso convert mca` 之后世界目录里会多一个与 `level.dat` 同级的 `cso.disabled`：它记录这个世界已退回
-原版存储，重启也照此办理，所以配置文件里的 `enabled` 不必改动，同一目录下的其它世界也不受影响。要切
-回来就删掉该文件、重进世界，再执行 `/cso convert cso prune`。不重进就转换会被拒绝——这个世界已经打开
-的 `.mca` 句柄还在继续写，转换出来的 `.cso` 会把它们盖住。
+`/cso convert mca` 之后，世界目录里会多出一个与 `level.dat` 同级的 `cso.disabled`。该文件记录
+这个世界已退回原版存储，重启后仍然生效；配置文件中的 `enabled` 不必改动，同一目录下的其它世界
+也不受影响。要重新启用，删除该文件、重进世界，再执行 `/cso convert cso prune`。不重进世界时
+转换会被拒绝：这个世界已打开的 `.mca` 句柄仍在写入，此时转换出的 `.cso` 会覆盖后续写入的
+数据。
 
-`convert` 是同步执行，并且是故意的：`save-all flush` 会等区块 IO 线程把队列跑完（顺带把暂存桶落盘），
-随后转换占住服务器主线程直到搬完最后一个字节——区块保存只从这条线程排队，所以移动文件的这段时间里不会
-有新的写入插进来，读到半写文件的可能因此被排掉。代价是按搬运量卡住 tick，大存档上是秒级。
-`/cso report` 反过来是在后台线程采样，撞上正在写的文件时打印 `CSO report failed` 即可；它不写任何东西，
-重跑一次就行。
+`convert` 为同步执行，流程是：先运行 `save-all flush`，等待区块 IO 线程清空队列（包括游戏自身
+未落盘的区块和本 mod 的暂存桶）；然后关闭所有文件句柄；最后占住服务器主线程完成搬运。区块保存
+只从主线程排队，因此移动文件期间不会有新的写入，读取到半写文件的可能被排除。代价是阻塞时长
+与搬运量成正比，大存档上为秒级。
 
-`report` 的百分比是**相对抽样文件当前磁盘占用**：源是 `.mca` 时就是"相比原版能省多少"，源已是
-`.cso` 时是"相比现在重写一遍能省多少"。分位数来自对数分桶直方图（桶宽是 2 倍关系），所以是
-近似值——够用来判断"有没有卡"，不够用来报精确延迟。
+`/cso report` 在后台线程采样，不写入任何数据；遇到正在写入的文件时打印 `CSO report failed`，
+重新执行即可。report 的百分比相对抽样文件当前的磁盘占用：源为 `.mca` 时即「相比原版能省多少」，
+源已是 `.cso` 时即「相比现在重写一遍能省多少」。分位数来自对数分桶直方图（桶宽为 2 倍关系），
+是近似值，可用于判断是否存在延迟问题，不用于精确测量。
 
-`convert` 会先执行 `save-all flush`（游戏自身还有一份未落盘的区块队列），再关闭所有
-文件句柄，然后才开始搬运字节。
-
-**删除操作不可逆。** 每个文件都是「转换 → 读回校验 → 才删除」，校验不一致时立即中止，
-不会删掉任何东西。转换前会先检查 `.mca` 里有没有本构建读不出来的槽位（外部 `.mcc`、
-未知压缩号、解压失败）：只要有一处，整个文件就被**跳过**——既不转换也不删除，并在结果里
-报出跳过了几个文件、几个区块。原因很简单：那些槽位是真实区块，只按读得出来的数量去校验，
-会让 `prune` 在「校验通过」的假象下删掉唯一一份含它们的文件。仍建议先备份存档。
-
----
+删除操作不可逆。每个文件都经过「转换 → 读回校验 → 删除」的流程，校验不一致时立即中止，不会
+删除任何文件。转换前会先检查 `.mca` 中是否存在本构建无法读取的槽位（外部 `.mcc`、未知压缩号、
+解压失败）：只要有一处，整个文件即被跳过，既不转换也不删除，结果中会报出跳过的文件数与
+区块数。这些槽位是真实区块，只按可读取的数量校验会使 `prune` 在校验通过的表象下删除包含它们
+的唯一文件。执行转换前仍建议备份存档。
 
 ## 离线工具
 
-不启动游戏即可对磁盘上的存档操作。工具只搬运 NBT 字节、不解析它们。
+不启动游戏即可对磁盘上的存档操作。工具只搬运 NBT 字节，不解析它们。
 
 ```bash
 # 只报告体积对比，不改动任何文件
@@ -200,19 +189,19 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
 ./gradlew :core:csoTool -PcsoArgs="count" -PcsoDir="<目录>"
 ```
 
-`bench`/`ab`/`amp`/`walcost` 读目录里现成的格式：有 `.mca` 就用它（那是原版真实写出的字节），
-只剩 `.cso` 时自动改用 `.cso`——**已经转换完的存档照样能测**。此时 anvil 那一行是本工具重写出
-的估算值，输出里会标注 `[rebuilt by this tool — an estimate]`。两种格式同时存在（渐进迁移的
-常态）时，强制指定读取格式用 `--from cso` 或 `--from mca`。
+`bench` / `ab` / `amp` / `walcost` 读取目录中现有的格式：有 `.mca` 时使用 `.mca`（原版真实写出
+的字节），只剩 `.cso` 时自动改用 `.cso`，已转换完成的存档仍可测试。此时 anvil 一行是本工具
+重写出的估算值，输出中会标注 `[rebuilt by this tool — an estimate]`。两种格式同时存在（渐进
+迁移的常态）时，可用 `--from cso` 或 `--from mca` 强制指定读取格式。
 
-> 做「两个存档比大小」这类对照时，务必先用 `count` 确认两边区块数一致。
-> 区块数不同的话，体积差里混着内容差异，数字没有意义。
+对比两个存档的体积时，先用 `count` 确认两边的区块数一致；区块数不同时，体积差包含内容差异，
+数据没有可比性。
 
-**路径含空格时必须用 `-PcsoDir`**，不要放进 `-PcsoArgs`（会被按空格拆成两个参数）。
+路径包含空格时必须使用 `-PcsoDir` 传入目录，不要放入 `-PcsoArgs`（参数按空格拆分）。
 
 ### 存档目录结构
 
-两种布局，取决于游戏版本——1.21 全线（含 1.21.11）还是老布局，26.x 起维度被挪进
+目录布局取决于游戏版本：1.21 全线（含 1.21.11）使用老布局，26.x 起维度被移入
 `dimensions/<namespace>/<维度>/`：
 
 ```
@@ -230,17 +219,14 @@ grid 决定「压缩率 ↔ 写入代价」的平衡。在 889 MB 城市存档�
     └── the_end/{region,poi,entities}
 ```
 
-`.cso` 永远写在游戏递给 mod 的那个目录里、和同名 `.mca` 平级，所以两种布局都不需要特别处理：
-1.21.11 的 dev 服务器实测落在 `<世界>/region/r.0.0.cso`、`<世界>/poi/…`、`<世界>/entities/…`，
-26.1.2 落在 `<世界>/dimensions/minecraft/overworld/region/…`。`region`、`poi`、`entities`
-三种目录是同一种 region 文件，同一套命令都能处理。
-
----
+`.cso` 始终写在游戏提供给 mod 的目录中，与同名的 `.mca` 平级。1.21.11 的 dev 服务器实测落在
+`<世界>/region/r.0.0.cso`、`<世界>/poi/…`、`<世界>/entities/…`，26.1.2 落在
+`<世界>/dimensions/minecraft/overworld/region/…`。`region`、`poi`、`entities` 三种目录是同一种
+region 文件，同一套命令都能处理。
 
 ## 性能
 
-数据来自一个 889 MB 的真实城市存档（Los Perrito，201,321 个区块），
-grid=16、zstd L3。
+数据来自一个 889 MB 的真实城市存档（Los Perrito，201,321 个区块），grid=16、zstd L3。
 
 ### 体积与速度
 
@@ -259,7 +245,7 @@ grid=16、zstd L3。
 | poi | 5.46 MB | 978 KB | 82.5% |
 | entities | 5.74 MB | 1.80 MB | 68.6% |
 
-**数据越稀疏、单块越小，收益越大**——原版为每个区块预留 4 KiB 扇区，这类目录正是浪费的重灾区。
+数据越稀疏、单块越小，收益越大：原版为每个区块预留 4 KiB 扇区，这类目录的浪费占比最高。
 
 ### 同种子对照
 
@@ -270,8 +256,8 @@ grid=16、zstd L3。
 | 原版 `.mca` | 16 | **8,281** | 54.44 MB | 6,893 B |
 | 本 mod `.cso` | 16 | **8,281** | 36.48 MB | 4,619 B |
 
-两者区块数完全相同，因此 **33.0% 的差距完全来自格式**，不含任何内容差异。
-同一对照中 entities 省 61.3%，poi 省 20.9%。
+两者区块数完全相同，因此 33.0% 的差距完全来自格式，不含内容差异。同一对照中 entities 省
+61.3%，poi 省 20.9%。
 
 ### 收益随单区块大小变化
 
@@ -282,8 +268,8 @@ grid=16、zstd L3。
 | 多人存档（见下节） | 7.62 KB | 38.4% |
 | 史诗地形（复杂地形） | 9.15 KB | 29.6% |
 
-单区块数据越大、内容越复杂，收益越小。区块接近或超过 4 KiB 时，原版扇区对齐的浪费
-本就不多，能压缩的空间也随之减少。
+单区块数据越大、内容越复杂，收益越小：区块接近或超过 4 KiB 时，原版扇区对齐的浪费本就不多，
+可压缩的空间也随之减少。
 
 ### 写入量随 grid 的变化
 
@@ -304,18 +290,17 @@ grid=16、zstd L3。
 | the_end | 164 KB | 98 KB | 40.6% |
 | the_nether | 318 KB | 325 KB | **-2.0%** |
 
-下界这里**反而大了 2%**。决定符号的不是维度，是**那个维度的活动密度**：当区块
-接近或超过 4 KiB **且分布稀疏**时，原版扇区对齐的浪费本就不多，而 bucket 表有固定开销
-（grid=16 时每个 region 文件 16,512 B），两头一抵就可能倒贴。这个存档的下界只浅浅探了几条
-通道，正是这种画像。
+下界的体积增加了 2%。体积是否缩小取决于该维度的区块密度：区块接近或超过 4 KiB 且分布稀疏时，
+原版扇区对齐的浪费本就有限，而 bucket 表有固定开销（grid=16 时每个 region 文件 16,512 B），
+两者相抵后可能出现净增加。该存档的下界只生成了少量通道区块，属于这种情形。
 
-同一目录在下界被密集挖掘（隧道网、大型采掘场）时收益转为正——下面那个多人存档的
-`the_nether` 为 **49.7%**。目录越稀疏、单区块越小，bucket 表的固定开销占比越高，此时宜把
-`grid` 调小；实测曲线见下节。
+同一目录在下界被密集挖掘（隧道网、大型采掘场）时收益为正：下面多人存档的 `the_nether` 为
+49.7%。目录越稀疏、单区块越小，bucket 表的固定开销占比越高，此时应把 `grid` 调小；实测数据
+见下节。
 
 ### 真实多人存档（1.73 GB）
 
-朋友一起玩的存档：1.21.1 原版 + 优化 mod（carpet 农场、精致存储等），主世界 170,217 个区块、
+一个多人生存存档：1.21.1 原版 + 优化 mod（carpet 农场、精致存储等），主世界 170,217 个区块、
 平均每块 7.6 KB。用离线工具 `bench --grid 16` 在它现有的 Anvil 字节上实测：
 
 | 存储 | 原版 | 本 mod | 节省 |
@@ -331,10 +316,11 @@ grid=16、zstd L3。
 | the_end poi | 36 KB | 49 KB | **-35.5%** |
 | **合计** | **1.727 GB** | **889 MB** | **48.5%** |
 
-末地那 92.1% 是"已生成但内容稀疏"的典型：岛之间大片区块，每个在原版都要占满一个 4 KiB 扇区。
+末地的 92.1% 来自「已生成但内容稀疏」的情形：岛之间的大片区块，每个在原版都要占满一个
+4 KiB 扇区。
 
-最后一行是**唯一倒贴的目录**，也是上面那条规律的极端样本：整个末地 poi 只有 3 个区块，摊在
-81 个 region 文件里，于是每文件 16,512 B 的桶表成了主要成本。同一批字节，只改 `grid`：
+上表最后一行是唯一体积增加的目录，也是上述规律的极端样本：整个末地 poi 只有 3 个区块，分布在
+81 个 region 文件里，每文件 16,512 B 的桶表成为主要成本。同一批字节，只改 `grid`：
 
 | grid | 大小 | 节省 |
 |---|---|---|
@@ -343,15 +329,13 @@ grid=16、zstd L3。
 | 2 | 1.55 KB | 95.7% |
 | 1 | 1,014 B | **97.2%** |
 
-从倒贴 35% 到省 97%，差额全在桶表的固定开销上。这就是 `grid` 值得按存档/维度调一次的原因
-（`grid` 只影响新建文件，已有文件保持自己出生时的值）。
+从体积增加到节省 97%，差异全部来自桶表的固定开销。`grid` 只影响新建文件，已有文件保持创建时
+的值，因此可以按存档或维度调整。
 
 ### 崩溃保护的代价
 
-预写日志带来的额外开销：每批 **6 ms → 8 ms（约 +22%）**。
-粒度是一批而非单个 bucket，因此不会让每次区块保存都强制刷盘。
-
----
+预写日志带来的额外开销：每批 6 ms → 8 ms（约 +22%）。粒度是一批而非单个 bucket，因此单次
+区块保存不会强制刷盘。
 
 ## 文件格式
 
@@ -359,42 +343,28 @@ grid=16、zstd L3。
 [FileHeader 128 B][BucketTable A][BucketTable B][压缩数据块]
 ```
 
-- region 按 `grid × grid` 划分 bucket，每个 bucket 是一条独立 zstd 流
-- bucket 内为 `ChunkEntry[K]` 索引 + 紧凑排列的区块字节，**不使用扇区对齐**
+- region 按 `grid × grid` 划分 bucket，每个 bucket 是一条独立的 zstd 流
+- bucket 内为 `ChunkEntry[K]` 索引加上紧凑排列的区块字节，不使用扇区对齐
 - 空闲空间由 bucket 表反推，文件中不存 free list
-- bucket 表存**两份**，每项自带序号与自检 CRC —— 崩溃时可逐 bucket 回退
-- 一批写入先写**预写日志**（`.wal`），完成后才删除
-- 空闲超过阈值时自动整理，整理只搬移已压缩的字节，不重新压缩；检查发生在保存节点，不会让某个区块的写入突然背上整文件重写的开销
+- bucket 表存两份，每项自带序号与自检 CRC，崩溃后可按 bucket 回退
+- 一批写入先写入预写日志（`.wal`），完成后删除
+- 空闲超过阈值时自动整理；整理只搬移已压缩的字节，不重新压缩；检查发生在保存节点，单个区块
+  的保存不会触发整文件重写
 
 完整规范见 [`docs/FORMAT.md`](docs/FORMAT.md)，前期调研见
 [`docs/chunk-storage-research.md`](docs/chunk-storage-research.md)。
 
----
-
 ## 注意事项
 
-**1. 存档不再兼容原版。** 卸载本 mod 后，只存在于 `.cso` 中的进度对原版不可见，
-MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert mca prune`。
-
-**2. `fallbackToMca` 不要设为 `false`。** 关闭后，`.cso` 中没有的区块会被当作未生成，
-**地形会被静默重新生成**。
-
-**3. 区块稀疏且单块较大的场景下收益可能为负。** 见[维度差异](#维度差异)。
-
-**4. 与 C2ME 不兼容。** 检测到 C2ME 时本 mod 会自动停用并退回原版存储，日志中有提示。
-两者都改写了区块 IO，同时启用会让一个世界被写成两套格式，导致存档割裂。
-
-**5. zstd 不可用时会自动降级。** 若 native 库加载失败，本 mod 会退回原版 Anvil 存储，
-不会导致世界无法启动。
-
----
+1. 存档不再兼容原版，详见开头「使用前须知」。
+2. 不要将 `fallbackToMca` 设为 `false`。关闭后，`.cso` 中没有的区块会被视为未生成，地形会被
+   静默重新生成。
+3. 区块稀疏且单块较大的场景下收益可能为负，见[性能](#性能)中的维度差异。
+4. 与 C2ME 不兼容。检测到 C2ME 时本 mod 自动停用并退回原版存储，日志中有提示。两者都会改写
+   区块 IO，同时使用会让同一个世界存在两种格式的数据。
+5. zstd 不可用时自动降级：native 库加载失败时本 mod 退回原版 Anvil 存储，不影响世界启动。
 
 ## 从源码构建
-
-仓库按依赖边界分成四块：`core`（不依赖 Minecraft 也不依赖加载器：格式、指标、离线工具，
-单元测试都在这里）、`common`（依赖 Minecraft 但不依赖加载器：存储层、mixin、命令实现，
-以及按权限 API 分的两套 `CsoPermissions`）、`neoforge` 与 `fabric`（各自的加载器入口与配置
-存储）。`core` 和 `common` 不产出独立 jar，它们作为源码目录被两个加载器模块各自编译一次。
 
 ```bash
 ./gradlew :neoforge:build          # 产物在 neoforge/build/libs/
@@ -404,169 +374,5 @@ MCA Selector 等外部工具也无法读取。卸载前请执行 `/cso convert m
 ./gradlew :fabric:runServer        # 同上，工作目录 fabric/run/
 ```
 
-### 多版本构建
-
-`minecraft_version` 是唯一的版本开关。一个 Minecraft 对应哪一行的 NeoForge 下限、Fabric API 与
-Mod Menu 版本、写进 mod 元数据的版本范围、Java 级别、命令权限 API 走哪套，全部由
-`supported-versions.csv` 里的那一行决定：
-
-```bash
-./gradlew :neoforge:build -Pminecraft_version=1.21.11   # csv 里列出的版本都能直接编
-./gradlew :fabric:build -Pminecraft_version=1.21.2      # 只有 NeoForge 写 '-' 的那些行照样能编
-```
-
-"编得动"还有一层：Gradle 会为任何被请求的任务配置**所有已 include 的模块**，所以只属于另一个
-加载器的行会把它拖死。因此决定"这一版有哪些加载器模块"的地方是 `settings.gradle`——它读同一份
-csv 的那两列，`-` 的那侧根本不 include。不传 `-Pminecraft_version` 时两个模块都在，各自用自己
-那行（NeoForge 26.1.2、Fabric 1.21.11）。
-
-同一份 csv 也是 CI 矩阵的来源（workflow 按加载器两列展开成 job），所以"本机编得动的版本"和
-"会被发布的版本"不可能各说各话。加一个新版本只要两步：
-
-```bash
-tools/neoforge-floor.sh 26.2.0
-# ① 把脚本打出来的行填进 supported-versions.csv：<mc>, <java>, <legacy|modern>,
-#    <NeoForge 下限>, <Fabric API>, <Mod Menu>；某个加载器没有该游戏版本的构建就在该列写 -
-#    java 看 Mojang 版本清单的 javaVersion，family 看这个 MC 有没有 net.minecraft.server.permissions
-# ② 逐个模块验证：./gradlew :neoforge:build -Pminecraft_version=26.2.0，再 :fabric:build
-#    同一版本；某一列写 '-' 时那个模块不会被 include，请求它会得到 "project not found"
-```
-
-下限取**该 loader 线最老的稳定版**。整条线都没出过稳定版时取**最新 beta**——NeoForge 一有新 MC 就关掉
-旧线，所以只活了一周的 MC（1.21.2 / 1.21.6 / 1.21.7 / 1.21.9 / 26.1 / 26.1.1）会留下一条以 beta 收尾
-的线。beta 不理想，但那是存在的唯一选择，而最新那个最不可能带着「编不过的构建输入」——21.10.63 的
-binpatch 是用被改过的 base jar 生成的，谁都编不过。
-
-`tools/check-loader-versions.sh` 把 csv 的 pin 与上游逐一核对：NeoForge 下限、Fabric API 的 `+<mc>`
-后缀、Mod Menu 是否存在、以及 build 里 pin 的 Fabric loader 是否支持该 MC。CI 每次 push 都跑它。
-1.21.10 是唯一刻意的例外（21.10.63 编不过，故用 21.10.64），脚本里写明了原因。
-
-未覆盖的版本及原因记录在 `docs/uncovered-minecraft-versions.md`。
-
-版本范围是**精确单版本**（NeoForge 的 `[26.1.2]`、Fabric 的 `"minecraft": "1.21.11"`），不是 `>=`。
-因为 `mixins.json` 里 `defaultRequire: 1`，签名一漂移就是启动崩溃；精确范围让没测过的版本在加载前
-就被干净拒绝，而不是崩在玩家机器上。
-
-### 发布
-
-打一个 `v<version>` 的 tag 就会自动发到 Modrinth，不用手动传。
-
-**打什么 tag 与编什么无关。** 编译矩阵来自 `supported-versions.csv`，所以**一个 tag 就会编出全部
-22 个 jar**（NeoForge 10 + Fabric 12）并全部发布——tag 只决定「什么时候触发」。tag 里的版本号必须
-与 `gradle.properties` 的 `mod_version` 一致，不一致会直接失败，免得把 jar 发成错的版本号。
-
-一次性配置在 Settings → Secrets and variables → Actions，两项都取 **repository** 作用域：配成
-environment 的话工作流看不见，而且不报错，只表现为 token 是空的。
-
-- **Repository secret `MODRINTH_TOKEN`** —— Modrinth 个人访问令牌，在
-  <https://modrinth.com/settings/account> 生成。需要 **`VERSION_CREATE` + `PROJECT_READ` +
-  `VERSION_READ`** 三个权限：只给 `VERSION_CREATE` 的话，项目还在审核中时连读都读不到——而
-  Modrinth 对无权读的项目返回的是 **404 而不是 403**，看起来像 id 写错了。名字大小写敏感。
-- **Repository variable `MODRINTH_PROJECT`**（在 Variables 标签页，不是 Secrets 页）—— 项目的
-  **id**，就是你在 Modrinth 上看到的那个 8 位串（形如 `cJqzw49d`）。**优先填 id 而不是 slug**：
-  slug 随时可以改，id 恒定，而这条配置是要长期放着的——填 slug 的话，哪天改了项目名它就会
-  静默失效，表现为 404 而不是「slug 变了」。
-
-为什么一个 jar 一个版本条目，写在 `.github/workflows/build.yml` 的注释里。
-
-发布说明取自 `CHANGELOG.md` 里 `## [<版本>]` 那一段的**正文**：标题行本身不发（它是变更日志自己的
-目录，而 Modrinth 会在说明旁边显示版本号）。同一版本的 28 个条目用**同一份**说明——它们是一次发行，
-说明属于版本而不属于文件。这一段必须存在**且有内容**，否则**整个发布会失败**：没有说明的发行不值得发，
-而这个检查跑在上传之前，所以代价是一条明确的消息，而不是一个悄悄空着发出去的版本。
-
-上传是**幂等**的：建版本前先问项目该（游戏版本，加载器）下是否已有这个版本号，有就跳过，所以
-中途失败重跑一次只会补没传上去的那几个。不打 tag 也可以在 Actions 里手动跑一次（默认只演练、
-不真传），已 tag 过的版本也能这样补传。
-
-### 跨版本的编译缝
-
-1.21 到 26.x 之间不兼容的 API 有两处，各一条缝。每条缝都是「两个目录、同一个签名」，构建时按 csv 只把
-其中一个放进编译路径，所以运行期没有条件分支，也没有反射。
-
-**命令权限**：`common/src/version/legacy/java` 与 `modern/java` 各提供一个签名相同的
-`CsoPermissions.operatorOnly()`，由 csv 的 **family 列**选择。两者的判定标准都是权限等级 3。
-
-**配置类型**：`neoforge/src/version/fml11/java` 与 `fml12/java` 各提供一个签名相同的
-`CsoConfigType.common()`，由 csv 的 **FML 列**选择。FancyModLoader 12（NeoForge 26.3 起）把
-`ModConfig.Type.COMMON` 改名为 `LOCAL`，旧常量在新版本里不存在，所以共享代码无法命名它。注册时
-**显式传入文件名**（`chunkstorageoptimizer-common.toml`），否则这次改名会把它变成 `-local.toml`，
-让已有的配置文件悄悄失效。这条缝只在 NeoForge 侧，Fabric 不读该列。
-
-另一处差异是 26.1 将 `ChunkPos` 改为 record（`pack`/`unpack`/`x()`/`z()`）。写入批处理用的坐标键不
-来自游戏数据，`CsoStorage` 因此使用自己的打包方式，这条差异不再需要缝。其余部分里
-`RegionFileStorage` 的方法签名在整个范围内没有变化，这是只有两处缝的原因。
-
-### 各版本行的实测状态
-
-NeoForge：
-
-| Minecraft（NeoForge 构建） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
-|---|---|---|---|---|
-| 1.21 (21.0.143) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 5 个文件、0 个 `.mca` |
-| 1.21.1 (21.1.1) | dev | 通过 | 未执行 | 否，回退 Anvil |
-| 1.21.3 (21.3.56) | dev | 通过 | 未执行 | 否，回退 Anvil |
-| 1.21.4 (21.4.121) | dev | 通过 | 未执行 | 否，回退 Anvil |
-| 1.21.5 (21.5.74) | dev | 通过 | 未执行 | 否，回退 Anvil |
-| 1.21.8 (21.8.9) | dev | 通过 | 未执行 | 否，回退 Anvil |
-| 1.21.10 (21.10.63) | dev | 通过 | 未执行 | 是：5 个文件、0 个 `.mca` |
-| 1.21.11 (21.11.42) | dev | 通过 | 未执行 | 是：9 个文件、0 个 `.mca` |
-| 26.1.2 (26.1.2.71) | dev | 通过 | 已执行 | 是：5 个文件 |
-| 26.2.0 (26.2.0.57) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 9 个文件 |
-
-Fabric：
-
-| Minecraft（loader / Fabric API） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
-|---|---|---|---|---|
-| 1.21.11 (0.19.5 / 0.141.6) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 9 个文件、0 个 `.mca` |
-| 1.21 (0.19.5 / 0.102.0) | 真实服务端 | 通过 | 已执行 | 是：真实服务端 8 个文件、0 个 `.mca` |
-
-其余 10 个 Fabric 行只有编译验证（CI 覆盖），运行时未逐版跑过。
-
-真实服务端验证的做法：NeoForge 用 `neoforge-<版本>-installer.jar --installServer` 在仓库之外装一个
-服务端，把 `neoforge/build/libs/` 下对应的 jar 放进 `mods/`。Fabric 用 `meta.fabricmc.net` 的
-`/v2/versions/loader/<mc>/<loader>/<installer>/server/jar` 取到可直接 `java -jar` 的启动器，`mods/` 里
-放本 mod 与该行对应版本的 Fabric API。两边再通过 RCON 执行 `cso stats` 与 `save-all flush`。
-NeoForge 侧的 1.21.1 至 1.21.8 未做这一步，只验证了 1.21 这一行。
-
-`runServer` 在 21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError`，随后回退原版 Anvil），
-21.10 起正常；两种环境下生成的 `neoforge/build/moddev/serverLegacyClasspath.txt` 都不含 zstd。这是 dev 环境的
-差异，发行路径使用嵌套 jar，与其无关——1.21 与 26.2.0 两行已按发行路径验证。Fabric 的 dev 运行没有
-这条差异：1.21.11 的 `:fabric:runServer` 直接写出 `.cso`。
-
-存档目录布局：1.21.1、1.21.11 以及 1.21 的真实服务端均为 `<世界>/{region,poi,entities}` 加
-`DIM-1/`、`DIM1/`；26.1.2 与 26.2.0 为 `<世界>/dimensions/minecraft/<维度>/…`。`.cso` 写在游戏提供
-的目录里，两种布局的落盘位置均已实测。
-
-
-### 两个加载器之间换了什么
-
-按实际 import 关系，一个加载器需要自己写的只有 4 个文件：入口（`ChunkStorageOptimizer` /
-`ChunkStorageOptimizerFabric`）、配置存储（`Config` 的 `ModConfigSpec` / `FabricConfig` 的
-properties）、命令注册钩子、配置界面（NeoForge 复用 FML 自带的 `ConfigurationScreen`，Fabric 没有
-官方界面，所以 `CsoModMenuIntegration` + `CsoConfigScreen` 自己提供一个给 Mod Menu 打开的
-Screen）。`storage/CsoStorage`、mixin、命令实现全部在 `common` 里一份不改动地共用，
-`format` / `metrics` / `tools` 既不依赖 Minecraft 也不依赖任何加载器——格式层能脱离游戏
-独立跑测试就是因为这条边界。
-
-加载器带来的四处实现差异：
-
-- **mixin 的映射方式。** loom 从 1.15 起默认不再挂 mixin 的注解处理器，改由 remapJar 阶段把
-  intermediary 名字直接写进注解（`MixinRefmapInliner`），所以 `fabric/src/main/resources` 里的
-  `chunkstorageoptimizer.mixins.json` 不带 `refmap` 字段；NeoForge 那份带，refmap 文件由 FML 的
-  注解处理器生成。实测发行 jar：`@Mixin` 的值已是 `net/minecraft/class_2867`，`@Inject` 的
-  `method` 已是 `method_17911`，dev 运行则直接用未 remap 的类，两条路径都绑得上。
-- **嵌套依赖。** NeoForge 用 `jarJar`，Fabric 用 loom 的 `include`，zstd-jni 落在
-  `META-INF/jars/`，加载后是一个独立的嵌套 mod（id 为 `com_github_luben_zstd-jni`）。
-- **可选的第三方界面。** Mod Menu 只以 `modCompileOnly` 参与编译：没有它时 `modmenu` 入口点永远
-  不会被实例化，配置退回纯文件编辑。
-- **下限放在哪。** NeoForge 的下限是产物内容：`neoforge.mods.toml` 里的 `versionRange` 直接决定玩家
-  能不能装，所以那一列必须填"该版本第一个稳定构建"。Fabric 侧的 `fabric.mod.json` 因此不写
-  `fabricloader`：唯一的硬依赖是 Fabric API，而每个 fabric-api 模块自己带 loader 下限
-  （MC 1.21.1 那档是 `>=0.15.11`，实测把本 mod 放到 0.14.24 上，拒绝来自 API 而不是本 mod），
-  抄一份只会更严或更松，不会更准。编译用的 loader 版本（`fabric_loader_version`，默认 0.19.5）
-  只影响 dev 运行与 loom。
-
-配置界面只用 `Button.builder(Component, OnPress)` 与 `Screen.addRenderableWidget` 两个控件 API，
-每个选项是一个循环取值的按钮、点击即写文件。不用文本框也不自绘：界面依赖的客户端 API 越少，
-12 个版本行同时编过的把握越大。界面用到的其余签名（`Tooltip.create`、`Component.plainCopy`、
-`Screen.width`）在 1.21 与 1.21.8 的反编译源码里对过，两端一致。
+多版本构建、发布流程、各版本的实测状态与两个加载器之间的差异见
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)。
