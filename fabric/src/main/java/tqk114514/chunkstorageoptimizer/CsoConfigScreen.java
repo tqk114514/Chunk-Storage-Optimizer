@@ -15,9 +15,11 @@ import net.minecraft.network.chat.Component;
  * <p>Every option is a button that cycles through the values that option accepts, and a click
  * writes the file immediately. That keeps this screen to the two widget calls that have not changed
  * shape across the Minecraft versions the mod ships for ({@code Button.builder} and
- * {@code Screen.addRenderableWidget}) — no text fields, no custom rendering, and nothing to
- * re-touch per Minecraft version. Values outside the cycle list can still be written by hand in the
- * properties file; the screen shows the nearest listed value for them.
+ * {@code Screen.addRenderableWidget}) plus the one navigation call, which lives behind the
+ * per-row {@link CsoScreens} seam because the 26.2 client moved {@code Minecraft.setScreen} to
+ * {@code Minecraft.gui.setScreen} — no text fields, no custom rendering, and nothing else to
+ * re-touch per Minecraft version. Values outside the cycle list can still be written by hand in
+ * the properties file; the screen shows the nearest listed value for them.
  *
  * <p>Names and descriptions are the same lang keys the NeoForge config screen uses
  * ({@code <modid>.configuration.<key>}), so both loaders are translated by one edit.
@@ -102,7 +104,7 @@ public final class CsoConfigScreen extends Screen {
 
     private void close() {
         if (this.minecraft != null) {
-            this.minecraft.setScreen(parent);
+            CsoScreens.open(this.minecraft, parent);
         }
     }
 

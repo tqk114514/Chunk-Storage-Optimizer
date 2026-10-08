@@ -29,8 +29,11 @@ include 'core'
 // which is why the '-' checks in the two build scripts stay in place as well: they are reachable
 // through a module default or a -Pneo_version/-Pfabric_api_version override, not only through here.
 def minecraftVersionProperty = providers.gradleProperty('minecraft_version')
+// The row this invocation builds for; null when each module falls back to its own default row.
+def requestedMinecraft = null
 if (minecraftVersionProperty.isPresent()) {
     def requested = minecraftVersionProperty.get().trim()
+    requestedMinecraft = requested
     def row = file('supported-versions.csv').readLines()
         .collect { it.trim() }
         .find { !it.isEmpty() && !it.startsWith('#') && it.startsWith(requested + ',') }
@@ -49,4 +52,15 @@ if (minecraftVersionProperty.isPresent()) {
 } else {
     include 'neoforge'
     include 'fabric'
+}
+
+// Loom reads fabric.loom.disableObfuscation while its plugin is applied, inside :fabric's
+// plugins {} block and so before any of that script's body runs. The 26.x rows need the flag
+// set (they build with no mappings; see fabric/build.gradle), which means it has to be in
+// place earlier than the module script — settings time is the first place that already knows
+// which Minecraft was requested.
+gradle.beforeProject { project ->
+    if (project.name == 'fabric' && requestedMinecraft != null && requestedMinecraft.startsWith('26.')) {
+        project.ext['fabric.loom.disableObfuscation'] = 'true'
+    }
 }

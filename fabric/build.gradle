@@ -2,7 +2,7 @@
 // compiled against the Minecraft this row targets.
 plugins {
     id 'java-library'
-    id 'fabric-loom' version '1.15.5'
+    id 'fabric-loom' version '1.18.2'
 }
 
 version = mod_version
@@ -24,9 +24,10 @@ repositories {
 // ------------------------------------------------------------------ what we build for
 
 // supported-versions.csv is the one list of Minecraft builds this mod ships for. Columns:
-// minecraft, Java level, command-permission family, NeoForge floor, Fabric API, Mod Menu, FML major.
-// The seventh column is NeoForge's business (it selects that side's config-type seam); Groovy drops
-// the extra value here, and the destructuring below stays as it is.
+// minecraft, Java level, command-permission family, NeoForge floor, Fabric API, Mod Menu, FML major,
+// Fabric screen. The FML column is NeoForge's business (it selects that side's config-type seam) and
+// is named here only to reach the column after it; the screen column selects this side's
+// fabric/src/version/<value>/java seam (the client screen switch moved in the 26.2 client).
 // Rows whose Fabric API column is '-' are not covered by this loader.
 def supportedVersions = [:]
 def versionTable = rootProject.file('supported-versions.csv')
@@ -35,8 +36,8 @@ versionTable.eachLine { line ->
     if (trimmed.isEmpty() || trimmed.startsWith('#')) {
         return
     }
-    def (mc, rowJavaLevel, family, neoFloor, fabricApi, modMenu) = trimmed.split(',').collect { it.trim() }
-    supportedVersions[mc] = [java: rowJavaLevel as int, family: family, neo: neoFloor, api: fabricApi, modmenu: modMenu]
+    def (mc, rowJavaLevel, family, neoFloor, fabricApi, modMenu, fml, screenFamily) = trimmed.split(',').collect { it.trim() }
+    supportedVersions[mc] = [java: rowJavaLevel as int, family: family, neo: neoFloor, api: fabricApi, modmenu: modMenu, screen: screenFamily]
 }
 if (supportedVersions.isEmpty()) {
     throw new GradleException("${versionTable} has no data rows.")
@@ -56,6 +57,10 @@ def apiFamily = target.family as String
 if (!(apiFamily in ['legacy', 'modern'])) {
     throw new GradleException("Minecraft ${mcVersion} has family=${apiFamily}; use 'legacy' or 'modern'.")
 }
+def screenFamily = target.screen as String
+if (!(screenFamily in ['mc', 'gui'])) {
+    throw new GradleException("Minecraft ${mcVersion} has screen=${screenFamily}; use 'mc' or 'gui'.")
+}
 def fabricApiVersion = (project.findProperty('fabric_api_version') ?: target.api) as String
 def modMenuVersion = (project.findProperty('modmenu_version') ?: target.modmenu) as String
 // The loader this module compiles and dev-runs against. It is deliberately NOT written into
@@ -66,15 +71,21 @@ def modMenuVersion = (project.findProperty('modmenu_version') ?: target.modmenu)
 // nested zstd jar work.
 def loaderVersion = (project.findProperty('fabric_loader_version') ?: '0.19.5') as String
 
-// Minecraft stopped publishing obfuscated clients with 26.x, so the official mappings a
-// mojmap build needs no longer exist there - and loom still insists on a mappings
-// configuration. Fabric mods for 26.x are currently built against a loom snapshot (Mod Menu
-// itself does), which this project deliberately does not pin. Refuse the row instead of failing
-// somewhere obscure.
-if (mcVersion.startsWith('26.')) {
-    throw new GradleException("Minecraft ${mcVersion} cannot be built for Fabric with a stable loom: " \
-        + "26.x ships an unobfuscated client and no official mappings. See docs/uncovered-minecraft-versions.md.")
-}
+// 26.x ships an unobfuscated client, so there is nothing to remap: those rows declare no
+// mappings at all, which stable loom 1.18+ accepts (Sodium for 26.3 builds exactly this way).
+// The game's own version id also drops a trailing ".0" that the csv row key keeps ("26.3.0" is
+// the loader-line spelling of the game version "26.3"), and both com.mojang:minecraft and
+// fabric.mod.json need the game's spelling.
+def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
+        ? mcVersion.substring(0, mcVersion.length() - 2)
+        : mcVersion
+
+// The classic fabric-loom plugin wires a mappings configuration unconditionally, so the 26.x
+// rows build with remapping disabled instead — loom's own switch for the unobfuscated games
+// (sodium's 26.3 build reaches the same state by applying loom's no-remap marker plugin,
+// "net.fabricmc.fabric-loom"). Loom reads fabric.loom.disableObfuscation while its plugin is
+// applied, before this script body runs, so settings.gradle sets the flag for the 26.x rows;
+// one plugin id then serves every row.
 
 // Loader and Minecraft both go in the file name, as on the NeoForge side.
 base.archivesName = "${mod_id}-fabric-${mcVersion}"
@@ -84,6 +95,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(javaLevel)
 sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
 sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
 sourceSets.main.java.srcDir rootProject.file("common/src/version/${apiFamily}/java")
+sourceSets.main.java.srcDir rootProject.file("fabric/src/version/${screenFamily}/java")
 sourceSets.main.resources.srcDir rootProject.file('core/src/main/resources')
 
 loom {
@@ -99,14 +111,26 @@ loom {
 }
 
 dependencies {
-    minecraft "com.mojang:minecraft:${mcVersion}"
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:${loaderVersion}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
-
+    minecraft "com.mojang:minecraft:${gameVersion}"
+    if (!mcVersion.startsWith('26.')) {
+        mappings loom.officialMojangMappings()
+    }
     // Mod Menu only contributes the config-screen hook, so it is compiled against but never
     // required: without it the mod still loads and the config stays a file.
-    modCompileOnly "com.terraformersmc:modmenu:${modMenuVersion}"
+    //
+    // With remapping disabled loom does not create the mod* dependency DSL: the published 26.x
+    // mods already carry official names, so the plain configurations are used directly
+    // (sodium's 26.3 build declares its Fabric dependencies the same way). `include` exists in
+    // both modes.
+    if (mcVersion.startsWith('26.')) {
+        implementation "net.fabricmc:fabric-loader:${loaderVersion}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
+        compileOnly "com.terraformersmc:modmenu:${modMenuVersion}"
+    } else {
+        modImplementation "net.fabricmc:fabric-loader:${loaderVersion}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
+        modCompileOnly "com.terraformersmc:modmenu:${modMenuVersion}"
+    }
 
     // zstd-jni ships inside the jar through loom's `include`, which nests it the way NeoForge's
     // jarJar does. The mixin probes it once and falls back to Anvil if it cannot be loaded.
@@ -123,7 +147,7 @@ tasks.named('processResources', ProcessResources).configure {
             mod_license   : mod_license,
             mod_author    : mod_author,
             mod_version   : mod_version,
-            minecraft_version: mcVersion,
+            minecraft_version: gameVersion,
             mixin_java_level : "JAVA_${javaLevel}",
             java_level        : javaLevel,
     ]
