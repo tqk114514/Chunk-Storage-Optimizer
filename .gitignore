@@ -47,3 +47,5 @@ repo/
 !**/src/**/repo/
 
 .workbuddy-ai/
+
+compatibility/
