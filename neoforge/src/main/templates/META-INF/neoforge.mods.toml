@@ -39,7 +39,7 @@ displayName="${mod_name}" #mandatory
 # A URL for the "homepage" for this mod, displayed in the mod UI. FML 11 renders it as the
 # Website link in the mod's info panel; FML 12 (NeoForge 26.3+) turns it into the Homepage
 # button next to the Issues one.
-displayURL="https://github.com/tqk114514/Chunk-Storage-Optimizer" #optional
+displayURL="https://modrinth.com/mod/chunk-storage-optimizer" #optional
 
 # A logo for the Mod UI. Resolved against the mod's resource root rather than the jar root
 # (ModListScreen calls getRootResource), so the assets/ prefix is required.
