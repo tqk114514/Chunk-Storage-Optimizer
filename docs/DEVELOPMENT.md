@@ -34,10 +34,20 @@ Fabric 1.21.11）。
 同一份 csv 也是 CI 矩阵的来源（workflow 按两个加载器列展开成 job），本地可构建的版本与发布的
 版本因此始终一致。
 
+26.x 行的 Fabric 构建走 loom 的无重映射模式：settings.gradle 按行注入
+`fabric.loom.disableObfuscation`（loom 在插件 apply 时就读取该属性，所以注入必须早于插件应用，
+settings 阶段是最后一个来得及的位置；sodium 的 26.3 构建用 loom 的 no-remap 标记插件
+`net.fabricmc.fabric-loom` 达到同一状态）。该模式下不声明 mappings，loom 也不创建 `mod*` 依赖
+DSL：fabric-loader / Fabric API / Mod Menu 走普通 `implementation` / `compileOnly`；
+`com.mojang:minecraft` 与 `fabric.mod.json` 使用游戏版本写法（行键 `26.3.0` 对应游戏版本
+`26.3`）。Gradle wrapper 因此需要 9.7.0 以上（loom 1.18 的下限，当前 pin 9.7.1；moddev 2.0.147
+在该组合下由 sodium 先行验证）。
+
 ### supported-versions.csv 的维护
 
 csv 的列依次为：Minecraft 版本、Java 级别、命令权限 API family（`legacy` / `modern`）、NeoForge
-下限、Fabric API、Mod Menu、FML 大版本。某个加载器没有该游戏版本的构建时，在对应列写 `-`。
+下限、Fabric API、Mod Menu、FML 大版本、Fabric screen（`mc` / `gui`）。某个加载器没有该游戏
+版本的构建时，在对应列写 `-`。
 Java 级别取自 Mojang 的版本清单（javaVersion）；family 取决于该 Minecraft 是否包含
 `net.minecraft.server.permissions`（1.21.11 起为 `modern`）。
 
@@ -76,12 +86,12 @@ push 都运行该脚本；核对 26.3.0 行时若 csv 落后于最新 beta，仅
 ### 发布流程
 
 推送 `v<version>` 格式的 tag 会触发 CI，自动发布到 Modrinth。编译矩阵来自
-`supported-versions.csv`，与 tag 无关：一个 tag 会编译全部 29 个 jar（NeoForge 17 + Fabric 12）
+`supported-versions.csv`，与 tag 无关：一个 tag 会编译全部 34 个 jar（NeoForge 17 + Fabric 17）
 并全部发布。tag 中的版本号必须与 `gradle.properties` 的 `mod_version` 一致，不一致时 CI 直接
 失败。
 
 发布说明取自 `CHANGELOG.md` 中 `## [<版本>]` 段落的正文，标题行不包含在发布说明中。同一版本的
-29 个条目使用同一份说明。发布前会检查该段落是否存在且有内容，缺失或为空时发布在上传前失败并
+34 个条目使用同一份说明。发布前会检查该段落是否存在且有内容，缺失或为空时发布在上传前失败并
 给出错误信息。
 
 上传是幂等的：创建版本前先查询项目在该（游戏版本，加载器）组合下是否已存在同号版本，已存在则
@@ -103,8 +113,8 @@ Modrinth 凭据在 Settings → Secrets and variables → Actions 中配置。�
 
 ### 跨版本的编译缝
 
-1.21 至 26.x 之间存在两处不兼容的 API，各有一条缝。每条缝由两个目录提供签名相同的实现，构建时
-按 csv 的对应列只把其中一个加入编译路径，运行期没有条件分支，也没有反射。
+1.21 至 26.x 之间存在三处不兼容的 API，各有一条缝。每条缝由两个目录提供签名相同的实现，构建时按
+csv 的对应列只把其中一个加入编译路径，运行期没有条件分支，也没有反射。
 
 命令权限：`common/src/version/legacy/java` 与 `modern/java` 各提供一个签名相同的
 `CsoPermissions.operatorOnly()`，由 csv 的 family 列选择。两者的判定标准都是权限等级 3。
@@ -114,6 +124,11 @@ Modrinth 凭据在 Settings → Secrets and variables → Actions 中配置。�
 `ModConfig.Type.COMMON` 改名为 `LOCAL`，旧常量在新版本中不存在，共享代码无法引用。注册时显式
 传入文件名 `chunkstorageoptimizer-common.toml`；不传入时该次改名会使配置文件变成
 `-local.toml`，已有的配置文件失效。这条缝只在 NeoForge 侧，Fabric 不读取该列。
+
+屏幕切换：`fabric/src/version/mc/java` 与 `gui/java` 各提供一个签名相同的 `CsoScreens.open()`，
+由 csv 的 screen 列选择，分界在 26.2：`Minecraft.setScreen` 存在于 26.1 线及更早，26.2 起屏幕管理
+移入 `Minecraft.gui`。这条缝只在 Fabric 侧，NeoForge 的配置界面用 FML 自带的
+`ConfigurationScreen`，不需要缝。
 
 另有一处相关差异：26.1 将 `ChunkPos` 改为 record（`pack` / `unpack` / `x()` / `z()`）。写入
 批处理使用的坐标键不来自游戏数据，`CsoStorage` 使用自己的打包方式，因此该差异不需要缝。其余
@@ -140,10 +155,13 @@ Fabric：
 
 | Minecraft（loader / Fabric API） | 测试方式 | 加载与 mixin | `/cso` | 写出 `.cso` |
 |---|---|---|---|---|
+| 26.3.0 (0.19.5 / 0.162.0+26.3) | dev | 通过 | 未执行 | 是：5 个文件、0 个 `.mca` |
+| 26.2.0 (0.19.5 / 0.161.0+26.2) | dev | 通过 | 未执行 | 是：4 个文件、0 个 `.mca` |
+| 26.1.2 (0.19.5 / 0.155.3+26.1.2) | dev | 通过 | 未执行 | 是：4 个文件、0 个 `.mca` |
 | 1.21.11 (0.19.5 / 0.141.6) | dev + 真实服务端 | 通过 | 已执行 | 是：真实服务端 9 个文件、0 个 `.mca` |
 | 1.21 (0.19.5 / 0.102.0) | 真实服务端 | 通过 | 已执行 | 是：真实服务端 8 个文件、0 个 `.mca` |
 
-其余 10 个 Fabric 行只有编译验证（CI 覆盖），运行时未逐版运行。NeoForge 侧 1.21.2 / 1.21.6 /
+其余 12 个 Fabric 行只有编译验证（CI 覆盖），运行时未逐版运行。NeoForge 侧 1.21.2 / 1.21.6 /
 1.21.7 / 1.21.9 / 26.1.0 / 26.1.1 / 26.3.0 七行（1.0.9 起加入 csv）同样只有编译验证。
 
 已知问题（dev 环境）：`runServer` 在 21.8 及更早的构建上看不到 zstd（`NoClassDefFoundError`，

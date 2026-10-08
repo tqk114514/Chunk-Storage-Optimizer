@@ -106,14 +106,13 @@ One jar per Minecraft version per loader. Select the file whose name carries bot
   26.1.0, 26.1.1, 26.1.2, 26.2.0 and 26.3.0), with the loader at least the floor for that
   Minecraft: the oldest stable build of its line, or the newest beta where the line never shipped
   a stable one (26.1.2 → 26.1.2.71, 1.21 → 21.0.143, and so on)
-- Fabric: the whole 1.21 line, 1.21 through 1.21.11, with Fabric API for the same Minecraft.
-  Mod Menu is optional and provides the config screen only. No particular Fabric Loader version
-  is needed beyond the one that Fabric API itself requires.
+- Fabric: every Minecraft from 1.21 to 26.3 (the whole 1.21 line plus 26.1.0, 26.1.1, 26.1.2,
+  26.2.0 and 26.3.0), with Fabric API for the same Minecraft. Mod Menu is optional and provides
+  the config screen only. No particular Fabric Loader version is needed beyond the one that
+  Fabric API itself requires.
 - Java 21 for the 1.21 line, Java 25 for 26.x, i.e. whatever Minecraft itself requires
 
-There are no Fabric jars for 26.x yet: those Minecraft versions ship an unobfuscated client, so
-the mapping set a fabric-loom build needs no longer exists and no stable loom release supports
-this. Minecraft 26.1 and 26.1.1 never received a stable NeoForge build, so their jars require
+Minecraft 26.1 and 26.1.1 never received a stable NeoForge build, so their NeoForge jars require
 the newest beta of that line.
 
 ## Installation

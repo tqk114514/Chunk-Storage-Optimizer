@@ -31,10 +31,9 @@
 
 ## 支持版本
 
-- 加载器：NeoForge 与 Fabric，每个游戏版本、每个加载器各一个 jar
-- NeoForge：Minecraft 1.21 至 26.3 之间全部 17 个正式版本，即 1.21 至 1.21.11 的 12 个，加上
-  26.1.0 / 26.1.1 / 26.1.2 / 26.2.0 / 26.3.0
-- Fabric：1.21 线的 12 个版本（1.21 至 1.21.11）。26.x 暂无 Fabric 构建，原因见
+- 加载器与版本：NeoForge 与 Fabric 各覆盖 Minecraft 1.21 至 26.3 之间全部 17 个正式版本——
+  1.21 至 1.21.11 的 12 个，加上 26.1.0 / 26.1.1 / 26.1.2 / 26.2.0 / 26.3.0；每个游戏版本、
+  每个加载器各一个 jar。26.x Fabric 行的构建方式见
   [`docs/uncovered-minecraft-versions.md`](docs/uncovered-minecraft-versions.md)
 - Fabric 侧需要 Fabric API。设置界面由 Mod Menu 提供；Mod Menu 是可选依赖，没有它时配置仍然
   可用，直接编辑配置文件即可
