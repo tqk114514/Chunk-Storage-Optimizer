@@ -19,7 +19,12 @@ plugins {
     id 'fabric-loom' version '1.18.2'
 }
 
-version = mod_version
+// The compat's version number is its own, deliberately not the main mod's: it moves only when
+// the compat itself changes, so a main-mod release never has to bump it. The nested copy always
+// builds from this source tree together with the core it reads, so the two cannot drift apart.
+def compatVersion = '1.0.0'
+
+version = compatVersion
 group = mod_group_id
 
 repositories {
@@ -70,7 +75,7 @@ tasks.named('test', Test).configure {
 }
 
 tasks.named('processResources', ProcessResources).configure {
-    var replaceProperties = [mod_version: mod_version]
+    var replaceProperties = [compat_version: compatVersion]
     inputs.properties replaceProperties
     filesMatching(['fabric.mod.json']) {
         expand replaceProperties
@@ -83,4 +88,6 @@ tasks.named('jar', Jar).configure {
     include 'tqk114514/chunkstorageoptimizer/compat/**'
     include 'fabric.mod.json'
     include 'chunkstorageoptimizer-voxycompat.mixins.json'
+    // The Mod Menu name/summary/description translations for this mod's own id.
+    include 'assets/**'
 }

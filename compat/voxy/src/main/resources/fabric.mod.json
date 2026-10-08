@@ -1,12 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "chunkstorageoptimizer-voxycompat",
-  "version": "${mod_version}",
-  "name": "Chunk Storage Optimizer — Voxy Compat",
+  "version": "${compat_version}",
+  "name": "CSO Voxy Compat",
   "description": "Lets Voxy's world import read the .cso region files written by Chunk Storage Optimizer.",
   "authors": [
     "tqk114514"
   ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/chunk-storage-optimizer",
+    "issues": "https://github.com/tqk114514/Chunk-Storage-Optimizer/issues"
+  },
   "license": "MIT",
   "environment": "*",
   "entrypoints": {

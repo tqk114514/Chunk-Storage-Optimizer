@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer-voxycompat": "CSO Voxy Compat",
+  "modmenu.summaryTranslation.chunkstorageoptimizer-voxycompat": "Lets Voxy's world import read the .cso region files written by Chunk Storage Optimizer.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer-voxycompat": "With Voxy installed, /voxy import world and /voxy import current also read the .cso region files written by Chunk Storage Optimizer, not just the vanilla .mca ones. Does nothing without Voxy installed."
+}

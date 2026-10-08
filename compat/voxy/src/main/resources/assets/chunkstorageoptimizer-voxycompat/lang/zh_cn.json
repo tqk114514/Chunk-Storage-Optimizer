@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer-voxycompat": "CSO Voxy 兼容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer-voxycompat": "让 Voxy 的世界导入功能读取区块存储优化器写入的 .cso region 文件。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer-voxycompat": "安装 Voxy 后，/voxy import world 与 /voxy import current 会同时读取区块存储优化器写入的 .cso region 文件，而不只是原版的 .mca。未安装 Voxy 时本附属不会有任何作为。"
+}

@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer-voxycompat": "CSO Voxy 互換",
+  "modmenu.summaryTranslation.chunkstorageoptimizer-voxycompat": "Voxy のワールドインポートが、チャンクストレージ最適化が書き込んだ .cso リージョンファイルを読み取れるようにします。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer-voxycompat": "Voxy がインストールされている場合、/voxy import world と /voxy import current は、バニラの .mca だけでなくチャンクストレージ最適化が書き込んだ .cso リージョンファイルも読み取ります。Voxy がない環境では何もしません。"
+}
