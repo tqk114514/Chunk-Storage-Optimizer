@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.1.2] - 2026-10-08
+
+### Added
+- **Fabric builds for Minecraft 26.1, 26.1.1, 26.1.2, 26.2 and 26.3.** The Fabric side now covers
+  every Minecraft this mod ships for, same as NeoForge. 26.x ships unobfuscated clients, so these
+  rows build through loom's no-remap mode (no mappings declared at all, official names in the
+  jar); the screen switch the config screen uses moved from `Minecraft.setScreen` to
+  `Minecraft.gui.setScreen` in the 26.2 client, which became the third per-row compile seam.
+  Dev-run verified on 26.3.0, 26.1.2 and 26.2.0: server up in ~3 s, `.cso` files written, zero
+  `.mca`. The Gradle wrapper moved to 9.7.1 as part of this.
+- **Voxy world-import compatibility, bundled as a nested mod inside every Fabric jar ("CSO Voxy
+  Compat").** With Voxy installed, `/voxy import world` and `/voxy import current` also read the
+  `.cso` region files this mod writes, not just vanilla `.mca` — the importer's own parsing
+  handles them, so nothing changes about how imports run. Players without Voxy get a quiet child
+  entry in Mod Menu and nothing else; a Voxy update that changes the importer's shape disables
+  the `.cso` support with a log line instead of crashing. The compat keeps its own version
+  number (1.0.0), so it only moves when it changes.
+
+### Changed
+- **Localization trimmed from twelve languages to six: English, Simplified Chinese, Traditional
+  Chinese (TW and HK), Japanese and Korean.** The config screen, the Mod Menu entry and every
+  description now fall back to English in the retired locales. Maintaining twelve full
+  translations per release did not pay for itself.
+
+### Note
+- The mod's homepage link (Mod Menu, the NeoForge Mods screen, crash reports) now points at the
+  Modrinth page instead of the repository.
+- NeoForge builds for Minecraft 26.3.0 now require NeoForge 26.3.0.57-beta or newer (was
+  26.3.0.51-beta). The 26.3 line still has no stable build, so its floor keeps tracking the
+  newest beta.
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.1] - 2026-10-05
 
 ### Added
