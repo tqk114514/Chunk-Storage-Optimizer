@@ -90,7 +90,7 @@
 
 NeoForge 生成的 toml 文件中没有注释：NeoForge 只写入代码中声明的 comment，而本 mod 的选项说明
 按语言各提供一份，存放在语言文件里。各键含义见下表，或游戏内 Mods → 选中本 mod → Config 界面
-（英 / 简中 / 繁中 TW / 繁中 HK / 日 / 韩 / 俄 / 德 / 法 / 西 / 葡萄牙 BR / 意均有）。两个加载器
+（英 / 简中 / 繁中 TW / 繁中 HK / 日 / 韩均有）。两个加载器
 的界面读取同一批语言键，Mod Menu 的列表摘要、名称与 NeoForge Mods 界面的描述也使用同一批键。
 Fabric 的 properties 文件自带取值范围注释，手动修改后重启生效。
 
