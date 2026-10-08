@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "chunkstorageoptimizer-voxycompat",
+  "version": "${mod_version}",
+  "name": "Chunk Storage Optimizer — Voxy Compat",
+  "description": "Lets Voxy's world import read the .cso region files written by Chunk Storage Optimizer.",
+  "authors": [
+    "tqk114514"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "tqk114514.chunkstorageoptimizer.compat.voxy.CsoVoxyCompat"
+    ]
+  },
+  "mixins": [
+    "chunkstorageoptimizer-voxycompat.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.22",
+    "minecraft": "*",
+    "java": ">=21",
+    "chunkstorageoptimizer": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "parent": "chunkstorageoptimizer"
+    }
+  }
+}

@@ -54,6 +54,12 @@ if (minecraftVersionProperty.isPresent()) {
     include 'fabric'
 }
 
+// The Voxy compatibility module. It is deliberately outside the supported-versions matrix: it
+// targets no Minecraft classes (only Voxy's own importer plus core's .cso reading API), so one
+// jar serves every Minecraft row and it pins its own toolchain versions internally — see its
+// build.gradle. Included unconditionally so it builds and tests in every invocation.
+include 'compat:voxy'
+
 // Loom reads fabric.loom.disableObfuscation while its plugin is applied, inside :fabric's
 // plugins {} block and so before any of that script's body runs. The 26.x rows need the flag
 // set (they build with no mappings; see fabric/build.gradle), which means it has to be in

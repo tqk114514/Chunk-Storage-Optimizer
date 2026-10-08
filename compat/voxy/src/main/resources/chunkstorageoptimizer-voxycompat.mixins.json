@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "package": "tqk114514.chunkstorageoptimizer.compat.voxy.mixin",
+  "plugin": "tqk114514.chunkstorageoptimizer.compat.voxy.CsoVoxyMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "WorldImporterMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

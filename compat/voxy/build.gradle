@@ -1,0 +1,86 @@
+// The Voxy compatibility module: a small fabric mod that lets Voxy's world import read the
+// .cso region files the main mod writes. It ships as a NESTED mod inside the main fabric jar
+// (fabric/build.gradle includes it; C2ME bundles its modules the same way), so players download
+// exactly one file and Mod Menu lists the compat as a child of the main mod. Never published
+// or installed on its own.
+//
+// Deliberately decoupled from the main code — core is compiled from source only to reach
+// CsoRegionFile's public API, and the jar packages nothing but this module's own classes: the
+// main mod (a required runtime dependency) provides core and its nested zstd at runtime, and
+// shipping a second copy would put two versions of one class on the classpath.
+//
+// The module touches no Minecraft classes — its mixin targets Voxy's own WorldImporter and the
+// Anvil synthesis is pure JDK plus core — so one jar serves every Minecraft row and
+// fabric.mod.json declares "minecraft": "*". It still compiles against a row, and 1.21.11 is
+// chosen because that row keeps loom's classic remap pipeline, which remaps Voxy (intermediary)
+// to named for compilation; the output contains no remapped references either way.
+plugins {
+    id 'java-library'
+    id 'fabric-loom' version '1.18.2'
+}
+
+version = mod_version
+group = mod_group_id
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+base.archivesName = 'chunkstorageoptimizer-voxycompat'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.11'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.19.5'
+
+    // Voxy, pinned to the release this module was written against. The coordinate uses the
+    // Modrinth version id rather than the version number: several Voxy releases share one
+    // number across Minecraft versions, and the id names the exact jar (0.2.16-beta, built for
+    // 1.21.11). At runtime fabric.mod.json only requires "voxy": "*" — newer releases keep
+    // working until the importer's shape changes, at which point the require=0 mixins stand
+    // down and the init self-check logs the reason.
+    modCompileOnly 'maven.modrinth:voxy:H3w2nVdU'
+
+    // Core's codec imports zstd; runtime always comes from the main mod's nested jar.
+    implementation 'com.github.luben:zstd-jni:1.5.6-3'
+
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [mod_version: mod_version]
+    inputs.properties replaceProperties
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    // Only this module's own classes and resources ship (see the header note). Everything else
+    // on the compile classpath — core above all — is provided by the main mod at runtime.
+    include 'tqk114514/chunkstorageoptimizer/compat/**'
+    include 'fabric.mod.json'
+    include 'chunkstorageoptimizer-voxycompat.mixins.json'
+}

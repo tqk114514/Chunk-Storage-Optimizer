@@ -132,6 +132,16 @@ dependencies {
         modCompileOnly "com.terraformersmc:modmenu:${modMenuVersion}"
     }
 
+    // The Voxy compat ships as a nested mod inside this jar — one download, and Mod Menu lists
+    // it as a child entry (C2ME bundles its modules the same way). `include` is the whole wiring:
+    // it nests the compat's jar into remapJar's output and makes Gradle build it on demand, and
+    // it is deliberately NOT also a mod dependency — loom reads those at configuration time,
+    // before any jar exists on a clean one-shot build, and the compat's fabric.mod.json is
+    // self-contained anyway: it requires only the outer mod, and whether Voxy is installed is
+    // decided by its mixin plugin, never by a loader dependency, because an unsatisfied
+    // dependency of a nested mod would fail the whole jar's load for players without Voxy.
+    include project(':compat:voxy')
+
     // zstd-jni ships inside the jar through loom's `include`, which nests it the way NeoForge's
     // jarJar does. The mixin probes it once and falls back to Anvil if it cannot be loaded.
     implementation 'com.github.luben:zstd-jni:1.5.6-3'
