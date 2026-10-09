@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
 import tqk114514.chunkstorageoptimizer.format.CsoFormat;
 import tqk114514.chunkstorageoptimizer.format.CsoRegionFile;
+import tqk114514.chunkstorageoptimizer.format.FileMoves;
 import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
 
 /**
@@ -789,7 +790,7 @@ public final class Converter {
                 file.writeChunks(entry.getKey(), entry.getValue());
             }
         }
-        Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        FileMoves.settle(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     /**

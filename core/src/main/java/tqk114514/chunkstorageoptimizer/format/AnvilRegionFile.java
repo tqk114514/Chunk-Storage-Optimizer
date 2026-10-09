@@ -225,7 +225,7 @@ public final class AnvilRegionFile {
                 header.flip();
                 writeFully(channel, header, 0L);
             }
-            Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            FileMoves.settle(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException failure) {
             try {
                 Files.deleteIfExists(temp);

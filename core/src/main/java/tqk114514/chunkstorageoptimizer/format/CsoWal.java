@@ -104,7 +104,7 @@ final class CsoWal {
             wal.force(true);
         }
         try {
-            Files.move(tmp, walPath, StandardCopyOption.ATOMIC_MOVE);
+            FileMoves.settle(tmp, walPath, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             // The move failing leaves the batch unwritten and the caller must not apply it,
             // so the temp name is dropped too; a stale one is swept at the next open anyway.

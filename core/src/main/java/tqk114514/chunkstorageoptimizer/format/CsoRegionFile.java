@@ -821,7 +821,7 @@ public final class CsoRegionFile implements Closeable {
             // than swallowed.
             this.channel.close();
             try {
-                Files.move(tmp, this.path, StandardCopyOption.REPLACE_EXISTING);
+                FileMoves.settle(tmp, this.path, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException moveFailure) {
                 // The swap failed, so the file this object serves is still the pre-compaction one.
                 // Reopening it keeps the object usable; the recovered copy is discarded. A failure
