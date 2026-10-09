@@ -136,6 +136,24 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
+      # The compat version matrices download every release of Xaero's World Map and Voxy that
+      # exists for a csv Minecraft — several hundred jars between them. A weekly cache key keeps
+      # runs restoring those bytes instead of re-fetching them; new releases are still picked up
+      # because the key turns over weekly and the download task re-queries the list on every run
+      # and fetches only what the cache lacks.
+      - name: Work out the target-mod matrix cache key
+        id: targetmods
+        run: echo "week=$(date +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the target-mod matrices
+        uses: actions/cache@v4
+        with:
+          path: |
+            compat/xaero/common/build/target-mods
+            compat/voxy/common/build/target-mods
+          key: target-mods-${{ steps.targetmods.outputs.week }}
+          restore-keys: target-mods-
+
       # The loader module named by the row is the one with a Minecraft dependency, so it is what
       # gets built; :core:test covers the format layer and the two compat `common` modules'
       # tests cover the compat halves — all the same jar-independent code on every row.

@@ -28,6 +28,13 @@ NeoForge 用 `jarJar`），玩家只下载一个文件，Mod Menu 里附属显�
 什么都不发生，装了但形状变了由 require 0 兜底并在日志里说明。附属 id 因此遵守 NeoForge 更严的
 modid 规则（不允许连字符），写作 `chunkstorageoptimizer_xaerocompat`。
 
+附属的测试不止覆盖各自钉住的版本：`compat/*/common` 的矩阵测试自动拉取目标 mod 在 csv 各
+Minecraft 上的每一个 Modrinth 发布（Xaero 世界地图 315 个、Voxy 25 个，下载进 build 目录并
+增量缓存），逐 jar 用字节码验证 mixin 声明的全部成员与它按字符串身份匹配的常量——目标 mod
+一发新版，契约破坏当天就出现在构建里。共享的校验逻辑在 `compat/testkit`（源码目录，随各
+common 的测试编译，不是 Gradle 模块）。核心格式一侧另有系统性的破坏扫描
+（`CsoRegionFileAdversarialTest` 的故障注入与 `CsoRegionFileFuzzTest` 的截断/位翻转不变量）。
+
 ## 多版本构建
 
 `minecraft_version` 是唯一的版本开关。一个 Minecraft 版本对应哪一行的 NeoForge 下限、Fabric API

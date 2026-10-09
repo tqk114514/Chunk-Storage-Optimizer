@@ -65,3 +65,64 @@ tasks.named('test', Test).configure {
         exceptionFormat 'full'
     }
 }
+
+// ------------------------------------------------------------------ the target-mod version matrix
+//
+// The tests do not stop at this compat's pinned release: every release of Voxy that exists
+// for a Minecraft in supported-versions.csv is fetched and its bytecode checked against every
+// member the mixins need (see the testkit and VoxyVersionMatrixTest). The fetch is
+// incremental — an already-downloaded version id is never downloaded again — and it
+// re-queries the list on every run, so a fresh Voxy release fails the build the day it
+// appears. Offline escape hatch: -PcsoTargetModsOffline runs against whatever the cache
+// already holds and refuses only when it holds nothing.
+//
+// The Minecraft rows the matrix covers, in Modrinth's own spelling of them; parsed at
+// configuration time because the configuration cache forbids rootProject use inside doLast.
+def gameTags = []
+rootProject.file('supported-versions.csv').eachLine { line ->
+    def trimmed = line.trim()
+    if (!trimmed.isEmpty() && !trimmed.startsWith('#')) {
+        def key = trimmed.split(',')[0].trim()
+        gameTags << (key.startsWith('26.') && key.endsWith('.0') ? key.substring(0, key.length() - 2) : key)
+    }
+}
+def targetModsOffline = project.hasProperty('csoTargetModsOffline')
+def targetModsDir = layout.buildDirectory.dir('target-mods/voxy')
+def downloadTargetMods = tasks.register('downloadTargetMods') {
+    description = 'Fetches every Modrinth release of Voxy for the csv Minecrafts.'
+    outputs.dir(targetModsDir)
+    doLast {
+        def dir = targetModsDir.get().asFile
+        dir.mkdirs()
+        // The API wants JSON arrays; building them by hand keeps the task dependency-free.
+        def query = '?game_versions=' + java.net.URLEncoder.encode(
+            new groovy.json.JsonBuilder(gameTags).toString(), 'UTF-8') +
+            '&loaders=' + java.net.URLEncoder.encode('["fabric"]', 'UTF-8')
+        def versions = new groovy.json.JsonSlurper().parse(new URL('https://api.modrinth.com/v2/project/voxy/version' + query))
+        def lines = []
+        versions.each { version ->
+            def primary = version.files.find { it.primary } ?: version.files[0]
+            def target = new File(dir, primary.filename)
+            if (!target.exists() || target.length() != (long) primary.size) {
+                if (targetModsOffline) {
+                    return
+                }
+                new URL(primary.url).withInputStream { input ->
+                    target.withOutputStream { output -> output << input }
+                }
+            }
+            lines << [version.id, version.version_number, version.loaders.join('+'),
+                      version.game_versions.join('+'), primary.filename].join('\t')
+        }
+        new File(dir, 'manifest.tsv').text = String.join('\n', lines)
+        logger.lifecycle("target-mod matrix: {} Voxy release jars in {}", lines.size(), dir)
+    }
+}
+sourceSets.test.java.srcDir rootProject.file('compat/testkit/src/main/java')
+dependencies {
+    testImplementation 'org.ow2.asm:asm-tree:9.10.1'
+}
+tasks.named('test', Test).configure {
+    dependsOn downloadTargetMods
+    systemProperty 'cso.targetMods.voxy', targetModsDir.get().asFile.absolutePath
+}
