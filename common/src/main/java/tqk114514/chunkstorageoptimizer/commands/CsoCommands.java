@@ -566,8 +566,11 @@ public final class CsoCommands {
      * client renders them without waiting for server ticks, so the player watches a frozen
      * server make progress instead of wondering whether it hung.
      *
-     * <p>Console-sent conversions get no bar ({@link #bar} null): a command block or the
-     * server console has no screen, and the chat summary still says everything.
+     * <p>The audience is everyone who could have run the conversion themselves — the same
+     * {@link CsoPermissions#operatorOnly()} gate the command requires, so a shared server's
+     * other players see why it froze instead of staring at a hang. A conversion started from
+     * the console broadcasts the same way; with nobody permitted online there is no bar, and
+     * the chat summary still says everything.
      */
     private static final class ConvertProgress {
 
@@ -578,14 +581,27 @@ public final class CsoCommands {
 
         private static ConvertProgress start(CommandSourceStack source, String target, int total) {
             ServerBossEvent bar = null;
-            if (total > 0 && source.getEntity() instanceof ServerPlayer player) {
+            // The runner, if a player: the pattern variable in an assignment loses its flow
+            // scoping, so the reference is taken out first.
+            ServerPlayer player = source.getEntity() instanceof ServerPlayer any ? any : null;
+            java.util.List<ServerPlayer> online = source.getServer().getPlayerList().getPlayers();
+            if (total > 0 && (player != null || !online.isEmpty())) {
                 bar = CsoBossBars.create(
                     Component.literal("CSO: converting to ." + target),
                     BossEvent.BossBarColor.BLUE, BossEvent.BossBarOverlay.PROGRESS);
                 bar.setDarkenScreen(false);
                 bar.setPlayBossMusic(false);
                 bar.setCreateWorldFog(false);
-                bar.addPlayer(player);
+                if (player != null) {
+                    bar.addPlayer(player);
+                }
+                java.util.function.Predicate<CommandSourceStack> gate = CsoPermissions.operatorOnly();
+                for (ServerPlayer other : online) {
+                    if ((player != null && other == player) || !gate.test(other.createCommandSourceStack())) {
+                        continue;
+                    }
+                    bar.addPlayer(other);
+                }
             }
             return new ConvertProgress(bar, target, total);
         }
