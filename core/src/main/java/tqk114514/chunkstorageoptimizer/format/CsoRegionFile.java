@@ -43,15 +43,6 @@ public final class CsoRegionFile implements Closeable {
     /** Stored in the header when the filename carries no region coordinates. */
     private static final int UNKNOWN_COORD = Integer.MIN_VALUE;
 
-    /**
-     * Ceiling on the decompressed bytes one region file may pin in its bucket cache. The count
-     * knob alone is the wrong bound at small grids: a bucket holds {@code (32/grid)^2} chunks,
-     * so a grid=1 bucket is a whole region's worth of them and decompresses to megabytes —
-     * "N buckets" can mean kilobytes at grid 32 and gigabytes at grid 1. The budget only binds
-     * where payloads are big; at the default grid=16 the count knob stays the effective limit.
-     */
-    private static final long MAX_CACHED_BUCKET_BYTES = 8L * 1024 * 1024;
-
     private final Path path;
     /**
      * Write-ahead log for the batch currently in flight. Without it a crash during a batch loses
@@ -73,10 +64,8 @@ public final class CsoRegionFile implements Closeable {
     private final int[] lastTable;
     /** Monotonic counter persisted in every table entry; recovery keeps the highest valid one. */
     private int sequenceCounter;
-    private final Map<Integer, byte[]> bucketCache;
-    private final int maxCachedBuckets;
-    /** Decompressed bytes currently pinned by {@link #bucketCache}; maintained by {@link #cacheBucket}. */
-    private long bucketCacheBytes;
+    /** Decompressed-bucket payloads, LRU under a count and byte budget; see {@link BucketCache}. */
+    private final BucketCache bucketCache;
 
     private long fileEnd;
     private boolean compacting;
@@ -118,10 +107,7 @@ public final class CsoRegionFile implements Closeable {
         for (int i = 0; i < this.rangePool.length; i++) {
             this.rangePool[i] = new long[2];
         }
-        this.maxCachedBuckets = maxCachedBuckets;
-        // Access-ordered so iteration walks least-recently-used first; the bounds themselves
-        // are enforced after every put by trimBucketCache(), which evicts by count AND bytes.
-        this.bucketCache = new LinkedHashMap<>(16, 0.75f, true);
+        this.bucketCache = new BucketCache(maxCachedBuckets);
     }
 
     /**
@@ -481,34 +467,8 @@ public final class CsoRegionFile implements Closeable {
             );
         }
         CsoStats.bucketDecompressed(elapsedNanos, e.compressedLength, raw.length);
-        cacheBucket(bucket, raw);
+        this.bucketCache.put(bucket, raw);
         return raw;
-    }
-
-    /** Caches a decompressed payload, then evicts least-recently-used entries until both bounds hold. */
-    private void cacheBucket(int bucket, byte[] payload) {
-        this.bucketCache.put(bucket, payload);
-        this.bucketCacheBytes += payload.length;
-        trimBucketCache();
-    }
-
-    /**
-     * Evicts least-recently-used payloads until the cache is within both its bounds: the count
-     * knob and {@link #MAX_CACHED_BUCKET_BYTES}. Runs after every put, so one huge bucket can
-     * evict even the entry just inserted — a payload larger than the whole budget is simply
-     * not cacheable, which is the honest answer at grid 1, where a bucket is an entire region.
-     */
-    private void trimBucketCache() {
-        var it = this.bucketCache.entrySet().iterator();
-        while (this.bucketCache.size() > this.maxCachedBuckets
-            || this.bucketCacheBytes > MAX_CACHED_BUCKET_BYTES) {
-            if (!it.hasNext()) {
-                break;
-            }
-            var eldest = it.next();
-            it.remove();
-            this.bucketCacheBytes -= eldest.getValue().length;
-        }
     }
 
     /**
@@ -801,7 +761,7 @@ public final class CsoRegionFile implements Closeable {
         e.rawLength = next.rawLength;
         e.crc32 = next.crc32;
         e.chunkCount = next.chunkCount;
-        cacheBucket(bucket, payload);
+        this.bucketCache.put(bucket, payload);
         this.dirty = true;
     }
 
