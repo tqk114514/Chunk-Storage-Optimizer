@@ -695,25 +695,46 @@ public final class CsoRegionFile implements Closeable {
         out.flush();
 
         byte[] payload = bytes.toByteArray();
+        // The length field that makes a damaged log tellable from a torn one: it is the
+        // forensic tail the reader checks when the checksum fails (see replayWal).
+        byte[] lengthField = new byte[4];
+        CsoFormat.writeInt(lengthField, 0, payload.length);
         CRC32 crc = new CRC32();
         crc.update(payload);
+        crc.update(lengthField);
+        // Written with CsoFormat.writeInt (little-endian) rather than ByteBuffer.putInt
+        // (big-endian) — the reader uses readInt, and a mismatch here silently fails the
+        // checksum so the log is discarded and the recovery never happens.
+        byte[] checksum = new byte[4];
+        CsoFormat.writeInt(checksum, 0, (int) crc.getValue());
+        // Written through a temp name and moved into place: a WAL that exists is a WAL that
+        // was written whole. Writing in place left a torn log indistinguishable from a
+        // damaged one, and that ambiguity is what forced the reader to discard every
+        // checksum failure quietly — the quiet path being exactly what a damaged log must
+        // not get. A crash before the move leaves only the temp name, which the next open
+        // sweeps away; the batch such a crash described never started applying.
+        Path tmp = this.walPath.resolveSibling(this.walPath.getFileName() + ".tmp");
         try (FileChannel wal = FileChannel.open(
-            this.walPath,
+            tmp,
             StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
         )) {
-            ByteBuffer buffer = ByteBuffer.allocate(payload.length + 4);
+            ByteBuffer buffer = ByteBuffer.allocate(payload.length + lengthField.length + checksum.length);
             buffer.put(payload);
-            // Written with CsoFormat.writeInt (little-endian) rather than ByteBuffer.putInt
-            // (big-endian) — the reader uses readInt, and a mismatch here silently fails the
-            // checksum so the log is discarded and the recovery never happens.
-            byte[] checksum = new byte[4];
-            CsoFormat.writeInt(checksum, 0, (int) crc.getValue());
+            buffer.put(lengthField);
             buffer.put(checksum);
             buffer.flip();
             while (buffer.hasRemaining()) {
                 wal.write(buffer);
             }
             wal.force(true);
+        }
+        try {
+            Files.move(tmp, this.walPath, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // The move failing leaves the batch unwritten and the caller must not apply it,
+            // so the temp name is dropped too; a stale one is swept at the next open anyway.
+            deleteWalTmpQuietly();
+            throw e;
         }
     }
 
@@ -728,24 +749,42 @@ public final class CsoRegionFile implements Closeable {
      */
     private synchronized void replayWal() throws IOException {
         if (!Files.isRegularFile(this.walPath)) {
+            // A crash during the log's own write leaves the temp name behind; it was never
+            // committed, so it is swept without ceremony.
+            deleteWalTmpQuietly();
             return;
         }
         byte[] raw;
         try {
             raw = Files.readAllBytes(this.walPath);
         } catch (IOException e) {
-            deleteWalQuietly();
-            return;
+            // An unopenable WAL is not discarded: it is the only record of a batch that may
+            // not have been applied yet, the same rule a locked .mca already follows. On
+            // Windows this is usually a backup tool holding the file; refusing here stalls
+            // the open visibly until it can be read again.
+            throw new CsoCorruptedException("Cannot read the write-ahead log for " + this.path, e);
         }
-        if (raw.length < WAL_MAGIC.length + 4) {
+        if (raw.length < WAL_MAGIC.length + 2 + 4 + 4) {
             deleteWalQuietly();
             return;
         }
         CRC32 crc = new CRC32();
         crc.update(raw, 0, raw.length - 4);
         if ((int) crc.getValue() != CsoFormat.readInt(raw, raw.length - 4)) {
-            // Torn WAL: never fully written, so there is nothing to replay. The bucket tables
-            // still describe the last consistent state, so falling back is safe.
+            // Two eras, one check. A WAL written since the atomic-rename change only ever
+            // exists whole, so a failed checksum can only mean damage after the force — and
+            // the batch it describes may sit half-applied, which must not pass silently: the
+            // log is kept and the open fails loudly. The length tail tells the two eras
+            // apart: without it this can only be a legacy log, written in place, where a
+            // torn write was the ordinary crash outcome and discarding is correct (a legacy
+            // log damaged after the fact is indistinguishable from a torn one — the very
+            // ambiguity the format moved on from).
+            int declaredLength = raw.length >= 8 ? CsoFormat.readInt(raw, raw.length - 8) : -1;
+            if (declaredLength == raw.length - 8) {
+                throw new CsoCorruptedException("The write-ahead log for " + this.path
+                    + " is damaged: it describes a batch that may be half-applied, so the file is not"
+                    + " opened over it. The log is kept beside the file for manual recovery.");
+            }
             deleteWalQuietly();
             return;
         }
@@ -753,8 +792,10 @@ public final class CsoRegionFile implements Closeable {
             byte[] magic = new byte[WAL_MAGIC.length];
             in.readFully(magic);
             if (!Arrays.equals(magic, WAL_MAGIC)) {
-                deleteWalQuietly();
-                return;
+                // A valid checksum over someone else's bytes: neither era ever wrote anything
+                // but this magic whole, so this is not a crash artifact but corruption.
+                throw new CsoCorruptedException(
+                    "The write-ahead log for " + this.path + " does not carry this format's magic");
             }
             in.readShort(); // format version
             int buckets = in.readInt();
@@ -802,6 +843,14 @@ public final class CsoRegionFile implements Closeable {
             Files.deleteIfExists(this.walPath);
         } catch (IOException ignored) {
             // A leftover WAL is harmless: it gets replayed or ignored on the next open.
+        }
+    }
+
+    private void deleteWalTmpQuietly() {
+        try {
+            Files.deleteIfExists(this.walPath.resolveSibling(this.walPath.getFileName() + ".tmp"));
+        } catch (IOException ignored) {
+            // Never committed, so nothing it could have said is being lost by leaving it.
         }
     }
 

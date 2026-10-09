@@ -534,7 +534,7 @@ class CsoRegionFileTest {
     }
 
     @Test
-    void tornWalIsIgnored(@TempDir Path dir) throws IOException {
+    void tornLegacyWalIsIgnored(@TempDir Path dir) throws IOException {
         byte[] first = chunkData(41, 800);
         try (CsoRegionFile file = open(dir, GRID)) {
             file.writeChunks(0, Map.of(0, first));
@@ -543,16 +543,44 @@ class CsoRegionFileTest {
             file.writeWal(Map.of(0, Map.of(0, chunkData(42, 900))));
         }
 
-        // Damage the WAL so it can never have been fully written.
+        // Truncated mid-file, the shape a crash left behind when the WAL was still written
+        // in place: no length tail, so the reader cannot tell it from damage and rightly
+        // keeps the old policy — a torn log of that era never described an applied batch.
         Path wal = dir.resolve("r.0.0.cso.wal");
-        try (FileChannel channel = FileChannel.open(wal, StandardOpenOption.WRITE)) {
-            channel.write(ByteBuffer.wrap(new byte[] {0x7F}), 0);
+        byte[] whole = Files.readAllBytes(wal);
+        Files.write(wal, java.util.Arrays.copyOf(whole, whole.length / 2));
+
+        // A torn legacy WAL must be discarded, leaving the last consistent state — not
+        // half-applied.
+        try (CsoRegionFile file = open(dir, GRID)) {
+            assertArrayEquals(first, file.readChunk(0, 0), "a torn legacy WAL must be ignored");
+        }
+        assertFalse(Files.exists(wal), "a discarded legacy WAL is deleted");
+    }
+
+    @Test
+    void damagedWalMustRefuseTheOpenAndKeepTheLog(@TempDir Path dir) throws IOException {
+        byte[] first = chunkData(41, 800);
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeChunks(0, Map.of(0, first));
+        }
+        // A whole, forced WAL — the state at the moment the batch is about to apply.
+        try (CsoRegionFile file = open(dir, GRID)) {
+            file.writeWal(Map.of(0, Map.of(0, chunkData(42, 900))));
         }
 
-        // A torn WAL must be discarded, leaving the last consistent state — not half-applied.
-        try (CsoRegionFile file = open(dir, GRID)) {
-            assertArrayEquals(first, file.readChunk(0, 0), "a torn WAL must be ignored");
-        }
+        // Damage after the force. The atomic write means a WAL that exists was written
+        // whole, so a failed checksum can only mean exactly this — and the batch it
+        // describes may sit half-applied, which must not be opened over silently.
+        Path wal = dir.resolve("r.0.0.cso.wal");
+        byte[] whole = Files.readAllBytes(wal);
+        whole[whole.length / 2] ^= (byte) 0xFF;
+        Files.write(wal, whole);
+
+        CsoCorruptedException expected = assertThrows(CsoCorruptedException.class,
+            () -> open(dir, GRID),
+            "a damaged WAL describes a batch that may be half-applied; the open must refuse");
+        assertTrue(Files.exists(wal), "the refused WAL is kept beside the file for manual recovery");
     }
 
     @Test
