@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -28,6 +27,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.level.storage.LevelResource;
 
+import tqk114514.chunkstorageoptimizer.CsoBossBars;
 import tqk114514.chunkstorageoptimizer.CsoPermissions;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
@@ -556,7 +556,7 @@ public final class CsoCommands {
         private static ConvertProgress start(CommandSourceStack source, String target, int total) {
             ServerBossEvent bar = null;
             if (total > 0 && source.getEntity() instanceof ServerPlayer player) {
-                bar = new ServerBossEvent(UUID.randomUUID(),
+                bar = CsoBossBars.create(
                     Component.literal("CSO: converting to ." + target),
                     BossEvent.BossBarColor.BLUE, BossEvent.BossBarOverlay.PROGRESS);
                 bar.setDarkenScreen(false);

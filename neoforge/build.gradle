@@ -28,8 +28,8 @@ versionTable.eachLine { line ->
     if (trimmed.isEmpty() || trimmed.startsWith('#')) {
         return
     }
-    def (mc, rowJavaLevel, family, floor, fabricApi, modMenu, fml) = trimmed.split(',').collect { it.trim() }
-    supportedVersions[mc] = [neo: floor, java: rowJavaLevel as int, family: family, fml: fml]
+    def (mc, rowJavaLevel, family, floor, fabricApi, modMenu, fml, screenFamily, bossFamily) = trimmed.split(',').collect { it.trim() }
+    supportedVersions[mc] = [neo: floor, java: rowJavaLevel as int, family: family, fml: fml, boss: bossFamily]
 }
 if (supportedVersions.isEmpty()) {
     throw new GradleException("${versionTable} has no data rows.")
@@ -59,6 +59,10 @@ if (!(apiFamily in ['legacy', 'modern'])) {
 def fmlMajor = (project.findProperty('fml_major') ?: target.fml) as String
 if (!(fmlMajor in ['11', '12'])) {
     throw new GradleException("Minecraft ${mcVersion} has FML=${fmlMajor}; use '11' or '12'.")
+}
+def bossFamily = target.boss as String
+if (!(bossFamily in ['plain', 'uuid'])) {
+    throw new GradleException("Minecraft ${mcVersion} has boss=${bossFamily}; use 'plain' or 'uuid'.")
 }
 
 // The loader drops the old "1." prefix, so Minecraft 1.21.11 is served by the 21.11 line and
@@ -91,6 +95,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(javaLevel)
 sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
 sourceSets.main.java.srcDir rootProject.file("common/src/main/java")
 sourceSets.main.java.srcDir rootProject.file("common/src/version/${apiFamily}/java")
+sourceSets.main.java.srcDir rootProject.file("common/src/version/${bossFamily}/java")
 sourceSets.main.java.srcDir rootProject.file("neoforge/src/version/fml${fmlMajor}/java")
 sourceSets.main.resources.srcDir rootProject.file('core/src/main/resources')
 

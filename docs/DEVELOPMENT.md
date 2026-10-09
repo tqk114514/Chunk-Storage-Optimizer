@@ -142,6 +142,11 @@ csv 的对应列只把其中一个加入编译路径，运行期没有条件分�
 命令权限：`common/src/version/legacy/java` 与 `modern/java` 各提供一个签名相同的
 `CsoPermissions.operatorOnly()`，由 csv 的 family 列选择。两者的判定标准都是权限等级 3。
 
+进度条：`common/src/version/plain/java` 与 `uuid/java` 各提供一个签名相同的
+`CsoBossBars.create()`，由 csv 的 boss 列选择。26.x 把 boss bar 的 id 从内部字段挪进了
+构造器，1.21 线的三参与 26.x 的 UUID 四参无法被同一份代码同时命名；转换进度条
+（`/cso convert` 顶部的原版 boss bar）是它目前唯一的用户。
+
 配置类型：`neoforge/src/version/fml11/java` 与 `fml12/java` 各提供一个签名相同的
 `CsoConfigType.common()`，由 csv 的 FML 列选择。FancyModLoader 12（NeoForge 26.3 起）把
 `ModConfig.Type.COMMON` 改名为 `LOCAL`，旧常量在新版本中不存在，共享代码无法引用。注册时显式

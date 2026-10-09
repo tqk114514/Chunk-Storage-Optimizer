@@ -36,8 +36,8 @@ versionTable.eachLine { line ->
     if (trimmed.isEmpty() || trimmed.startsWith('#')) {
         return
     }
-    def (mc, rowJavaLevel, family, neoFloor, fabricApi, modMenu, fml, screenFamily) = trimmed.split(',').collect { it.trim() }
-    supportedVersions[mc] = [java: rowJavaLevel as int, family: family, neo: neoFloor, api: fabricApi, modmenu: modMenu, screen: screenFamily]
+    def (mc, rowJavaLevel, family, neoFloor, fabricApi, modMenu, fml, screenFamily, bossFamily) = trimmed.split(',').collect { it.trim() }
+    supportedVersions[mc] = [java: rowJavaLevel as int, family: family, neo: neoFloor, api: fabricApi, modmenu: modMenu, screen: screenFamily, boss: bossFamily]
 }
 if (supportedVersions.isEmpty()) {
     throw new GradleException("${versionTable} has no data rows.")
@@ -60,6 +60,10 @@ if (!(apiFamily in ['legacy', 'modern'])) {
 def screenFamily = target.screen as String
 if (!(screenFamily in ['mc', 'gui'])) {
     throw new GradleException("Minecraft ${mcVersion} has screen=${screenFamily}; use 'mc' or 'gui'.")
+}
+def bossFamily = target.boss as String
+if (!(bossFamily in ['plain', 'uuid'])) {
+    throw new GradleException("Minecraft ${mcVersion} has boss=${bossFamily}; use 'plain' or 'uuid'.")
 }
 def fabricApiVersion = (project.findProperty('fabric_api_version') ?: target.api) as String
 def modMenuVersion = (project.findProperty('modmenu_version') ?: target.modmenu) as String
@@ -91,6 +95,7 @@ def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
 base.archivesName = "${mod_id}-fabric-${mcVersion}"
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(javaLevel)
+sourceSets.main.java.srcDir rootProject.file("common/src/version/${bossFamily}/java")
 
 sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
 sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
