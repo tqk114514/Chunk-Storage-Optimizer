@@ -49,3 +49,5 @@ repo/
 .workbuddy-ai/
 
 compatibility/
+# Third-party reference clones kept beside our own compat modules (Chunky now).
+compat/Chunky/
