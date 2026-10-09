@@ -20,6 +20,11 @@
 > region file lands atomically, the switch is only recorded after every file made it, and a
 > half-converted world loads as the union of both formats — re-enter the world and run the
 > command again to finish.
+>
+> **On dedicated servers**, the vanilla watchdog (`max-tick-time`, 60 s by default) force-crashes
+> a frozen main thread: raise it (or set `-1`) before converting a large world. Even if it fires,
+> the save is intact — the guarantees above hold — and the command simply runs again.
+> Singleplayer has no such watchdog.
 
 Replace Minecraft's Anvil region files with a custom bucket-based format compressed by zstd:
 smaller saves, faster chunk loading and saving.
