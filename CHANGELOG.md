@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.1.3] - 2026-10-08
+
+### Added
+- **Xaero's World Map compatibility, bundled as a nested mod inside every jar ("CSO Xaero
+  Compat") — Fabric and NeoForge both.** The world map keeps recording the areas you have
+  explored, in a world this mod stores. The bug it fixes: in singleplayer the map lists the
+  save's region folder for `r.X.Z.mca` files, a Chunk Storage Optimizer world holds its regions
+  as `r.X.Z.cso`, so the scan found nothing — every session started with an empty map and
+  everything recorded before came back as black fog. The compat widens that one scan to also
+  accept `.cso` (the tile rebuild already worked, because it reads chunks through the ordinary
+  storage path), verified in-game on both loaders. Without the map installed the compat is a
+  quiet child entry and nothing else; a map update that moves a target disables the `.cso`
+  support with one log line instead of crashing. The compat keeps its own version number
+  (1.0.0), so it only moves when it changes.
+
+### Changed
+- **The compat mods now declare the requirements of the Minecraft they ship for, written at
+  build time like the main mod's own metadata.** Previously they accepted any Minecraft and
+  Java 21+; each nested jar now carries exactly the version ranges of the jar it travels in,
+  so a nested entry can never claim a row its container does not.
+
+### Fixed
+- **A "uses the deprecated logoFile property" warning on NeoForge 26.3.** FancyModLoader 12
+  renamed the Mods-screen icon field; the jar now writes the new `iconFile` field there while
+  older NeoForge keeps reading `logoFile`, so the warning screen that stood in front of every
+  launch is gone.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.2] - 2026-10-08
 
 ### Added
