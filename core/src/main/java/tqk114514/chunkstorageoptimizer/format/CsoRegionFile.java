@@ -40,7 +40,6 @@ import static tqk114514.chunkstorageoptimizer.format.CsoFormat.HEADER_SIZE;
 public final class CsoRegionFile implements Closeable {
 
     private static final System.Logger LOGGER = System.getLogger(CsoRegionFile.class.getName());
-    private static final byte[] WAL_MAGIC = {'C', 'S', 'O', 'W', 'A', 'L', 0};
     /** Stored in the header when the filename carries no region coordinates. */
     private static final int UNKNOWN_COORD = Integer.MIN_VALUE;
 
@@ -58,7 +57,7 @@ public final class CsoRegionFile implements Closeable {
      * Write-ahead log for the batch currently in flight. Without it a crash during a batch loses
      * that batch entirely; with it, the next open replays the changes.
      */
-    private final Path walPath;
+    private final CsoWal wal;
     private FileChannel channel;
     private final int grid;
     private final int chunksPerBucket;
@@ -100,11 +99,11 @@ public final class CsoRegionFile implements Closeable {
         double compactionWastedRatio
     ) {
         this.path = path;
-        this.walPath = path.resolveSibling(path.getFileName().toString() + ".wal");
         this.channel = channel;
         this.grid = grid;
         this.chunksPerBucket = CsoFormat.chunksPerBucket(grid);
         this.bucketCount = CsoFormat.bucketCount(grid);
+        this.wal = new CsoWal(path, this.bucketCount, this.chunksPerBucket);
         this.dataStart = CsoFormat.dataStart(this.bucketCount);
         this.compressor = compressor;
         this.verifyCrc = verifyCrc;
@@ -303,7 +302,7 @@ public final class CsoRegionFile implements Closeable {
                 // an interrupted batch, so it is real loss: reading it as "never written" would
                 // drop the bucket's chunks without a word, the one failure mode this format must
                 // never have.
-                if (blank0 && Files.isRegularFile(this.walPath)) {
+                if (blank0 && this.wal.exists()) {
                     continue;
                 }
                 throw new CsoCorruptedException(
@@ -663,195 +662,28 @@ public final class CsoRegionFile implements Closeable {
     }
 
     // ------------------------------------------------------------------ write-ahead log
+    // All of the write-ahead log lives in CsoWal now; these are the thin pass-throughs the
+    // storage layer and the tests call.
 
-    /**
-     * Records a whole batch of bucket changes before any of them is applied, and forces it to disk.
-     *
-     * <p>The granularity is the batch, not the single bucket, on purpose: one forced write per
-     * batch keeps the write path fast. A bucket-at-a-time WAL would need a forced write per chunk
-     * save, which would throw away most of the speed this format exists to provide.
-     */
     public synchronized void writeWal(Map<Integer, Map<Integer, byte[]>> changes) throws IOException {
-        if (changes.isEmpty()) {
-            return;
-        }
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        DataOutputStream out = new DataOutputStream(bytes);
-        out.write(WAL_MAGIC);
-        out.writeShort(CsoFormat.FORMAT_VERSION);
-        out.writeInt(changes.size());
-        for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : changes.entrySet()) {
-            out.writeInt(bucketEntry.getKey());
-            out.writeInt(bucketEntry.getValue().size());
-            for (Map.Entry<Integer, byte[]> slotEntry : bucketEntry.getValue().entrySet()) {
-                out.writeInt(slotEntry.getKey());
-                byte[] data = slotEntry.getValue();
-                out.writeInt(data == null ? -1 : data.length);
-                if (data != null) {
-                    out.write(data);
-                }
-            }
-        }
-        out.flush();
-
-        byte[] payload = bytes.toByteArray();
-        // The length field that makes a damaged log tellable from a torn one: it is the
-        // forensic tail the reader checks when the checksum fails (see replayWal).
-        byte[] lengthField = new byte[4];
-        CsoFormat.writeInt(lengthField, 0, payload.length);
-        CRC32 crc = new CRC32();
-        crc.update(payload);
-        crc.update(lengthField);
-        // Written with CsoFormat.writeInt (little-endian) rather than ByteBuffer.putInt
-        // (big-endian) — the reader uses readInt, and a mismatch here silently fails the
-        // checksum so the log is discarded and the recovery never happens.
-        byte[] checksum = new byte[4];
-        CsoFormat.writeInt(checksum, 0, (int) crc.getValue());
-        // Written through a temp name and moved into place: a WAL that exists is a WAL that
-        // was written whole. Writing in place left a torn log indistinguishable from a
-        // damaged one, and that ambiguity is what forced the reader to discard every
-        // checksum failure quietly — the quiet path being exactly what a damaged log must
-        // not get. A crash before the move leaves only the temp name, which the next open
-        // sweeps away; the batch such a crash described never started applying.
-        Path tmp = this.walPath.resolveSibling(this.walPath.getFileName() + ".tmp");
-        try (FileChannel wal = FileChannel.open(
-            tmp,
-            StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
-        )) {
-            ByteBuffer buffer = ByteBuffer.allocate(payload.length + lengthField.length + checksum.length);
-            buffer.put(payload);
-            buffer.put(lengthField);
-            buffer.put(checksum);
-            buffer.flip();
-            while (buffer.hasRemaining()) {
-                wal.write(buffer);
-            }
-            wal.force(true);
-        }
-        try {
-            Files.move(tmp, this.walPath, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            // The move failing leaves the batch unwritten and the caller must not apply it,
-            // so the temp name is dropped too; a stale one is swept at the next open anyway.
-            deleteWalTmpQuietly();
-            throw e;
-        }
+        this.wal.write(changes);
     }
 
     /** Drops the WAL. Only safe once the batch it describes is already durable. */
     public synchronized void clearWal() throws IOException {
-        Files.deleteIfExists(this.walPath);
+        this.wal.clear();
     }
 
     /**
      * Replays a WAL left behind by a crash. Idempotent — applying the same changes twice produces
-     * the same bytes — so dying during replay is harmless; it just runs again next time.
+     * the same bytes — so dying during replay is harmless; it just runs again next time. The
+     * flush before the clear is load-bearing: the log may only disappear once the batch it
+     * carried is durable, the same ordering the write path guarantees.
      */
     private synchronized void replayWal() throws IOException {
-        if (!Files.isRegularFile(this.walPath)) {
-            // A crash during the log's own write leaves the temp name behind; it was never
-            // committed, so it is swept without ceremony.
-            deleteWalTmpQuietly();
-            return;
-        }
-        byte[] raw;
-        try {
-            raw = Files.readAllBytes(this.walPath);
-        } catch (IOException e) {
-            // An unopenable WAL is not discarded: it is the only record of a batch that may
-            // not have been applied yet, the same rule a locked .mca already follows. On
-            // Windows this is usually a backup tool holding the file; refusing here stalls
-            // the open visibly until it can be read again.
-            throw new CsoCorruptedException("Cannot read the write-ahead log for " + this.path, e);
-        }
-        if (raw.length < WAL_MAGIC.length + 2 + 4 + 4) {
-            deleteWalQuietly();
-            return;
-        }
-        CRC32 crc = new CRC32();
-        crc.update(raw, 0, raw.length - 4);
-        if ((int) crc.getValue() != CsoFormat.readInt(raw, raw.length - 4)) {
-            // Two eras, one check. A WAL written since the atomic-rename change only ever
-            // exists whole, so a failed checksum can only mean damage after the force — and
-            // the batch it describes may sit half-applied, which must not pass silently: the
-            // log is kept and the open fails loudly. The length tail tells the two eras
-            // apart: without it this can only be a legacy log, written in place, where a
-            // torn write was the ordinary crash outcome and discarding is correct (a legacy
-            // log damaged after the fact is indistinguishable from a torn one — the very
-            // ambiguity the format moved on from).
-            int declaredLength = raw.length >= 8 ? CsoFormat.readInt(raw, raw.length - 8) : -1;
-            if (declaredLength == raw.length - 8) {
-                throw new CsoCorruptedException("The write-ahead log for " + this.path
-                    + " is damaged: it describes a batch that may be half-applied, so the file is not"
-                    + " opened over it. The log is kept beside the file for manual recovery.");
-            }
-            deleteWalQuietly();
-            return;
-        }
-        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw))) {
-            byte[] magic = new byte[WAL_MAGIC.length];
-            in.readFully(magic);
-            if (!Arrays.equals(magic, WAL_MAGIC)) {
-                // A valid checksum over someone else's bytes: neither era ever wrote anything
-                // but this magic whole, so this is not a crash artifact but corruption.
-                throw new CsoCorruptedException(
-                    "The write-ahead log for " + this.path + " does not carry this format's magic");
-            }
-            in.readShort(); // format version
-            int buckets = in.readInt();
-            for (int i = 0; i < buckets; i++) {
-                int bucket = in.readInt();
-                // The WAL checksum only proves the log was written whole, not that its contents
-                // are legal for this file. An out-of-range ordinal must fail as corruption, not
-                // escape as an unchecked array-index crash.
-                if (bucket < 0 || bucket >= this.bucketCount) {
-                    throw new CsoCorruptedException(
-                        "WAL for " + this.path + " names bucket " + bucket + " but this file has "
-                            + this.bucketCount + " buckets");
-                }
-                int entries = in.readInt();
-                Map<Integer, byte[]> changes = new HashMap<>();
-                for (int j = 0; j < entries; j++) {
-                    int slot = in.readInt();
-                    int length = in.readInt();
-                    if (slot < 0 || slot >= this.chunksPerBucket) {
-                        throw new CsoCorruptedException(
-                            "WAL for " + this.path + " names slot " + slot + " but a bucket here holds "
-                                + this.chunksPerBucket + " chunks");
-                    }
-                    if (length < -1 || length > raw.length) {
-                        throw new CsoCorruptedException(
-                            "WAL for " + this.path + " declares a " + length + "-byte chunk");
-                    }
-                    byte[] data = length < 0 ? null : new byte[length];
-                    if (data != null) {
-                        in.readFully(data);
-                    }
-                    changes.put(slot, data);
-                }
-                writeChunks(bucket, changes);
-            }
-        } catch (IOException e) {
-            throw new CsoCorruptedException("Failed to replay WAL for " + this.path, e);
-        }
+        this.wal.replayBucketChanges(this::writeChunks);
         flush();
-        deleteWalQuietly();
-    }
-
-    private void deleteWalQuietly() {
-        try {
-            Files.deleteIfExists(this.walPath);
-        } catch (IOException ignored) {
-            // A leftover WAL is harmless: it gets replayed or ignored on the next open.
-        }
-    }
-
-    private void deleteWalTmpQuietly() {
-        try {
-            Files.deleteIfExists(this.walPath.resolveSibling(this.walPath.getFileName() + ".tmp"));
-        } catch (IOException ignored) {
-            // Never committed, so nothing it could have said is being lost by leaving it.
-        }
+        this.wal.clear();
     }
 
     /**
