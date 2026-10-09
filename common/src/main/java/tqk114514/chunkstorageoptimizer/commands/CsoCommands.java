@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -22,6 +23,9 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.BossEvent;
 import net.minecraft.world.level.storage.LevelResource;
 
 import tqk114514.chunkstorageoptimizer.CsoPermissions;
@@ -222,8 +226,18 @@ public final class CsoCommands {
             return 0;
         }
         boolean prune = pruneArg != null;
+        ConvertProgress progress = null;
         long startedAt = System.nanoTime();
         try {
+            // Counted before anything moves so the bar can carry a real denominator. Nothing
+            // can change under the listing: the server thread is about to be the one doing
+            // the work.
+            int totalFiles = 0;
+            String extension = "cso".equals(target) ? ".mca" : ".cso";
+            for (Path folder : storeDirectories(root)) {
+                totalFiles += Converter.listFiles(folder, extension).size();
+            }
+            progress = ConvertProgress.start(source, target, totalFiles);
             // The game keeps its own queue of unwritten chunks. Get those to disk before moving any
             // bytes, otherwise the conversion silently misses them.
             saveAll(source);
@@ -245,6 +259,7 @@ public final class CsoCommands {
             for (Path folder : storeDirectories(root)) {
                 if ("cso".equals(target)) {
                     for (Path mcaFile : Converter.listFiles(folder, ".mca")) {
+                        progress.step();
                         // A slot the header names but this parser cannot decode is still a chunk.
                         // Counting only the readable ones is what let prune delete a .mca while
                         // leaving those chunks behind with no copy anywhere.
@@ -284,6 +299,7 @@ public final class CsoCommands {
                     }
                 } else {
                     for (Path csoFile : Converter.listFiles(folder, ".cso")) {
+                        progress.step();
                         List<AnvilRegionFile.Chunk> in = Converter.readCso(csoFile);
                         if (in.isEmpty()) {
                             // Same as above: an empty file carries nothing, so prune removes it
@@ -371,6 +387,12 @@ public final class CsoCommands {
             LOGGER.error(message, e);
             source.sendFailure(Component.literal(message));
             return 0;
+        } finally {
+            // Whatever happened — finished, failed, anything — the bar goes away; the chat
+            // message is what carries the outcome.
+            if (progress != null) {
+                progress.close();
+            }
         }
     }
 
@@ -507,5 +529,66 @@ public final class CsoCommands {
             unit++;
         }
         return String.format("%.1f %s", value, units[unit]);
+    }
+
+    /**
+     * The conversion's progress bar, in the vanilla style Chunky and Voxy use: a boss bar,
+     * darkening off, music off, fog off — nothing but progress. It exists only for the run:
+     * the {@code finally} in {@link #convertWorld} removes it whether the run finished,
+     * failed, or anything between.
+     *
+     * <p>The conversion stays on the server thread, by design: a blocked thread is the one
+     * simple guarantee that nothing writes the region folders while they are being rewritten.
+     * The bar works regardless — boss bar updates go out the moment they are set, and the
+     * client renders them without waiting for server ticks, so the player watches a frozen
+     * server make progress instead of wondering whether it hung.
+     *
+     * <p>Console-sent conversions get no bar ({@link #bar} null): a command block or the
+     * server console has no screen, and the chat summary still says everything.
+     */
+    private static final class ConvertProgress {
+
+        private final ServerBossEvent bar;
+        private final String target;
+        private final int total;
+        private int done;
+
+        private static ConvertProgress start(CommandSourceStack source, String target, int total) {
+            ServerBossEvent bar = null;
+            if (total > 0 && source.getEntity() instanceof ServerPlayer player) {
+                bar = new ServerBossEvent(UUID.randomUUID(),
+                    Component.literal("CSO: converting to ." + target),
+                    BossEvent.BossBarColor.BLUE, BossEvent.BossBarOverlay.PROGRESS);
+                bar.setDarkenScreen(false);
+                bar.setPlayBossMusic(false);
+                bar.setCreateWorldFog(false);
+                bar.addPlayer(player);
+            }
+            return new ConvertProgress(bar, target, total);
+        }
+
+        private ConvertProgress(ServerBossEvent bar, String target, int total) {
+            this.bar = bar;
+            this.target = target;
+            this.total = total;
+        }
+
+        /** One file handled — converted, or deliberately skipped; both move the bar. */
+        private void step() {
+            this.done++;
+            if (this.bar == null) {
+                return;
+            }
+            this.bar.setName(Component.literal("CSO: converting to ." + this.target + " — "
+                + this.done + "/" + this.total + " files ("
+                + Math.round(this.done * 100.0 / this.total) + "%)"));
+            this.bar.setProgress(this.done / (float) this.total);
+        }
+
+        private void close() {
+            if (this.bar != null) {
+                this.bar.removeAllPlayers();
+            }
+        }
     }
 }
