@@ -12,6 +12,14 @@
 > so the new jar replaces the old one directly. 2.x will not read a world written by 1.x; the only
 > path across is to convert back with the old version (`/cso convert mca`), swap the mod, then
 > convert again. Check `CHANGELOG.md` before upgrading.
+>
+> **3. During a conversion the game freezes completely, and quitting waits for it.** `/cso convert`
+> runs on the main server thread — that freeze is what guarantees nothing writes the region
+> folders mid-conversion. A vanilla-style progress bar at the top of the screen shows how far it
+> is, and "Save & quit" queues behind it. **Force-closing the game at any moment is safe**: every
+> region file lands atomically, the switch is only recorded after every file made it, and a
+> half-converted world loads as the union of both formats — re-enter the world and run the
+> command again to finish.
 
 Replace Minecraft's Anvil region files with a custom bucket-based format compressed by zstd:
 smaller saves, faster chunk loading and saving.
