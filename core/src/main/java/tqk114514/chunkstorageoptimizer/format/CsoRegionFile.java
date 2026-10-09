@@ -73,9 +73,8 @@ public final class CsoRegionFile implements Closeable {
     private boolean dirty;
     /** Reused compression destination — see {@link Compressor#compress(byte[], byte[])}. */
     private byte[] compressScratch = new byte[0];
-    /** Reused scratch space for {@link #allocate(int)}'s extent list. */
-    private final long[][] rangePool;
-    private final List<long[]> usedRanges = new ArrayList<>();
+    /** Best-fit allocation and waste accounting over the live table; see {@link BlockAllocator}. */
+    private final BlockAllocator allocator;
 
     private CsoRegionFile(
         Path path,
@@ -103,10 +102,7 @@ public final class CsoRegionFile implements Closeable {
         for (int i = 0; i < this.bucketCount; i++) {
             this.entries[i] = new TableEntry();
         }
-        this.rangePool = new long[this.bucketCount + 1][];
-        for (int i = 0; i < this.rangePool.length; i++) {
-            this.rangePool[i] = new long[2];
-        }
+        this.allocator = new BlockAllocator(this.dataStart, this.bucketCount);
         this.bucketCache = new BucketCache(maxCachedBuckets);
     }
 
@@ -678,7 +674,7 @@ public final class CsoRegionFile implements Closeable {
         }
         int compressedLength = this.compressor.compress(payload, this.compressScratch);
         long elapsedNanos = System.nanoTime() - startedAt;
-        long offset = allocate(compressedLength);
+        long offset = this.allocator.allocate(this.entries, compressedLength, this.fileEnd);
         writeFully(ByteBuffer.wrap(this.compressScratch, 0, compressedLength), offset);
         CsoStats.bucketCompressed(elapsedNanos, payload.length, compressedLength);
         CsoStats.ioWrite(compressedLength);
@@ -729,83 +725,9 @@ public final class CsoRegionFile implements Closeable {
 
     // ------------------------------------------------------------------ space
 
-    /**
-     * Best-fit allocation over the free space implied by the bucket table.
-     *
-     * <p>The bucket being rewritten keeps its old extent marked as IN USE. Reusing that space would
-     * be faster to reclaim, but it destroys the only intact copy of the bucket if the process dies
-     * between writing the new block and updating the table. Reclaiming happens in {@link #compact()}
-     * instead, which is the whole point of having a compaction pass.
-     */
-    private long allocate(int size) {
-        // The extents are collected into a pool allocated once per file. This runs on every bucket
-        // write, and at grid=1 it would otherwise create a thousand short-lived arrays per chunk.
-        List<long[]> used = this.usedRanges;
-        used.clear();
-        this.rangePool[0][0] = 0L;
-        this.rangePool[0][1] = this.dataStart;
-        used.add(this.rangePool[0]);
-        int slot = 1;
-        for (TableEntry e : this.entries) {
-            if (e.offset != 0 && e.compressedLength > 0) {
-                long[] range = this.rangePool[slot++];
-                range[0] = e.offset;
-                range[1] = e.offset + e.compressedLength;
-                used.add(range);
-            }
-        }
-        used.sort(Comparator.comparingLong(a -> a[0]));
-
-        long cursor = 0L;
-        long best = -1L;
-        long bestSize = Long.MAX_VALUE;
-
-        for (long[] range : used) {
-            if (range[0] > cursor) {
-                long free = range[0] - cursor;
-                if (free >= size && free < bestSize) {
-                    best = cursor;
-                    bestSize = free;
-                }
-            }
-            if (range[1] > cursor) {
-                cursor = range[1];
-            }
-        }
-        if (this.fileEnd > cursor) {
-            long free = this.fileEnd - cursor;
-            if (free >= size && free < bestSize) {
-                best = cursor;
-            }
-        }
-        return best >= 0 ? best : this.fileEnd;
-    }
-
     /** Bytes occupied by blocks no table entry still points at — interior gaps only. */
     public synchronized long wastedBytes() {
-        // The free span after the last used block is excluded on purpose: allocate() hands it out
-        // to future writes, so it is reclaimable without rewriting the file — unlike the interior
-        // gaps superseded blocks leave behind, which only compact() can reclaim. Stranded tails do
-        // exist in practice: a crash between the data write and the table update leaves bytes past
-        // the last extent the table knows about.
-        List<long[]> used = new ArrayList<>(this.bucketCount);
-        for (TableEntry e : this.entries) {
-            if (e.offset != 0 && e.compressedLength > 0) {
-                used.add(new long[] {e.offset, e.offset + e.compressedLength});
-            }
-        }
-        used.sort(Comparator.comparingLong(a -> a[0]));
-        long cursor = this.dataStart;
-        long wasted = 0;
-        for (long[] range : used) {
-            if (range[0] > cursor) {
-                wasted += range[0] - cursor;
-            }
-            if (range[1] > cursor) {
-                cursor = range[1];
-            }
-        }
-        return wasted;
+        return this.allocator.wastedBytes(this.entries);
     }
 
     public synchronized long fileSize() {
