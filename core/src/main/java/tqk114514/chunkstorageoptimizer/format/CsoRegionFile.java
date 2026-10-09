@@ -59,7 +59,7 @@ public final class CsoRegionFile implements Closeable {
     private final long compactionMinWasted;
     private final double compactionWastedRatio;
 
-    private final BucketEntry[] entries;
+    private final TableEntry[] entries;
     /** Which table copy currently holds the newest entry per bucket. Writes use the other copy. */
     private final int[] lastTable;
     /** Monotonic counter persisted in every table entry; recovery keeps the highest valid one. */
@@ -98,10 +98,10 @@ public final class CsoRegionFile implements Closeable {
         this.verifyCrc = verifyCrc;
         this.compactionMinWasted = compactionMinWasted;
         this.compactionWastedRatio = compactionWastedRatio;
-        this.entries = new BucketEntry[this.bucketCount];
+        this.entries = new TableEntry[this.bucketCount];
         this.lastTable = new int[this.bucketCount];
         for (int i = 0; i < this.bucketCount; i++) {
-            this.entries[i] = new BucketEntry();
+            this.entries[i] = new TableEntry();
         }
         this.rangePool = new long[this.bucketCount + 1][];
         for (int i = 0; i < this.rangePool.length; i++) {
@@ -259,17 +259,17 @@ public final class CsoRegionFile implements Closeable {
         for (int i = 0; i < this.bucketCount; i++) {
             // Recovery is per bucket: take the newest copy that still validates. A crash can only
             // damage the copy being written; the other one still points at intact data.
-            BucketEntry newest = null;
+            TableEntry newest = null;
             int newestTable = 0;
             // Writes alternate between the two copies and always start at table 1, so a blank
             // table 0 says no write to this bucket ever finished — the two copies are NOT only ever
             // blank together, which an earlier version of this assumed.
             int tableStride = this.bucketCount * BUCKET_ENTRY_SIZE;
-            boolean blank0 = isBlankEntry(tables, i * BUCKET_ENTRY_SIZE);
-            boolean blank1 = isBlankEntry(tables, tableStride + i * BUCKET_ENTRY_SIZE);
+            boolean blank0 = TableEntry.isBlank(tables, i * BUCKET_ENTRY_SIZE);
+            boolean blank1 = TableEntry.isBlank(tables, tableStride + i * BUCKET_ENTRY_SIZE);
             for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
                 int base = table * tableStride + i * BUCKET_ENTRY_SIZE;
-                BucketEntry candidate = decodeEntry(tables, base);
+                TableEntry candidate = TableEntry.decode(tables, base);
                 if (candidate != null && (newest == null || candidate.sequence > newest.sequence)) {
                     newest = candidate;
                     newestTable = table;
@@ -295,7 +295,7 @@ public final class CsoRegionFile implements Closeable {
                     "Bucket " + i + " in " + this.path + " has no readable table entry in either copy"
                 );
             }
-            BucketEntry e = this.entries[i];
+            TableEntry e = this.entries[i];
             e.offset = newest.offset;
             e.compressedLength = newest.compressedLength;
             e.rawLength = newest.rawLength;
@@ -389,59 +389,11 @@ public final class CsoRegionFile implements Closeable {
      * <p>Takes the entry to record as a parameter, so a writer may durable-commit a state it
      * has not applied in memory yet — see {@link #storeBucket} for why that ordering matters.
      */
-    private void writeBucketEntry(int bucket, BucketEntry entry) throws IOException {
+    private void writeTableEntry(int bucket, TableEntry entry) throws IOException {
         int table = 1 - this.lastTable[bucket];
-        byte[] bytes = encodeEntry(entry);
+        byte[] bytes = TableEntry.encode(entry);
         writeFully(ByteBuffer.wrap(bytes), (long) CsoFormat.tableOffset(table, bucket, this.bucketCount));
         this.lastTable[bucket] = table;
-    }
-
-    private static byte[] encodeEntry(BucketEntry e) {
-        byte[] out = new byte[BUCKET_ENTRY_SIZE];
-        writeLong(out, CsoFormat.ENTRY_OFFSET, e.offset);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_COMP_LEN, e.compressedLength);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_RAW_LEN, e.rawLength);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_CRC32, e.crc32);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_CHUNKS, e.chunkCount);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_SEQUENCE, e.sequence);
-        CRC32 crc = new CRC32();
-        crc.update(out, 4, BUCKET_ENTRY_SIZE - 4);
-        CsoFormat.writeInt(out, CsoFormat.ENTRY_CRC, (int) crc.getValue());
-        return out;
-    }
-
-    /** @return the entry, or null when its own CRC fails — torn write, or never written. */
-    private static BucketEntry decodeEntry(byte[] buffer, int base) {
-        int expected = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_CRC);
-        CRC32 crc = new CRC32();
-        crc.update(buffer, base + 4, BUCKET_ENTRY_SIZE - 4);
-        if ((int) crc.getValue() != expected) {
-            return null;
-        }
-        BucketEntry e = new BucketEntry();
-        e.offset = readLong(buffer, base + CsoFormat.ENTRY_OFFSET);
-        e.compressedLength = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_COMP_LEN);
-        e.rawLength = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_RAW_LEN);
-        e.crc32 = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_CRC32);
-        e.chunkCount = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_CHUNKS);
-        e.sequence = CsoFormat.readInt(buffer, base + CsoFormat.ENTRY_SEQUENCE);
-        return e;
-    }
-
-    /**
-     * Whether a table entry is all zeros, which is what a bucket nobody ever wrote looks like.
-     *
-     * <p>This is the only shape that may be skipped without complaint. Its own CRC field is zero
-     * too, but the CRC of the remaining 28 zero bytes is not, so {@link #decodeEntry} rejects it
-     * the same way it rejects a torn entry — the two are told apart here instead.
-     */
-    private static boolean isBlankEntry(byte[] buffer, int base) {
-        for (int i = 0; i < BUCKET_ENTRY_SIZE; i++) {
-            if (buffer[base + i] != 0) {
-                return false;
-            }
-        }
-        return true;
     }
 
     // ------------------------------------------------------------------ payload
@@ -452,7 +404,7 @@ public final class CsoRegionFile implements Closeable {
             CsoStats.cacheHit();
             return cached;
         }
-        BucketEntry e = this.entries[bucket];
+        TableEntry e = this.entries[bucket];
         if (e.offset == 0 || e.compressedLength == 0 || e.chunkCount == 0) {
             return null;
         }
@@ -575,7 +527,7 @@ public final class CsoRegionFile implements Closeable {
      * also keeps the caller from having to invent a coordinate to stand for the whole bucket.
      */
     public synchronized boolean hasBucketIndex(int bucket) {
-        BucketEntry entry = this.entries[bucket];
+        TableEntry entry = this.entries[bucket];
         return entry.offset != 0 && entry.compressedLength > 0;
     }
 
@@ -743,18 +695,18 @@ public final class CsoRegionFile implements Closeable {
         // batch on its 500 ms timer — overwrote the last intact copy a valid on-disk table
         // entry still pointed at. compact() already follows this deferred-commit rule; this is
         // the write path's copy of it.
-        BucketEntry next = new BucketEntry();
+        TableEntry next = new TableEntry();
         next.sequence = this.sequenceCounter + 1;
         next.offset = offset;
         next.compressedLength = compressedLength;
         next.rawLength = payload.length;
         next.crc32 = (int) crc32(payload);
         next.chunkCount = countChunks(payload);
-        writeBucketEntry(bucket, next);
+        writeTableEntry(bucket, next);
 
         // The durable commit landed; only now does the in-memory state follow the disk.
         this.sequenceCounter++;
-        BucketEntry e = this.entries[bucket];
+        TableEntry e = this.entries[bucket];
         e.sequence = next.sequence;
         e.offset = next.offset;
         e.compressedLength = next.compressedLength;
@@ -794,7 +746,7 @@ public final class CsoRegionFile implements Closeable {
         this.rangePool[0][1] = this.dataStart;
         used.add(this.rangePool[0]);
         int slot = 1;
-        for (BucketEntry e : this.entries) {
+        for (TableEntry e : this.entries) {
             if (e.offset != 0 && e.compressedLength > 0) {
                 long[] range = this.rangePool[slot++];
                 range[0] = e.offset;
@@ -837,7 +789,7 @@ public final class CsoRegionFile implements Closeable {
         // exist in practice: a crash between the data write and the table update leaves bytes past
         // the last extent the table knows about.
         List<long[]> used = new ArrayList<>(this.bucketCount);
-        for (BucketEntry e : this.entries) {
+        for (TableEntry e : this.entries) {
             if (e.offset != 0 && e.compressedLength > 0) {
                 used.add(new long[] {e.offset, e.offset + e.compressedLength});
             }
@@ -908,7 +860,7 @@ public final class CsoRegionFile implements Closeable {
                 );
 
                 for (int b = 0; b < this.bucketCount; b++) {
-                    BucketEntry e = this.entries[b];
+                    TableEntry e = this.entries[b];
                     if (e.offset == 0 || e.compressedLength == 0) {
                         continue;
                     }
@@ -925,10 +877,10 @@ public final class CsoRegionFile implements Closeable {
                     if (newOffsets[b] == 0) {
                         continue;
                     }
-                    BucketEntry e = this.entries[b];
+                    TableEntry e = this.entries[b];
                     long previousOffset = e.offset;
                     e.offset = newOffsets[b];
-                    byte[] entry = encodeEntry(e);
+                    byte[] entry = TableEntry.encode(e);
                     e.offset = previousOffset; // applied only once compaction succeeds
                     for (int table = 0; table < CsoFormat.TABLE_COUNT; table++) {
                         writeChannel(
@@ -1037,23 +989,5 @@ public final class CsoRegionFile implements Closeable {
         } finally {
             this.channel.close();
         }
-    }
-
-    private static long readLong(byte[] b, int off) {
-        return (CsoFormat.readInt(b, off) & 0xFFFFFFFFL) | ((long) CsoFormat.readInt(b, off + 4) << 32);
-    }
-
-    private static void writeLong(byte[] b, int off, long v) {
-        CsoFormat.writeInt(b, off, (int) v);
-        CsoFormat.writeInt(b, off + 4, (int) (v >>> 32));
-    }
-
-    static final class BucketEntry {
-        long offset;
-        int compressedLength;
-        int rawLength;
-        int crc32;
-        int chunkCount;
-        int sequence;
     }
 }
