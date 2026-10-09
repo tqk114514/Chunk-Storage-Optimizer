@@ -1,0 +1,68 @@
+// The loader-independent half of the Xaero World Map compatibility: the mixin itself plus its
+// regression tests. The mixin targets only Xaero's own classes â no Minecraft, no loader â so
+// the same source compiles into both loader halves beside it (fabric/, neoforge/), which add
+// this directory as a source root the same way the main mod compiles core/ and common/ into
+// each of its loader modules. This module's own jar ships nowhere; it exists because the
+// compat's tests need a Gradle home that every row can reach â the role :core plays for the
+// main mod.
+//
+// The bug the mixin fixes: in singleplayer Xaero's world map runs in "world save" mode, where
+// it detects the save's regions by listing the region folder for `r.X.Z.mca`. A Chunk Storage
+// Optimizer world holds its regions as `r.X.Z.cso`, so the scan finds nothing â every session
+// starts with an empty region set and everything recorded before comes back as unexplored fog.
+// The fix widens that one scan (and the backing-file fallback) to `.cso`; the tile rebuild
+// itself already works, because it reads chunks through the ordinary storage path the main mod
+// serves.
+plugins {
+    id 'java-library'
+}
+
+// The same group as this compat's jar modules — see the fabric half for why the compat
+// layer cannot share the main mod's group.
+group = "${mod_group_id}.compat.xaero"
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+// Toolchain 25, because the pinned Xaero jar is compiled for it (class file 69) and a Java 21
+// compiler cannot even read it. The OUTPUT stays at release 21: both loader jars below run on
+// every Minecraft row the main mod ships for.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+dependencies {
+    // Xaero's World Map, pinned to the release this mixin was written against. The coordinate
+    // uses the Modrinth version id rather than the version number: the same number is reused
+    // across loaders, and the id names the exact jar (fabric 26.3, 1.47.0). Each loader half
+    // pins the same release for its own loader, so a shape change Xaero ships for one loader
+    // is caught by whichever module compiles against it.
+    compileOnly 'maven.modrinth:xaeros-world-map:nz9xjzWi'
+    // The mixin annotations â the same artifact fabric-loader runs against â and the logging
+    // the status report uses. Both are provided by the game at runtime.
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    compileOnly 'org.slf4j:slf4j-api:2.0.17'
+
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}

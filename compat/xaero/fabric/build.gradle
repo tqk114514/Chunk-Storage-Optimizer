@@ -1,0 +1,136 @@
+// The Fabric half of the Xaero World Map compatibility: a small fabric mod that ships as a
+// NESTED mod inside the main fabric jar (fabric/build.gradle includes it; the Voxy compat is
+// bundled the same way), so players download exactly one file and Mod Menu lists the compat
+// as a child of the main mod. Never published or installed on its own. The mixins themselves
+// are loader-independent and come from the half beside it (compat/xaero/common), added below
+// as a source root — the same layering as the main mod's core/fabric split.
+//
+// The module touches no Minecraft classes — its mixins target Xaero's own MapSaveLoad only —
+// so it still compiles against a fixed row (1.21.11, which keeps loom's classic remap
+// pipeline), and the compile pin for Xaero's World Map stays the 26.3 Fabric build (26.x jars
+// are unobfuscated, so a plain compileOnly consumes it directly, and Xaero's class names are
+// identical across every Minecraft it ships for). What follows the ROW now is the metadata:
+// this jar ships only inside the fabric jar of one Minecraft, and the requirements it declares
+// are written for that row at build time — the same rule the main mod's fabric.mod.json
+// follows, and the NeoForge half (compat/xaero/neoforge) does the same for its metadata.
+plugins {
+    id 'java-library'
+    id 'fabric-loom' version '1.18.2'
+}
+
+// The compat's version number is its own, deliberately not the main mod's: it moves only when
+// the compat itself changes, so a main-mod release never has to bump it. The nested copy always
+// builds from this source tree, so the two cannot drift apart.
+def compatVersion = '1.0.0'
+// Underscore, because NeoForge restricts mod ids to [a-z0-9_] and both halves of this compat
+// share one id (see the shared half's CsoXaeroCompatCore.COMPAT_ID).
+def compatId = 'chunkstorageoptimizer_xaerocompat'
+
+version = compatVersion
+// A group of this compat's own, not the main mod's: the compat jar modules are named 'fabric'
+// and 'neoforge' after the loader halves they sit beside, and Gradle requires every project
+// to have unique group+name coordinates — the loader modules and the other compat lines
+// would otherwise carry colliding identifiers, and the collision turned include/jarJar
+// project resolution into a task cycle (measured). The group is also honest: each compat
+// versions independently and never publishes under the main coordinates.
+group = "${mod_group_id}.compat.xaero"
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+// ------------------------------------------------------------------ what we build for
+
+// The same row resolution the fabric module runs (see fabric/build.gradle): this jar ships
+// nested inside the fabric jar of whichever Minecraft that module builds for, so it declares
+// that row's requirements. Default row 1.21.11, the same as :fabric. Only the columns the
+// metadata needs are read here.
+def supportedVersions = [:]
+def versionTable = rootProject.file('supported-versions.csv')
+versionTable.eachLine { line ->
+    def trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith('#')) {
+        return
+    }
+    def columns = trimmed.split(',').collect { it.trim() }
+    supportedVersions[columns[0]] = columns[1] as int
+}
+if (supportedVersions.isEmpty()) {
+    throw new GradleException("${versionTable} has no data rows.")
+}
+def mcVersion = (project.findProperty('minecraft_version') ?: '1.21.11') as String
+def rowJavaLevel = supportedVersions[mcVersion]
+if (rowJavaLevel == null) {
+    throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
+        + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
+}
+def javaLevel = (project.findProperty('java_level') ?: rowJavaLevel) as int
+
+// The game's own version id drops a trailing ".0" that the csv row key keeps ("26.3.0" is the
+// loader-line spelling of the game version "26.3"), and fabric.mod.json needs the game's
+// spelling.
+def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
+        ? mcVersion.substring(0, mcVersion.length() - 2)
+        : mcVersion
+
+base.archivesName = compatId
+
+// Toolchain 25, because the pinned 26.3 Xaero jar is compiled for it (class file 69) and a
+// Java 21 compiler cannot even read it. The OUTPUT stays at release 21: this jar runs on
+// every row the main mod ships for, and "java" in fabric.mod.json is written from the row.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+// The loader-independent half of the compat: the mixin itself.
+sourceSets.main.java.srcDir rootProject.file('compat/xaero/common/src/main/java')
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.11'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.19.5'
+
+    // Xaero's World Map, pinned to the release this compat was written against (fabric 26.3,
+    // 1.47.0 — see the shared half for why the Modrinth version id). At runtime fabric.mod.json
+    // only requires the outer mod — whether Xaero's World Map is installed never becomes a
+    // loader dependency, because an unsatisfied dependency of a nested mod would fail the
+    // whole jar's load for players without it; the mixins need no check of their own either,
+    // since their only target class is one of Xaero's own and never loads without the map.
+    compileOnly 'maven.modrinth:xaeros-world-map:nz9xjzWi'
+}
+
+// Only this module's own classes and resources ship (see the header note). Everything else on
+// the compile classpath — the mixin's Xaero target above all — is provided by the game and
+// the main mod at runtime.
+tasks.named('jar', Jar).configure {
+    include 'tqk114514/chunkstorageoptimizer/compat/**'
+    include 'fabric.mod.json'
+    include "${compatId}.mixins.json"
+    // The Mod Menu name/summary/description translations for this mod's own id.
+    include 'assets/**'
+}
+
+// fabric.mod.json carries the row's requirements, so it is expanded at build time like the
+// main mod's. A missing key fails the task rather than shipping an unresolved ${...}.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            compat_version   : compatVersion,
+            compat_id        : compatId,
+            minecraft_version: gameVersion,
+            java_level       : javaLevel,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}

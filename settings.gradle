@@ -43,30 +43,49 @@ if (minecraftVersionProperty.isPresent()) {
         )
     }
     def columns = row.split(',').collect { it.trim() }
+    // Each compat jar module rides its loader's column exactly like the loader module itself:
+    // it ships nested inside that loader's jar, so a row without that loader gets no compat
+    // jar. The loader-independent halves (below) build and test on every row.
     if (columns[3] != '-') {
         include 'neoforge'
+        include 'compat:xaero:neoforge'
     }
     if (columns[4] != '-') {
         include 'fabric'
+        include 'compat:voxy:fabric'
+        include 'compat:xaero:fabric'
     }
 } else {
     include 'neoforge'
     include 'fabric'
+    include 'compat:voxy:fabric'
+    include 'compat:xaero:fabric'
+    include 'compat:xaero:neoforge'
 }
 
-// The Voxy compatibility module. It is deliberately outside the supported-versions matrix: it
-// targets no Minecraft classes (only Voxy's own importer plus core's .cso reading API), so one
-// jar serves every Minecraft row and it pins its own toolchain versions internally — see its
-// build.gradle. Included unconditionally so it builds and tests in every invocation.
-include 'compat:voxy'
+// The compatibility modules, laid out the way the main mod splits its loader-independent code
+// from the loader modules: each compat has a loader-independent half (a `common` Gradle module
+// holding the mixin and the tests, compiled into every jar that carries it — the role :core
+// plays for the main mod) and one jar module per loader, which ships nested inside that
+// loader's main jar and rides its csv column exactly like the loader module itself. Xaero's
+// World Map ships for both loaders, so both halves exist; Voxy ships for Fabric only, so only
+// that half does — the neoforge position stays reserved for the day it ships one. The jar
+// modules are otherwise deliberately outside the supported-versions matrix — each pins its
+// own compile target and toolchain internally, so the same source serves every row — but
+// their METADATA declares the requirements of the row they build for, resolved exactly like
+// the loader modules' own (see their build.gradle files).
+include 'compat:xaero:common'
+include 'compat:voxy:common'
 
 // Loom reads fabric.loom.disableObfuscation while its plugin is applied, inside :fabric's
 // plugins {} block and so before any of that script's body runs. The 26.x rows need the flag
 // set (they build with no mappings; see fabric/build.gradle), which means it has to be in
 // place earlier than the module script — settings time is the first place that already knows
-// which Minecraft was requested.
+// which Minecraft was requested. Matched by PATH, not by name: the compat halves are also
+// named 'fabric' (compat:voxy:fabric, compat:xaero:fabric), and they always keep the classic
+// remap pipeline — their compile pin is 1.21.11 on every row.
 gradle.beforeProject { project ->
-    if (project.name == 'fabric' && requestedMinecraft != null && requestedMinecraft.startsWith('26.')) {
+    if (project.path == ':fabric' && requestedMinecraft != null && requestedMinecraft.startsWith('26.')) {
         project.ext['fabric.loom.disableObfuscation'] = 'true'
     }
 }

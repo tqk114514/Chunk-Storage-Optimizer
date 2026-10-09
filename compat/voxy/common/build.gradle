@@ -1,0 +1,67 @@
+// The loader-independent half of the Voxy compatibility: the in-memory Anvil synthesis and the
+// importer hooks. Neither touches a Minecraft or loader class â the mixin targets Voxy's own
+// WorldImporter and the synthesis is pure JDK plus core â so the same sources compile into
+// every loader jar that carries them (the fabric half beside it does today; a neoforge half
+// would too, which is the position this layout keeps open, Voxy itself shipping for Fabric
+// only so far). This module's own jar ships nowhere; it exists because the compat's tests
+// need a Gradle home that every row can reach â the role :core plays for the main mod.
+//
+// The bug this compat fixes: Voxy's world import lists a save's region folder and parses what
+// it recognises as Anvil regions â a .cso file is not one, so importing a Chunk Storage
+// Optimizer world skipped all of its terrain. The hooks widen that listing and materialise
+// each .cso as an in-memory Anvil region (see CsoAnvilRegionSynth), so the parsing, the job
+// queue and the voxelization all stay Voxy's own.
+plugins {
+    id 'java-library'
+}
+
+// The same group as this compat's jar modules — see the fabric half for why the compat
+// layer cannot share the main mod's group.
+group = "${mod_group_id}.compat.voxy"
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+// The synthesis reaches core's public API (CsoRegionFile), and core is deliberately compiled
+// from source everywhere rather than depended on as a library: no jar ever ships a second
+// copy of it. The jar filter in the loader halves keeps this module's output clean of the
+// same sources.
+sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
+
+dependencies {
+    // Voxy, pinned by Modrinth version id (see the fabric half for why the id rather than the
+    // version number: it names the exact jar, 0.2.16-beta built for 1.21.11). A plain
+    // compileOnly suffices here: the mixin names only Voxy's own classes, which intermediary
+    // never touches â the remap loom performs for the fabric half changes nothing about them.
+    compileOnly 'maven.modrinth:voxy:H3w2nVdU'
+    // The mixin annotations and the logging the hooks use; provided by the game at runtime.
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    compileOnly 'org.slf4j:slf4j-api:2.0.17'
+    // Core's codec imports zstd; the runtime copy always comes from the main mod's nested jar.
+    compileOnly 'com.github.luben:zstd-jni:1.5.6-3'
+
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // The synthesis test round-trips compressed regions, which needs the codec present.
+    testRuntimeOnly 'com.github.luben:zstd-jni:1.5.6-3'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}

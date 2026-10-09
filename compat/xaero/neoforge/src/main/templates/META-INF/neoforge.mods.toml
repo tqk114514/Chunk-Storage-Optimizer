@@ -1,0 +1,54 @@
+# The metadata of the Xaero World Map compat, NeoForge side — the counterpart of the Fabric
+# half's fabric.mod.json. The loader and Minecraft fields are written at build time for the
+# row this jar ships in (the same row resolution the main neoforge module uses), because the
+# jar travels nested inside that module's jar and can never meet another Minecraft.
+
+# modLoader and loaderVersion became optional only in newer loaders: FML 4.x (NeoForge for
+# Minecraft 1.21) refuses the jar outright without them. The floor stays deliberately low
+# because the exact NeoForge range below already pins which loader we run under — this field
+# only has to be satisfiable, it is not where the compatibility decision is made.
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+# The same issues URL the main mod ships: FML writes it into every crash report.
+issueTrackerURL="https://github.com/tqk114514/Chunk-Storage-Optimizer/issues"
+
+[[mods]]
+modId="${compat_id}"
+version="${compat_version}"
+displayName="CSO Xaero Compat"
+displayURL="https://modrinth.com/mod/chunk-storage-optimizer"
+authors="tqk114514"
+description='''Makes Xaero's World Map detect the .cso region files written by Chunk Storage Optimizer.'''
+
+# The [[mixins]] block declares the compat's mixin config to FML.
+[[mixins]]
+config="${compat_id}.mixins.json"
+
+# Xaero's World Map is deliberately NOT among the dependencies: an unsatisfied required
+# dependency of a nested mod would fail the whole jar's load for players without it. Its
+# presence needs no check of its own — the compat's mixins target one of Xaero's own classes,
+# which never loads without the map installed, and require 0 covers a version that is present
+# but shaped differently.
+[[dependencies.${compat_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},${neo_version_upper})"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${compat_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Any version: the outer jar carries this mod, so the two always arrive together.
+[[dependencies.${compat_id}]]
+    modId="chunkstorageoptimizer"
+    type="required"
+    versionRange="[0,)"
+    ordering="NONE"
+    side="BOTH"

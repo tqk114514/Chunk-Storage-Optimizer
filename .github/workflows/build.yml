@@ -137,11 +137,11 @@ jobs:
         run: chmod +x ./gradlew
 
       # The loader module named by the row is the one with a Minecraft dependency, so it is what
-      # gets built; :core:test covers the format layer, which is the same jar-independent code on
-      # every row.
+      # gets built; :core:test covers the format layer and the two compat `common` modules'
+      # tests cover the compat halves — all the same jar-independent code on every row.
       - name: Build the mod
         run: >
-          ./gradlew :core:test :${{ matrix.loader }}:build
+          ./gradlew :core:test :compat:xaero:common:test :compat:voxy:common:test :${{ matrix.loader }}:build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           "-Porg.gradle.java.installations.paths=${{ steps.jdk25.outputs.path }},${{ steps.jdk21.outputs.path }}"
 

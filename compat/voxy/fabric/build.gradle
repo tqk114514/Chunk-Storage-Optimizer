@@ -1,0 +1,134 @@
+// The Fabric half of the Voxy compatibility: a small fabric mod that lets Voxy's world import
+// read the .cso region files the main mod writes. It ships as a NESTED mod inside the main
+// fabric jar (fabric/build.gradle includes it; C2ME bundles its modules the same way), so
+// players download exactly one file and Mod Menu lists the compat as a child of the main mod.
+// Never published or installed on its own. The importer hooks and the Anvil synthesis are
+// loader-independent and come from the half beside it (compat/voxy/common), added below as a
+// source root — Voxy currently ships for Fabric only, so no neoforge sibling exists yet.
+//
+// Deliberately decoupled from the main code: core and the common half are compiled from source
+// only, and the jar packages nothing but this module's own classes — the main mod (a required
+// runtime dependency) provides core and its nested zstd at runtime, and shipping a second copy
+// would put two versions of one class on the classpath.
+//
+// The module touches no Minecraft classes, so it still compiles against a fixed row (1.21.11,
+// which keeps loom's classic remap pipeline, which remaps Voxy (intermediary) to named for
+// compilation; the output contains no remapped references either way). What follows the ROW
+// is the metadata: this jar ships only inside the fabric jar of one Minecraft, and the
+// requirements fabric.mod.json declares are written for that row at build time — the same rule
+// the main mod's fabric.mod.json follows, and the Xaero compat's halves do the same.
+plugins {
+    id 'java-library'
+    id 'fabric-loom' version '1.18.2'
+}
+
+// The compat's version number is its own, deliberately not the main mod's: it moves only when
+// the compat itself changes, so a main-mod release never has to bump it. The nested copy always
+// builds from this source tree together with the core it reads, so the two cannot drift apart.
+def compatVersion = '1.0.0'
+def compatId = 'chunkstorageoptimizer-voxycompat'
+
+version = compatVersion
+// A group of this compat's own, not the main mod's: the compat jar modules are named 'fabric'
+// and 'neoforge' after the loader halves they sit beside, and Gradle requires every project
+// to have unique group+name coordinates — the loader modules and the other compat lines
+// would otherwise carry colliding identifiers, and the collision turned include/jarJar
+// project resolution into a task cycle (measured). The group is also honest: each compat
+// versions independently and never publishes under the main coordinates.
+group = "${mod_group_id}.compat.voxy"
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+    mavenCentral()
+}
+
+// ------------------------------------------------------------------ what we build for
+
+// The same row resolution the fabric module runs (see fabric/build.gradle): this jar ships
+// nested inside the fabric jar of whichever Minecraft that module builds for, so it declares
+// that row's requirements. Default row 1.21.11, the same as :fabric. Only the columns the
+// metadata needs are read here.
+def supportedVersions = [:]
+def versionTable = rootProject.file('supported-versions.csv')
+versionTable.eachLine { line ->
+    def trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith('#')) {
+        return
+    }
+    def columns = trimmed.split(',').collect { it.trim() }
+    supportedVersions[columns[0]] = columns[1] as int
+}
+if (supportedVersions.isEmpty()) {
+    throw new GradleException("${versionTable} has no data rows.")
+}
+def mcVersion = (project.findProperty('minecraft_version') ?: '1.21.11') as String
+def rowJavaLevel = supportedVersions[mcVersion]
+if (rowJavaLevel == null) {
+    throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
+        + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
+}
+def javaLevel = (project.findProperty('java_level') ?: rowJavaLevel) as int
+
+// The game's own version id drops a trailing ".0" that the csv row key keeps ("26.3.0" is the
+// loader-line spelling of the game version "26.3"), and fabric.mod.json needs the game's
+// spelling.
+def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
+        ? mcVersion.substring(0, mcVersion.length() - 2)
+        : mcVersion
+
+base.archivesName = compatId
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+// The loader-independent half of the compat, and the core it reaches through.
+sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
+sourceSets.main.java.srcDir rootProject.file('compat/voxy/common/src/main/java')
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.11'
+    mappings loom.officialMojangMappings()
+    modImplementation 'net.fabricmc:fabric-loader:0.19.5'
+
+    // Voxy, pinned to the release this compat was written against (0.2.16-beta built for
+    // 1.21.11 — see the common half for why the Modrinth version id). At runtime
+    // fabric.mod.json only requires "voxy": "*" — newer releases keep working until the
+    // importer's shape changes, at which point the require=0 mixins stand down and the init
+    // self-check logs the reason.
+    modCompileOnly 'maven.modrinth:voxy:H3w2nVdU'
+
+    // Core's codec imports zstd; runtime always comes from the main mod's nested jar.
+    implementation 'com.github.luben:zstd-jni:1.5.6-3'
+}
+
+// Only this module's own classes and resources ship (see the header note). Everything else on
+// the compile classpath — core and the common half above all — is provided by the main mod at
+// runtime.
+tasks.named('jar', Jar).configure {
+    include 'tqk114514/chunkstorageoptimizer/compat/**'
+    include 'fabric.mod.json'
+    include "${compatId}.mixins.json"
+    // The Mod Menu name/summary/description translations for this mod's own id.
+    include 'assets/**'
+}
+
+// fabric.mod.json carries the row's requirements, so it is expanded at build time like the
+// main mod's. A missing key fails the task rather than shipping an unresolved ${...}.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            compat_version   : compatVersion,
+            compat_id        : compatId,
+            minecraft_version: gameVersion,
+            java_level       : javaLevel,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}

@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero 互換",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Xaero のワールドマップが、チャンクストレージ最適化が書き込んだ .cso リージョンファイルを認識できるようにします。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Xaero のワールドマップがインストールされている場合、この mod が書き込んだ .cso リージョンファイルをバニラの .mca と同じように認識し、ワールドセーブから描画された地図データがセッションをまたいで保持されます。Xaero のワールドマップがない環境では何もしません。"
+}

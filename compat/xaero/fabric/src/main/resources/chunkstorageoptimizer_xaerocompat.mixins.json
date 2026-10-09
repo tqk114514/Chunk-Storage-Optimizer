@@ -1,0 +1,11 @@
+{
+  "required": false,
+  "package": "tqk114514.chunkstorageoptimizer.compat.xaero.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "MapSaveLoadMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

@@ -11,8 +11,22 @@
 - `common`：依赖 Minecraft，不依赖加载器。包含存储层、mixin、命令实现，以及按权限 API 分成的
   两套 `CsoPermissions`。
 - `neoforge` 与 `fabric`：各自的加载器入口与配置存储。
+- `compat`：对第三方 mod 的兼容附属，与主代码不耦合，内部再按主 mod 的分层组织：每个附属有一个
+  加载器无关的 `common`（mixin、可复用的实现与其测试；它是一个 Gradle 模块，附属的测试都在这里
+  跑——扮演 `core` 的角色——同时作为源码目录被每个附属 jar 模块编译，方式与主 mod 的 `common`
+  一样），以及每加载器一个 jar 模块。Xaero 世界地图兼容两头都有（`compat/xaero` 下的 `fabric`
+  与 `neoforge`）；Voxy 兼容目前只有 `compat/voxy/fabric`——Voxy 还没有别的加载器版本，
+  `neoforge` 的位置留出来了。
 
 `core` 和 `common` 不产出独立 jar，它们作为源码目录被两个加载器模块各自编译一次。
+
+附属 jar 也不单独发布：它们作为嵌套 mod 打进对应加载器的主 jar（Fabric 用 loom 的 `include`，
+NeoForge 用 `jarJar`），玩家只下载一个文件，Mod Menu 里附属显示为主 mod 的子项。附属的版本号独立
+于主 mod，只在自身变化时递增；附属元数据里声明的版本要求与主 mod 一样由 `-Pminecraft_version`
+选中的 csv 行在编译时写入。附属对第三方 mod 不做硬依赖——嵌套 mod 的未满足依赖会让整个 jar 的
+加载失败——"装没装第三方"也从不写进 depends：mixin 的目标类只随第三方 mod 一起加载，没装就
+什么都不发生，装了但形状变了由 require 0 兜底并在日志里说明。附属 id 因此遵守 NeoForge 更严的
+modid 规则（不允许连字符），写作 `chunkstorageoptimizer_xaerocompat`。
 
 ## 多版本构建
 
@@ -27,7 +41,9 @@
 
 Gradle 会为任何被请求的任务配置所有已 include 的模块，因此无法服务该版本行的模块会使构建在
 到达自身任务之前失败。决定模块集合的位置是 `settings.gradle`：它读取同一份 csv 的两个加载器
-列，列值为 `-` 的模块不被 include，请求该模块会得到 "project not found"。不传
+列，列值为 `-` 的模块不被 include，请求该模块会得到 "project not found"；附属 jar 模块
+（`compat:voxy:fabric`、`compat:xaero:fabric`、`compat:xaero:neoforge`）随各自加载器的列一起
+include，加载器无关的 `compat:xaero:common` 与 `compat:voxy:common` 总是被 include。不传
 `-Pminecraft_version` 时两个模块都被 include，各自使用自己那一行的默认版本（NeoForge 26.1.2、
 Fabric 1.21.11）。
 

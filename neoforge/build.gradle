@@ -111,6 +111,12 @@ neoForge {
             client()
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // Debug hook: -PcsoQuickPlay=<world folder> auto-joins that save on launch, so the
+            // client can be exercised without touching the UI (the Fabric module has the same
+            // hook; it was how the Xaero compat bug was chased down).
+            if (project.hasProperty('csoQuickPlay')) {
+                programArguments.addAll '--quickPlaySingleplayer', project.property('csoQuickPlay')
+            }
         }
 
         server {
@@ -161,6 +167,22 @@ dependencies {
     // loads at runtime. NOTE: nested-jar native extraction is a known risk, so the mixin probes
     // zstd once at startup (RegionFileStorageMixin.cso$zstdUsable) and falls back to Anvil.
     implementation(jarJar("com.github.luben:zstd-jni:1.5.6-3"))
+
+    // The Xaero World Map compat ships as a nested mod inside this jar — jarJar is NeoForge's
+    // answer to loom's `include` (the Fabric module bundles its compat the same way), so
+    // players download exactly one file. It is deliberately NOT linked any harder than that:
+    // the compat's neoforge.mods.toml requires only the outer mod, and whether Xaero's World
+    // Map is installed never becomes a dependency, because an unsatisfied dependency of a
+    // nested mod would fail the whole jar's load for players without it. `implementation` also
+    // puts it on the dev runs' classpath, so the compat loads in runClient without extracting
+    // it; the compat resolves the same -Pminecraft_version row as this module and writes that
+    // row's requirements into its metadata.
+    //
+    // Exercising the compat in a dev run needs Xaero's World Map dropped into run/mods as a
+    // real mod jar — NOT a localRuntime dependency: MDG masks classpath mod jars out of the
+    // mixin transformer, so the compat's mixins cannot reach classes loaded from one
+    // (measured; the Xaero pin to copy is in compat/xaero/neoforge/build.gradle).
+    implementation(jarJar(project(':compat:xaero:neoforge')))
 }
 
 // Expand the placeholders in the mod metadata and the mixin config. A missing property makes the
@@ -177,6 +199,8 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             mod_license            : mod_license,
             mod_author             : mod_author,
             mod_version            : mod_version,
+            // The icon field is the FML seam's other half: see the icon comment in the toml.
+            mod_icon_field         : fmlMajor == '12' ? 'iconFile' : 'logoFile',
     ]
     inputs.properties replaceProperties
     expand replaceProperties

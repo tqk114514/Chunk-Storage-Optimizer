@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero 호환",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Xaero의 월드 맵이 청크 스토리지 최적화가 기록한 .cso 리전 파일을 인식하도록 합니다.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Xaero의 월드 맵이 설치되어 있으면 이 모드가 기록한 .cso 리전 파일을 바닐라 .mca와 같은 방식으로 인식하여, 월드 세이브에서 그려진 지도 데이터가 세션 간에 유지됩니다. Xaero의 월드 맵이 없으면 아무 동작도 하지 않습니다."
+}

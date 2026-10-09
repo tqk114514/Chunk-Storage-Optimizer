@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero 兼容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "让 Xaero 的世界地图识别区块存储优化器写入的 .cso region 文件。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "安装 Xaero 的世界地图后，地图会像识别原版 .mca 一样识别本 mod 写入的 .cso region 文件，从存档绘制的地图数据跨会话保留。未安装 Xaero 的世界地图时本附属不会有任何作为。"
+}

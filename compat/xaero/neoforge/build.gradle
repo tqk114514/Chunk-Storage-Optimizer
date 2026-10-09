@@ -1,0 +1,149 @@
+// The NeoForge half of the Xaero World Map compatibility: a small neoforge mod that ships as
+// a NESTED mod inside the main neoforge jar (neoforge/build.gradle jarJars it — NeoForge's own
+// answer to loom's `include`), so players download exactly one file. Never published or
+// installed on its own. The mixins themselves are loader-independent and come from the half
+// beside it (compat/xaero/common), added below as a source root — the same layering as the
+// main mod's core/neoforge split. Xaero's World Map ships for this loader with the same class
+// names and shapes as on Fabric, which is what lets one mixin serve both halves.
+//
+// Like the Fabric half, the module touches no Minecraft classes, so it compiles against a
+// fixed loader build (the 1.21.11 row's 21.11.42: the FML APIs it names — @Mod and
+// ModList.isLoaded — are unchanged from FML 11 through 12, and the oldest line is the one
+// most likely to catch a removed API), and its compile pin for Xaero's World Map is the 26.3
+// NeoForge build. What follows the ROW is the metadata: this jar ships only inside the
+// neoforge jar of one Minecraft, and the requirements neoforge.mods.toml declares are written
+// for that row at build time — the same rule the main mod's neoforge.mods.toml follows.
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.147'
+}
+
+// The compat's version number is its own, deliberately not the main mod's: it moves only when
+// the compat itself changes, so a main-mod release never has to bump it. The nested copy always
+// builds from this source tree, so the two cannot drift apart.
+def compatVersion = '1.0.0'
+// Underscore, because NeoForge restricts mod ids to [a-z0-9_] and both halves of this compat
+// share one id (see the shared half's CsoXaeroCompatCore.COMPAT_ID).
+def compatId = 'chunkstorageoptimizer_xaerocompat'
+
+version = compatVersion
+// A group of this compat's own, not the main mod's: the compat jar modules are named 'fabric'
+// and 'neoforge' after the loader halves they sit beside, and Gradle requires every project
+// to have unique group+name coordinates — the loader modules and the other compat lines
+// would otherwise carry colliding identifiers, and the collision turned include/jarJar
+// project resolution into a task cycle (measured). The group is also honest: each compat
+// versions independently and never publishes under the main coordinates.
+group = "${mod_group_id}.compat.xaero"
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+    }
+}
+
+// ------------------------------------------------------------------ what we build for
+
+// The same row resolution the neoforge module runs (see neoforge/build.gradle): this jar
+// ships nested inside the neoforge jar of whichever Minecraft that module builds for, so it
+// declares that row's requirements. Default row 26.1.2, the same as :neoforge. Only the
+// columns the metadata needs are read here.
+def supportedVersions = [:]
+def versionTable = rootProject.file('supported-versions.csv')
+versionTable.eachLine { line ->
+    def trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith('#')) {
+        return
+    }
+    def columns = trimmed.split(',').collect { it.trim() }
+    supportedVersions[columns[0]] = columns[3]
+}
+if (supportedVersions.isEmpty()) {
+    throw new GradleException("${versionTable} has no data rows.")
+}
+def mcVersion = (project.findProperty('minecraft_version') ?: '26.1.2') as String
+def rowNeoFloor = supportedVersions[mcVersion]
+if (rowNeoFloor == null) {
+    throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
+        + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
+}
+if (rowNeoFloor == '-') {
+    throw new GradleException("Minecraft ${mcVersion} has no NeoForge build in supported-versions.csv.")
+}
+def neoVersion = (project.findProperty('neo_version') ?: rowNeoFloor) as String
+
+// The loader drops the old "1." prefix, so Minecraft 1.21.11 is served by the 21.11 line;
+// a two-part version means patch 0. Guards against a row whose floor was copied in from a
+// different Minecraft, which would otherwise only surface as a jar no player can load.
+def loaderLine = mcVersion.startsWith('1.') ? mcVersion.substring(2) : mcVersion
+if (!loaderLine.contains('.')) {
+    loaderLine += '.0'
+}
+if (!neoVersion.startsWith("${loaderLine}.")) {
+    throw new GradleException("NeoForge floor ${neoVersion} does not belong to Minecraft ${mcVersion} " \
+        + "(expected a build of ${loaderLine}.N).")
+}
+// Stop the dependency range at the next loader line instead of running to infinity: that line
+// is a different Minecraft, and an untested newer loader should refuse us, not crash.
+def upperParts = loaderLine.split('\\.').collect { it as int }
+upperParts[-1] = upperParts[-1] + 1
+def neoUpper = upperParts.join('.')
+
+base.archivesName = "${compatId}-neoforge"
+
+// Toolchain 25, because the pinned 26.3 Xaero jar is compiled for it (class file 69) and a
+// Java 21 compiler cannot even read it. The OUTPUT stays at release 21: this jar runs on
+// every row the main mod ships for.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+// The loader-independent half of the compat: the mixin itself.
+sourceSets.main.java.srcDir rootProject.file('compat/xaero/common/src/main/java')
+
+neoForge {
+    // The fixed compile pin (see the header). No runs of its own: the compat is exercised
+    // through :neoforge:runClient, which loads it from its classpath via the jarJar wiring.
+    version = '21.11.42'
+}
+
+dependencies {
+    // Xaero's World Map, pinned to the release this compat was written against (neoforge 26.3,
+    // 1.47.0 — see the shared half for why the Modrinth version id). At runtime
+    // neoforge.mods.toml only requires the outer mod — whether Xaero's World Map is installed
+    // never becomes a loader dependency, because an unsatisfied dependency of a nested mod
+    // would fail the whole jar's load for players without it; the mixins need no check of
+    // their own either, since their only target class is one of Xaero's own and never loads
+    // without the map.
+    compileOnly 'maven.modrinth:xaeros-world-map:p5t2Xn8F'
+}
+
+// Expand the mod metadata like the main neoforge module does; a missing property fails the
+// task rather than shipping an unresolved ${...}.
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+            compat_id             : compatId,
+            compat_version        : compatVersion,
+            minecraft_version_range: "[${mcVersion}]",
+            neo_version            : neoVersion,
+            neo_version_upper      : neoUpper,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+// Only this module's own classes and resources ship (see the header note). Everything else on
+// the compile classpath — the mixin's Xaero target above all — is provided by the game and
+// the main mod at runtime.
+tasks.named('jar', Jar).configure {
+    include 'tqk114514/chunkstorageoptimizer/compat/**'
+    include 'META-INF/neoforge.mods.toml'
+    include "${compatId}.mixins.json"
+}

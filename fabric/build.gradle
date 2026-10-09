@@ -102,6 +102,11 @@ loom {
     runs {
         client {
             client()
+            // Debug hook: -PcsoQuickPlay=<world folder> auto-joins that save on launch, so the
+            // client can be exercised without touching the UI (used for the Xaero compat bug).
+            if (project.hasProperty('csoQuickPlay')) {
+                programArgs '--quickPlaySingleplayer', project.property('csoQuickPlay')
+            }
         }
         // server() already passes --nogui; serverWithGui() is the opt-out.
         server {
@@ -132,15 +137,19 @@ dependencies {
         modCompileOnly "com.terraformersmc:modmenu:${modMenuVersion}"
     }
 
-    // The Voxy compat ships as a nested mod inside this jar — one download, and Mod Menu lists
-    // it as a child entry (C2ME bundles its modules the same way). `include` is the whole wiring:
-    // it nests the compat's jar into remapJar's output and makes Gradle build it on demand, and
-    // it is deliberately NOT also a mod dependency — loom reads those at configuration time,
-    // before any jar exists on a clean one-shot build, and the compat's fabric.mod.json is
-    // self-contained anyway: it requires only the outer mod, and whether Voxy is installed is
-    // decided by its mixin plugin, never by a loader dependency, because an unsatisfied
-    // dependency of a nested mod would fail the whole jar's load for players without Voxy.
-    include project(':compat:voxy')
+    // The compatibility mods ship as nested mods inside this jar — one download, and Mod Menu
+    // lists each as a child entry (C2ME bundles its modules the same way). `include` is the
+    // whole wiring: it nests the jar into remapJar's output and makes Gradle build it on
+    // demand, and it is deliberately NOT also a mod dependency — loom reads those at
+    // configuration time, before any jar exists on a clean one-shot build, and each compat's
+    // fabric.mod.json is self-contained anyway: it requires only the outer mod, and whether
+    // the third-party mod is installed is decided at runtime — its classes are the mixins'
+    // targets, so without it the mixins simply have nothing to apply to — never by a loader
+    // dependency, because an unsatisfied dependency of a nested mod would fail the whole
+    // jar's load for players without it. Each compat resolves the same -Pminecraft_version
+    // row as this module and writes that row's requirements into its metadata.
+    include project(':compat:voxy:fabric')
+    include project(':compat:xaero:fabric')
 
     // zstd-jni ships inside the jar through loom's `include`, which nests it the way NeoForge's
     // jarJar does. The mixin probes it once and falls back to Anvil if it cannot be loaded.
