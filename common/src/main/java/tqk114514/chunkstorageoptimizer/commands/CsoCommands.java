@@ -212,6 +212,28 @@ public final class CsoCommands {
             // those keep writing .mca for the rest of the session. Converted now, the newer .mca
             // data would sit behind the fresh .cso files and read as missing chunks, so the switch
             // back has to happen after the world is re-entered.
+            if (CsoWorldMarker.isDisabledRoot(root)) {
+                // The opt-out is the one reason this command can act on itself: the marker is
+                // read when a world attaches, so clearing it now changes nothing about the
+                // running session and saves the player a manual file deletion. The conversion
+                // itself still waits — this session's own .mca handles are why it cannot run —
+                // but the way back is now two commands and zero file browsing.
+                try {
+                    CsoWorldMarker.clear(root);
+                } catch (IOException e) {
+                    source.sendFailure(Component.literal("Could not remove the opt-out marker "
+                        + root.resolve(CsoWorldMarker.FILE_NAME) + ": " + e
+                        + ". Delete it by hand, re-enter the world, then run /cso convert cso."));
+                    return 0;
+                }
+                source.sendSuccess(() -> Component.literal(
+                    "CSO is not serving this world: it opted out, and the game's storage still"
+                    + " holds the .mca files open for this session, so converting now would put"
+                    + " the newer .mca chunks behind the fresh .cso ones. The opt-out marker is"
+                    + " cleared — leave and re-enter the world, then run /cso convert cso again."),
+                    false);
+                return 0;
+            }
             source.sendFailure(Component.literal("CSO is not serving this world (" + CsoRuntime.reason(root)
                 + "). Re-enter it with that condition gone, then run /cso convert cso — otherwise the"
                 + " .mca files this session still holds open would hide behind the new .cso ones."));
@@ -372,7 +394,8 @@ public final class CsoCommands {
             if ("mca".equals(target)) {
                 message.append(" This world now stays on vanilla storage: the marker ")
                     .append(root.resolve(CsoWorldMarker.FILE_NAME))
-                    .append(" survives a restart. Delete it and re-enter the world to switch back.");
+                    .append(" survives a restart. To switch back later: run /cso convert cso to clear")
+                    .append(" the marker, re-enter the world, then run it again to convert.");
             }
             String text = message.toString();
             source.sendSuccess(() -> Component.literal(text), false);

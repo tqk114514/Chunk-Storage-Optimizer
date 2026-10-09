@@ -56,10 +56,18 @@ public final class CsoWorldMarker {
     }
 
     /**
-     * Writes the marker and returns its path. The reason is text for whoever opens the file, and the
-     * way back has to be in there too: switching a world over means deleting the file and then
-     * re-entering it, because the storage files the game already has open cannot be handed to CSO
-     * mid-session.
+     * Removes the opt-out marker, if any. The running session is unaffected: the marker is
+     * consulted when a world attaches, so the change takes effect at the next re-entry.
+     */
+    public static void clear(Path root) throws IOException {
+        Files.deleteIfExists(root.resolve(FILE_NAME));
+    }
+
+    /**
+     * Writes the marker and returns its path. The reason is text for whoever opens the file, and
+     * the way back has to be in there too: {@code /cso convert cso} clears the marker on its
+     * first run, and the conversion itself runs after a re-entry, because the storage files
+     * the game already has open cannot be handed to CSO mid-session.
      */
     public static Path disable(Path root, String reason) throws IOException {
         Path marker = root.resolve(FILE_NAME);
@@ -67,8 +75,8 @@ public final class CsoWorldMarker {
             Chunk Storage Optimizer does not serve this world.
             reason: %s
             written: %s
-            To switch back: delete this file, re-enter the world, then run /cso convert cso prune
-            to move the region files onto the .cso format again.
+            To switch back: run /cso convert cso to clear this marker, re-enter the world, then
+            run it again to move the region files onto the .cso format.
             """.formatted(reason, Instant.now().truncatedTo(ChronoUnit.SECONDS)));
         return marker;
     }

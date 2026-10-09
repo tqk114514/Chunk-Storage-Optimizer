@@ -80,11 +80,23 @@ class CsoWorldMarkerTest {
     }
 
     @Test
+    void clearingTheMarkerReEnablesAndIsANoOpWhenAbsent(@TempDir Path tmp) throws IOException {
+        makeWorld(tmp);
+        CsoWorldMarker.disable(tmp, "converted back to .mca");
+        assertTrue(CsoWorldMarker.isDisabledRoot(tmp), "a written marker disables the root");
+        CsoWorldMarker.clear(tmp);
+        assertFalse(CsoWorldMarker.isDisabledRoot(tmp), "a cleared marker no longer disables");
+        // Clearing an unmarked world is a no-op, not a failure.
+        CsoWorldMarker.clear(tmp);
+        assertFalse(CsoWorldMarker.isDisabledRoot(tmp));
+    }
+
+    @Test
     void theMarkerSaysWhyAndHowToUndoIt(@TempDir Path tmp) throws IOException {
         makeWorld(tmp);
         String text = Files.readString(CsoWorldMarker.disable(tmp, "converted back to .mca"));
         assertTrue(text.contains("reason: converted back to .mca"), text);
-        assertTrue(text.contains("delete this file"), "a player needs the way back from the file alone");
+        assertTrue(text.contains("/cso convert cso"), "a player needs the way back from the file alone");
         assertTrue(text.contains("re-enter the world"), "the order matters: open files cannot be handed over");
         assertTrue(text.contains("/cso convert cso"), text);
     }
