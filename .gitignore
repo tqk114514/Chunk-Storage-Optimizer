@@ -51,3 +51,7 @@ repo/
 compatibility/
 # Third-party reference clones kept beside our own compat modules (Chunky now).
 compat/Chunky/
+
+# Test runs drop log4j output next to the module working dirs.
+fabric/logs/
+neoforge/logs/

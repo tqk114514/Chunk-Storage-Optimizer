@@ -1,13 +1,16 @@
 package tqk114514.chunkstorageoptimizer.storage;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 
@@ -50,6 +53,29 @@ class CsoStorageLifecycleTest {
 
     private CsoStorage storage;
     private RecordingHandles handles;
+
+    /**
+     * Lets {@link ChunkPos} static-initialise on a plain JVM. Between 1.21.2 and 26.1 its
+     * initialisation pulls {@code ChunkPyramid -> ChunkStatus -> BuiltInRegistries}, and the
+     * first registry registration refuses to run outside a bootstrapped game ("Not
+     * bootstrapped", called from the game_event registry) — the check is a single static
+     * flag, and that is all this suite needs: no registry content, no datafixers, no version
+     * detection, none of which would even work here, since the fabric game's own bootstrap
+     * wants version detection first and NeoForge's patched {@code SharedConstants} demands a
+     * live FML loader the moment its class loads. Faking the flag lets the registrations the
+     * initialisation actually performs succeed; a row that never gates on them (and so may
+     * not even have the field) passes through the catch untouched.
+     */
+    @BeforeAll
+    static void letTheRegistryInitialize() throws ReflectiveOperationException {
+        try {
+            Field bootstrapped = Bootstrap.class.getDeclaredField("isBootstrapped");
+            bootstrapped.setAccessible(true);
+            bootstrapped.setBoolean(null, true);
+        } catch (NoSuchFieldException absentOnThisRow) {
+            // A row without the flag does not gate registrations on it either.
+        }
+    }
 
     @AfterEach
     void forgetStorage() throws IOException {

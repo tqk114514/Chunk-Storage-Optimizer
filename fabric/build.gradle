@@ -102,6 +102,10 @@ sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
 sourceSets.main.java.srcDir rootProject.file("common/src/version/${apiFamily}/java")
 sourceSets.main.java.srcDir rootProject.file("fabric/src/version/${screenFamily}/java")
 sourceSets.main.resources.srcDir rootProject.file('core/src/main/resources')
+// The storage-layer tests live with the common sources they test and compile against this
+// row's Minecraft; the neoforge module adds the same directory, so one suite runs per row
+// per loader in the matrix.
+sourceSets.test.java.srcDir rootProject.file('common/src/test/java')
 
 loom {
     runs {
