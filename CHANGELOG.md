@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.1.5] - 2026-10-10
+
+### Fixed
+- **A conversion that hit a failing file kept converting in the background.** The failure
+  path asked the worker pool to stop but never waited for it — the workers do not check the
+  interrupt flag — so the command reported failure, the world un-paused, and the workers kept
+  writing region files beside the live game. Every later symptom in that player's session
+  traced back to this: refused renames where the game had just re-opened the files, a chunk
+  save failing on the write-ahead log, and a read racing a replacement. The failure path now
+  drains the pool before anything returns (60 s bound): the world is never un-paused next to
+  a writer the save does not know about.
+- **One region file held open by another program no longer aborts the whole conversion.**
+  The world map reading its tiles, a backup tool, a scanner — a refused rename on one file
+  is now a skip with a count in the summary, not the end of the run: the file's source is
+  untouched and the union read serves both formats, so closing the holder and running the
+  command again converges on just those files. Renames also retry longer now (10 attempts,
+  backoff up to 500 ms), and the write-ahead log's clear — which runs on the live save path —
+  retries the same way instead of failing a chunk store over one refused delete.
+- **The switch to vanilla storage is no longer recorded while any region was skipped.** The
+  `cso.disabled` marker hands the world to vanilla, which reads only `.mca` — writing it
+  with a skipped region still living on its `.cso` side would have hidden that data from the
+  game. A run with skipped regions now stays on the union this mod serves and the summary
+  says what to resolve; the marker lands only once every file has made it.
+- **A file that could not be opened at all no longer stops a conversion's start** — same
+  refusal, same skip-and-report treatment as above.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.4] - 2026-10-10
 
 ### Added
