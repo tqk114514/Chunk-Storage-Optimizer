@@ -120,7 +120,7 @@ final class CsoWal {
 
     /** Drops the WAL. Only safe once the batch it describes is already durable. */
     void clear() throws IOException {
-        Files.deleteIfExists(walPath);
+        FileMoves.settleDelete(walPath);
     }
 
     /**
@@ -222,6 +222,9 @@ final class CsoWal {
     }
 
     private void deleteQuietly() {
+        // No retry here on purpose: this path cleans up leftovers where patience has nothing
+        // to protect — a delete that loses to a holder simply leaves the file for the next
+        // open, and seconds of backoff behind a "quiet" name is its own kind of failure.
         try {
             Files.deleteIfExists(walPath);
         } catch (IOException ignored) {

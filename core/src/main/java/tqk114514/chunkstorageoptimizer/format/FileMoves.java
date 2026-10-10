@@ -29,16 +29,41 @@ public final class FileMoves {
     private FileMoves() {
     }
 
+    /**
+     * Deletes with the same tolerance the moves get: Windows denies deleting a file any other
+     * handle has open, and the write-ahead log's clear runs on the live save path, where the
+     * holder can be a scanner's peek (measured in-game: a chunk store failed outright over
+     * one). Same backoff, same refusal to report what a retry can survive.
+     */
+    public static void settleDelete(Path file) throws IOException {
+        AccessDeniedException last = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                Files.deleteIfExists(file);
+                return;
+            } catch (AccessDeniedException e) {
+                last = e;
+                try {
+                    Thread.sleep(Math.min(500L, 25L << attempt));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+        throw last;
+    }
+
     public static void settle(Path temp, Path target, StandardCopyOption... options) throws IOException {
         AccessDeniedException last = null;
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 10; attempt++) {
             try {
                 Files.move(temp, target, options);
                 return;
             } catch (AccessDeniedException e) {
                 last = e;
                 try {
-                    Thread.sleep(25L << attempt);
+                    Thread.sleep(Math.min(500L, 25L << attempt));
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw e;

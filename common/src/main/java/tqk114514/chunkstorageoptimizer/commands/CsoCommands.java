@@ -277,6 +277,7 @@ public final class CsoCommands {
             int deleted = 0;
             int unreadableFiles = 0;
             int unreadableChunks = 0;
+            int heldFiles = 0;
             // One task per region file, on a bounded pool, while this thread — the server
             // thread, the caller of the command — waits on completions. The freeze is kept:
             // a blocked server thread is the guarantee that nothing writes the region folders
@@ -310,11 +311,33 @@ public final class CsoCommands {
                         unreadableFiles += outcome.unreadableFiles();
                         unreadableChunks += outcome.unreadableChunks();
                     } catch (java.util.concurrent.ExecutionException e) {
-                        // The first failure ends the run exactly the way the sequential loop's
-                        // would have: what already landed stays converted, the rest is
-                        // untouched, and the catch below reports that. The interrupt is to
-                        // stop throwing more work at a save that just failed.
+                        if (e.getCause() instanceof java.nio.file.AccessDeniedException) {
+                            // Held open by someone else — the world map reading its tiles, a
+                            // backup tool, a scanner. Skipping one file is safe in both
+                            // directions: its source is untouched and the union read serves
+                            // both formats, so a re-run after the holder lets go converges.
+                            // Failing the whole run over one busy file is what turned it into
+                            // a cascade (measured: the run aborted, its workers did not stop,
+                            // and the re-entered world met them mid-file).
+                            heldFiles++;
+                            continue;
+                        }
+                        // Any other failure ends the run exactly the way the sequential
+                        // loop's would have: what already landed stays converted, the rest is
+                        // untouched, and the catch below reports that. shutdownNow only sets
+                        // an interrupt flag these tasks do not check, so the pool is DRAINED
+                        // before anything unblocks: a worker still inside a file operation is
+                        // a writer the save outlives the command by, and the world must not
+                        // be un-paused beside it.
                         pool.shutdownNow();
+                        try {
+                            if (!pool.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                                throw new IOException("A conversion worker would not stop within 60 s");
+                            }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException("Interrupted waiting for the conversion workers");
+                        }
                         if (e.getCause() instanceof RuntimeException runtime) {
                             throw runtime;
                         }
@@ -329,10 +352,26 @@ public final class CsoCommands {
                     progress.step();
                 }
             } finally {
+                // Success and held-skip paths leave nothing running; the hard-fail path drained
+                // above. This is for every other way out — the pool must never outlive the
+                // command, because the world un-pauses the moment it returns.
                 pool.shutdownNow();
+                try {
+                    pool.awaitTermination(60, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
             }
 
             if ("mca".equals(target)) {
+                // The durable marker only once every file made it — and none was skipped: a
+                // skipped region still lives on the union this mod serves, but the marker
+                // hands the world to vanilla, which reads only .mca and would hide the
+                // .cso side of that region. Staying unmarked on CSO is the safe half-state;
+                // the message says how to finish.
+                if (unreadableFiles > 0 || heldFiles > 0) {
+                    // fall through without the marker
+                } else
                 // The durable marker only once every file made it. Written up front, a
                 // mid-conversion failure left the save claiming a conversion that never
                 // finished: a restart served vanilla .mca for the files that had been
@@ -362,11 +401,25 @@ public final class CsoCommands {
                     .append(" (external .mcc, unknown compression, or unreadable stream) — their")
                     .append(" originals were left untouched.");
             }
+            if (heldFiles > 0) {
+                message.append(" SKIPPED ").append(heldFiles)
+                    .append(" file(s) another program holds open (the world map reading its")
+                    .append(" tiles, a backup tool, a scanner) — theirs are untouched; close the")
+                    .append(" holder and run the command again to convert just those.");
+            }
             if ("mca".equals(target)) {
-                message.append(" This world now stays on vanilla storage: the marker ")
-                    .append(root.resolve(CsoWorldMarker.FILE_NAME))
-                    .append(" survives a restart. To switch back later: run /cso convert cso to clear")
-                    .append(" the marker, re-enter the world, then run it again to convert.");
+                if (unreadableFiles > 0 || heldFiles > 0) {
+                    message.append(" The switch to vanilla storage is NOT recorded yet: ")
+                        .append(unreadableFiles + heldFiles)
+                        .append(" region(s) above are still served from their .cso, which vanilla"
+                            + " cannot read. Resolve their cause, run /cso convert mca again, and")
+                        .append(" the marker lands once every file has made it.");
+                } else {
+                    message.append(" This world now stays on vanilla storage: the marker ")
+                        .append(root.resolve(CsoWorldMarker.FILE_NAME))
+                        .append(" survives a restart. To switch back later: run /cso convert cso to clear")
+                        .append(" the marker, re-enter the world, then run it again to convert.");
+                }
             }
             String text = message.toString();
             source.sendSuccess(() -> Component.literal(text), false);
