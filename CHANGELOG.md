@@ -1,5 +1,17 @@
 # Changelog
 
+How entries are written (this block never reaches Modrinth — the publish script extracts
+only from a `## [version]` heading down, and a missing or empty section fails the release):
+
+- The reader is a player deciding whether to update, not a reviewer of the code. Each entry
+  says what changed and what it means for them; why a bug existed, how it was hunted down and
+  what the code looked like before belong in the commit message. A handful of lines per
+  release, not a page.
+- Sections stay `### Added`, `### Changed`, `### Fixed`, `### Note`.
+- Every release carries a `### Note` line about upgrading itself — normally "The file format
+  is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
+  player needs before running the new build (1.1.4's max-tick-time note is the example).
+
 ## [1.1.6] - 2026-10-10
 
 ### Fixed
