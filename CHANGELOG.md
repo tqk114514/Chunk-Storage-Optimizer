@@ -46,6 +46,8 @@
   watchdog.
 - The file format is unchanged — a drop-in upgrade for any 1.x world.
 
+## [1.1.3] - 2026-10-08
+
 ### Added
 - **Xaero's World Map compatibility, bundled as a nested mod inside every jar ("CSO Xaero
   Compat") — Fabric and NeoForge both.** The world map keeps recording the areas you have
