@@ -1,6 +1,50 @@
 # Changelog
 
-## [1.1.3] - 2026-10-08
+## [1.1.4] - 2026-10-10
+
+### Added
+- **A progress bar for `/cso convert`, in the vanilla style Chunky and Voxy use.** A blue
+  boss bar at the top of the screen — no darkened sky, no boss music — counts region files
+  as they land: "CSO: converting to .cso — 12/34 files (35%)". Skipped files move the bar
+  too, the total comes from a listing taken right before the work starts, and the bar
+  disappears whether the run finished, failed, or anything in between. Every player who
+  could have run the conversion themselves sees it — the same permission gate the command
+  requires — not just whoever started it; console-run conversions broadcast the same way.
+- **Switching back after `/cso convert mca` is now two commands and zero file browsing.**
+  Running `/cso convert cso` on an opted-out world clears the `cso.disabled` marker itself
+  and says exactly what to do next: leave and re-enter the world, then run it again. The
+  refusal used to point at the file and leave deleting it to the player.
+
+### Changed
+- **Conversions convert their region files in parallel: measured 231.6 s → 60.6 s (3.8×) on
+  a real 8.11 GB world — 2,061 region files, 1.43 M chunks — with the converted content
+  byte-identical to the sequential run.** The server thread still freezes for the duration
+  (that freeze is what guarantees nothing writes the region folders mid-conversion) and
+  every safety rule is unchanged: each file still lands atomically, the first failure still
+  leaves what already landed converted and the rest untouched, and force-closing at any
+  moment still loses nothing. The work list is also taken after the game's own save is
+  flushed now, so region files a save creates are no longer missed by the conversion.
+
+### Fixed
+- **A conversion could die on one file with `AccessDeniedException` on Windows**: the
+  freshly written temp file is briefly held by a real-time scanner (Defender, the search
+  indexer) at the moment of the atomic rename, and the rename loses the race. All four
+  settle-moves in the format — both region writers, the write-ahead log, compaction — now
+  retry that one exception with backoff; everything else still fails exactly as it says.
+- **A damaged write-ahead log now refuses the open loudly and is kept for inspection,
+  instead of being silently discarded.** The log is written through a temp name and an
+  atomic rename, so a WAL that exists was written whole — a bad checksum on one can only
+  mean damage after the force, and the batch it describes may sit half-applied. Logs from
+  the pre-atomic era, where a torn write was the ordinary crash outcome, are still discarded
+  quietly, and a WAL that cannot be opened at all (a backup tool holding it, on Windows) now
+  fails loudly rather than being dropped — the same rule a locked `.mca` already follows.
+
+### Note
+- **On dedicated servers, the vanilla watchdog (`max-tick-time`, 60 s by default) force-crashes
+  a frozen main thread** — raise it or set `-1` before converting a large world. Even if it
+  fires, the save is intact and the command simply runs again; singleplayer has no such
+  watchdog.
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
 
 ### Added
 - **Xaero's World Map compatibility, bundled as a nested mod inside every jar ("CSO Xaero
