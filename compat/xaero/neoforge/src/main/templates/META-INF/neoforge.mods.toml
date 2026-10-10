@@ -21,6 +21,9 @@ displayName="CSO Xaero Compat"
 displayURL="https://modrinth.com/mod/chunk-storage-optimizer"
 authors="tqk114514"
 description='''Makes Xaero's World Map detect the .cso region files written by Chunk Storage Optimizer.'''
+# The same icon the main mod ships, resolved against this jar's resource root. The field name
+# is the FML seam: 12 renamed logoFile to iconFile, and the old name still works but warns.
+${mod_icon_field}="assets/chunkstorageoptimizer_xaerocompat/icon.png"
 
 # The [[mixins]] block declares the compat's mixin config to FML.
 [[mixins]]

@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.6] - 2026-10-10
+
+### Fixed
+- **Converting back to `.cso` after an opt-out crashed with `ClassCastException: Optional
+  cannot be cast to RegionFile`.** Two faults met in that one crash. The visible one: the
+  vanilla side's region cache changed shape between the versions this mod builds for — 1.21
+  stores a bare `RegionFile`, 26.x wraps each entry in an `Optional` so a failed open is
+  memoized — and the pause handler walked it with a bare cast that survived every compile
+  and crashed on the first real entry. The cache walk now recognises both shapes, so a
+  version that wraps its handles differently cannot turn a conversion into a crash.
+- **The deeper one: storages released by an opt-out never left the registry.** The design
+  said the world unload removes them; the code nulled the reference the close handler needed
+  first, so every released storage of every previous session stayed in a process-wide
+  registry for as long as the game ran. A singleplayer client that re-enters a world carries
+  them all into the next command — and a released storage's vanilla cache is exactly the
+  populated one the cast then walked. Released storages are now taken out of the registry
+  when their world unloads, as the design always intended.
+- **The second `/cso convert cso` in the same session no longer slips past the opt-out
+  guard.** The guidance branch clears the marker — but the running session keeps its
+  released storages (or, when it attached during the opt-out, no storages at all), so a
+  conversion started right there would build `.cso` beside the session's own open `.mca`
+  writers. That was also the crash path of 1.1.5, reachable by following the guidance
+  message literally. Both shapes are now refused with the re-enter instruction until the
+  world is actually re-entered.
+- **The Xaero and Voxy compat mods shipped without an icon**, which the mod list reported
+  as a broken icon on every launch. All three compat jars now carry the same icon as the
+  main mod, through the same FML 11/12 field-name seam the main jar uses.
+
 ## [1.1.5] - 2026-10-10
 
 ### Fixed

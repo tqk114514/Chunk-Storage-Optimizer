@@ -240,6 +240,30 @@ public final class CsoCommands {
                 + " .mca files this session still holds open would hide behind the new .cso ones."));
             return 0;
         }
+        if ("cso".equals(target) && CsoRegistry.hasReleasedStorage(root)) {
+            // The opt-out branch above clears the marker but cannot clear this session: the
+            // storages stay released, so the game keeps writing .mca while a conversion would
+            // be building .cso — exactly the split that branch warns about. Without this
+            // check the second run in the same session walked straight into it (and, before
+            // the cache walk was made shape-safe, into the ClassCastException of 1.1.5).
+            source.sendFailure(Component.literal(
+                "This session already moved this world onto vanilla storage, and the game still"
+                + " holds the .mca files open: converting now would put the newer .mca chunks"
+                + " behind the fresh .cso ones. Leave and re-enter the world, then run"
+                + " /cso convert cso again."));
+            return 0;
+        }
+        if ("cso".equals(target) && !CsoRegistry.hasLiveStorage(root)) {
+            // The mirror case of the one above: the session began while the world was opted
+            // out, so no storage of it ever attached — clearing the marker changes the disk,
+            // not this session. A conversion now would run beside the game's own open .mca
+            // handles with nothing on our side even to pause, so it waits for a re-entry too.
+            source.sendFailure(Component.literal(
+                "CSO is not serving this world in this session — it attached while the world was"
+                + " still opted out, and the game's storage holds the .mca files open. Leave and"
+                + " re-enter the world, then run /cso convert cso again."));
+            return 0;
+        }
         String pruneArg = pruneArgument(context);
         if (pruneArg != null && !"prune".equalsIgnoreCase(pruneArg)) {
             // An unrecognized second word ran the conversion WITHOUT pruning before, which is the

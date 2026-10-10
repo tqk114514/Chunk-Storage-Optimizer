@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -163,6 +164,30 @@ public final class CsoStorage implements AutoCloseable {
 
         /** Releases the latch; vanilla handles reopen lazily on next use. */
         void resumeAfterConversion();
+    }
+
+    /**
+     * The live {@link RegionFile} behind one entry of the vanilla side's region cache, or null
+     * when the entry holds nothing a close would reach.
+     *
+     * <p>The cache's value type is not stable across the versions this mod builds for: 1.21
+     * stores the file directly, 26.x wraps it in an {@link Optional} so a failed open is
+     * memoized as empty. The mixin's shadow cannot see the difference — the generic is erased at
+     * apply time — so the only cast-free answer is to recognise both shapes here. Casting bare
+     * (the code this replaces) compiled on every row and crashed on the first 26.x entry:
+     * {@code Optional cannot be cast to RegionFile}, once a conversion latched a cache that a
+     * background reader had filled between two runs of the command.
+     */
+    public static RegionFile regionFileOf(Object cachedValue) {
+        if (cachedValue instanceof RegionFile file) {
+            return file;
+        }
+        if (cachedValue instanceof Optional<?> optional
+            && optional.isPresent()
+            && optional.get() instanceof RegionFile file) {
+            return file;
+        }
+        return null;
     }
 
     public CsoStorage(RegionStorageInfo info, Path folder, boolean sync, CsoSettings settings,

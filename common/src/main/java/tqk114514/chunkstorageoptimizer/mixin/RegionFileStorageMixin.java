@@ -47,9 +47,16 @@ public class RegionFileStorageMixin {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    /**
+     * The vanilla side's open-region cache. The field's name and raw type are stable from 1.21
+     * through 26.3, but its value type is not: 1.21 stores a bare {@code RegionFile}, 26.x wraps
+     * each entry in an {@code Optional} so a failed open is memoized as empty. The generic is
+     * erased at mixin-apply time either way, so this shadow deliberately claims nothing about
+     * the values — everything that walks them goes through {@link CsoStorage#regionFileOf}.
+     */
     @Shadow
     @Final
-    private Long2ObjectLinkedOpenHashMap<RegionFile> regionCache;
+    private Long2ObjectLinkedOpenHashMap<?> regionCache;
 
     @Unique
     private CsoStorage cso$storage;
@@ -81,7 +88,13 @@ public class RegionFileStorageMixin {
                     self.cso$conversionPaused = true;
                     IOException failure = null;
                     List<IOException> failures = new ArrayList<>();
-                    for (RegionFile file : self.regionCache.values()) {
+                    for (Object value : self.regionCache.values()) {
+                        RegionFile file = CsoStorage.regionFileOf(value);
+                        if (file == null) {
+                            // An empty Optional (26.x memoizes failed opens that way) or a
+                            // shape this build does not know: nothing to close either way.
+                            continue;
+                        }
                         try {
                             file.close();
                         } catch (IOException e) {
@@ -112,18 +125,18 @@ public class RegionFileStorageMixin {
     /**
      * The storage to serve this call, or null to let vanilla handle the folder.
      *
-     * <p>A released storage is forgotten here rather than kept around: a world that opted out
-     * mid-session has to go back to its own {@code .mca} files at once, and every handler reaches
-     * this method, so the release takes effect on the next chunk touched.
+     * <p>A released storage still returns null here — a world that opted out mid-session has to
+     * go back to its own {@code .mca} files at once, and every handler reaches this method, so
+     * the release takes effect on the next chunk touched. The reference itself is kept on purpose:
+     * the close handler needs it to take the storage out of the registry when the world unloads.
+     * Nulling it here used to orphan every released storage in a static registry forever, and
+     * the next conversion in the same game process then latched — and cast through — instances
+     * of a session that no longer existed (the ClassCastException of 1.1.5, reproduced headless).
      */
     @Unique
     private CsoStorage cso$active() {
         CsoStorage storage = this.cso$storage;
-        if (storage == null) {
-            return null;
-        }
-        if (storage.isReleased()) {
-            this.cso$storage = null;
+        if (storage == null || storage.isReleased()) {
             return null;
         }
         return storage;
@@ -186,12 +199,24 @@ public class RegionFileStorageMixin {
 
     @Inject(method = "close", at = @At("HEAD"), cancellable = true)
     private void cso$close(CallbackInfo ci) throws IOException {
-        CsoStorage storage = cso$active();
+        // The reference, not cso$active(): a released storage must be closed here too —
+        // this is the one moment it can leave the registry. Skipping it for released
+        // storages left them registered past their world's unload, and the registry is
+        // process-wide: a singleplayer client that re-enters a world carries every
+        // released storage of every previous session into the next command.
+        CsoStorage storage = this.cso$storage;
         if (storage == null) {
             return;
         }
-        storage.close();
-        ci.cancel();
+        try {
+            storage.close();
+        } finally {
+            // Only a live storage swallows the call. A released folder's files are
+            // vanilla's again, so its close has to run; ours (long empty by now) does not.
+            if (!storage.isReleased()) {
+                ci.cancel();
+            }
+        }
     }
 
     /**

@@ -4,6 +4,7 @@
   "version": "${compat_version}",
   "name": "CSO Xaero Compat",
   "description": "Makes Xaero's World Map detect the .cso region files written by Chunk Storage Optimizer.",
+  "icon": "assets/chunkstorageoptimizer_xaerocompat/icon.png",
   "authors": [
     "tqk114514"
   ],

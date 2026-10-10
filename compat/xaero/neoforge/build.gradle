@@ -50,6 +50,7 @@ repositories {
 // declares that row's requirements. Default row 26.1.2, the same as :neoforge. Only the
 // columns the metadata needs are read here.
 def supportedVersions = [:]
+def rowFmlMajors = [:]
 def versionTable = rootProject.file('supported-versions.csv')
 versionTable.eachLine { line ->
     def trimmed = line.trim()
@@ -58,6 +59,7 @@ versionTable.eachLine { line ->
     }
     def columns = trimmed.split(',').collect { it.trim() }
     supportedVersions[columns[0]] = columns[3]
+    rowFmlMajors[columns[0]] = columns[6]
 }
 if (supportedVersions.isEmpty()) {
     throw new GradleException("${versionTable} has no data rows.")
@@ -72,6 +74,9 @@ if (rowNeoFloor == '-') {
     throw new GradleException("Minecraft ${mcVersion} has no NeoForge build in supported-versions.csv.")
 }
 def neoVersion = (project.findProperty('neo_version') ?: rowNeoFloor) as String
+// The icon field name is the FML seam's other half, same as the main module: FML 12 renamed
+// logoFile to iconFile, and the old name still works but warns.
+def fmlMajor = (project.findProperty('fml_major') ?: rowFmlMajors[mcVersion]) as String
 
 // The loader drops the old "1." prefix, so Minecraft 1.21.11 is served by the 21.11 line;
 // a two-part version means patch 0. Guards against a row whose floor was copied in from a
@@ -130,6 +135,7 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             minecraft_version_range: "[${mcVersion}]",
             neo_version            : neoVersion,
             neo_version_upper      : neoUpper,
+            mod_icon_field         : fmlMajor == '12' ? 'iconFile' : 'logoFile',
     ]
     inputs.properties replaceProperties
     expand replaceProperties
@@ -146,4 +152,5 @@ tasks.named('jar', Jar).configure {
     include 'tqk114514/chunkstorageoptimizer/compat/**'
     include 'META-INF/neoforge.mods.toml'
     include "${compatId}.mixins.json"
+    include 'assets/**'
 }

@@ -4,6 +4,7 @@
   "version": "${compat_version}",
   "name": "CSO Voxy Compat",
   "description": "Lets Voxy's world import read the .cso region files written by Chunk Storage Optimizer.",
+  "icon": "assets/chunkstorageoptimizer-voxycompat/icon.png",
   "authors": [
     "tqk114514"
   ],

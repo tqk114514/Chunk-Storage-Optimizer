@@ -53,6 +53,41 @@ public final class CsoRegistry {
     }
 
     /**
+     * True when this session has already taken the world off the custom format: its storages
+     * were released, so the game is writing {@code .mca} into the very folders a conversion
+     * back to {@code .cso} would be rewriting. Only a re-entry can hand the folders back —
+     * the world unload is what removes a released storage from here — so the conversion
+     * command asks with this before starting one and refuses while the answer is yes.
+     */
+    public static boolean hasReleasedStorage(Path root) {
+        Path world = root.normalize();
+        for (CsoStorage storage : all()) {
+            if (storage.isReleased() && storage.folder().normalize().startsWith(world)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when this session is actually serving the world through the custom format: at least
+     * one of its storages is live. The attach decision is made once per storage when the game
+     * constructs it, so a session that began while the world was opted out has none — clearing
+     * the marker mid-session changes the disk, not that session, and converting {@code .cso}
+     * then would run beside the session's own open vanilla handles. The command asks with this
+     * and answers "re-enter the world" while it is false.
+     */
+    public static boolean hasLiveStorage(Path root) {
+        Path world = root.normalize();
+        for (CsoStorage storage : all()) {
+            if (!storage.isReleased() && storage.folder().normalize().startsWith(world)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Detaches one world's storages for good. After this the game's own Anvil files serve that
      * world, which is what keeps a converted world from growing new {@code .cso} files beside
      * the {@code .mca} ones it was just written into.
