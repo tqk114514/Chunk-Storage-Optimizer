@@ -160,6 +160,25 @@ dependencies {
     // jarJar does. The mixin probes it once and falls back to Anvil if it cannot be loaded.
     implementation 'com.github.luben:zstd-jni:1.5.6-3'
     include 'com.github.luben:zstd-jni:1.5.6-3'
+
+    // The storage-layer tests run against this row's real Minecraft classes — that is the
+    // whole point of them (see fabric/src/test): the shape contract, the unwrap, and the
+    // conversion lifecycle all hold per row, so the suite reruns in every row build the
+    // matrix already runs.
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Plain JUnit, no game launch: the classes under test are the ones the mixins glue to, not
+// the mixed result — that half belongs to the headless smoke run. Loom puts this row's
+// Minecraft on the test classpath the same way it feeds the main source set.
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
 }
 
 // fabric.mod.json carries the version and the Minecraft dependency, so it is expanded at build
