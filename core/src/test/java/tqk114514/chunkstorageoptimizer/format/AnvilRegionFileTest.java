@@ -163,6 +163,36 @@ class AnvilRegionFileTest {
     }
 
     @Test
+    void externalStubWithMccSiblingDecodes(@TempDir Path dir) throws IOException {
+        // The shape of an oversized chunk vanilla actually saved: the stub in the region plus
+        // the real bytes in c.x.z.mcc. A reader that cannot follow the pointer loses the chunk
+        // to every conversion — one such file is what kept a player's world from finishing.
+        Path mca = dir.resolve("r.1.2.mca");
+        writeRawMca(mca, new int[] {3}, new int[] {130});
+        // Slot 3 is local x=3, z=0 in region (1, 2): the chunk sits at (35, 64).
+        byte[] payload = deflateBytes(chunkData(77));
+        Files.write(dir.resolve("c.35.64.mcc"), payload);
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertEquals(1, result.chunks().size(), "the stub plus its .mcc is a decodable chunk");
+        assertEquals(0, result.unreadable());
+        assertTrue(result.isComplete());
+        assertArrayEquals(inflate(payload), result.chunks().get(0).nbt());
+    }
+
+    @Test
+    void externalStubWithoutMccSiblingRemainsALoss(@TempDir Path dir) throws IOException {
+        Path mca = dir.resolve("r.0.0.mca");
+        writeRawMca(mca, new int[] {0}, new int[] {130});
+
+        AnvilRegionFile.ReadResult result = AnvilRegionFile.readReporting(mca);
+
+        assertEquals(0, result.chunks().size());
+        assertEquals(1, result.unreadable(), "a pointer whose target is gone is a loss, not an absence");
+    }
+
+    @Test
     void realExternalStubIsReportedAsUnreadable(@TempDir Path dir) throws IOException {
         // The shape vanilla actually leaves behind for an oversized chunk: a five-byte stub with a
         // length of 1 and no payload, next to a sibling c.x.z.mcc holding the bytes
@@ -290,6 +320,11 @@ class AnvilRegionFileTest {
             header.position(0);
             channel.write(header, 0L);
         }
+    }
+
+    private static byte[] inflate(byte[] data) throws IOException {
+        return new java.util.zip.InflaterInputStream(
+            new java.io.ByteArrayInputStream(data)).readAllBytes();
     }
 
     private static byte[] deflateBytes(byte[] data) throws IOException {

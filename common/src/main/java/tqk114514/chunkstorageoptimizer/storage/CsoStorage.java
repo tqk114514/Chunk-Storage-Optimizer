@@ -135,12 +135,43 @@ public final class CsoStorage implements AutoCloseable {
     private final CsoLatency flushLatency = new CsoLatency();
     /** Reused NBT serialization buffer; see {@link #serialize}. */
     private final ByteArrayOutputStream serializeSink = new ByteArrayOutputStream(8192);
+    /**
+     * The vanilla side of the same folder, as the mixin that owns it. Held so a conversion can
+     * latch BOTH sides: ours is only half of the picture, and a background reader (the world
+     * map building tiles) reaches vanilla's handles directly whenever this storage is released.
+     */
+    private final VanillaHandles vanillaHandles;
+    /**
+     * Latched while a conversion rewrites this folder. A latched read answers empty instead of
+     * reopening what is being replaced — the storage's lazy reopen is exactly what kept
+     * re-holding files a conversion had just paused closed (measured in-game: a map tile
+     * thread asking for chunks mid-conversion reopened the handles, and the run skipped those
+     * regions). Staged writes are kept for after the resume; the game itself cannot read
+     * mid-conversion, because the command holds the server thread.
+     */
+    private boolean conversionPaused;
 
-    public CsoStorage(RegionStorageInfo info, Path folder, boolean sync, CsoSettings settings) {
+    /** The vanilla half of this folder's storage, reachable for commands. */
+    public interface VanillaHandles {
+
+        /**
+         * Latches vanilla reads closed and closes every open vanilla handle: a conversion is
+         * about to rewrite this folder, and an open handle is a file it cannot replace. Reads
+         * from here on answer empty until {@link #resumeAfterConversion()}.
+         */
+        void pauseForConversion() throws IOException;
+
+        /** Releases the latch; vanilla handles reopen lazily on next use. */
+        void resumeAfterConversion();
+    }
+
+    public CsoStorage(RegionStorageInfo info, Path folder, boolean sync, CsoSettings settings,
+        VanillaHandles vanillaHandles) {
         this.info = info;
         this.folder = folder;
         this.sync = sync;
         this.settings = settings;
+        this.vanillaHandles = vanillaHandles;
         this.label = labelOf(folder);
         CsoRegistry.add(this);
         this.timerTask = TIMER.scheduleWithFixedDelay(
@@ -208,7 +239,11 @@ public final class CsoStorage implements AutoCloseable {
         this.lock.lock();
         try {
             this.released = true;
-            CsoRegistry.remove(this);
+            // Deliberately still registered: the conversion that released this storage needs to
+            // reach its vanilla side — both to latch it (a background reader walks straight
+            // into vanilla once we stop serving) and to unlatch it afterwards. The registry's
+            // actions all no-op on a released storage's empty own state, and the world unload
+            // removes it for good.
             pauseForConversion();
         } finally {
             this.lock.unlock();
@@ -262,6 +297,14 @@ public final class CsoStorage implements AutoCloseable {
     private Located locate(ChunkPos pos) throws IOException {
         this.lock.lock();
         try {
+            // The conversion pause answers empty: the file behind this region is being
+            // rewritten, and the only callers that can arrive here mid-pause are background
+            // ones — the game itself is the thread running the command. A null read is what
+            // "chunk absent" already means to every caller, and the tile builders behind those
+            // background reads treat it as "nothing to draw", not as damage.
+            if (this.conversionPaused) {
+                return null;
+            }
             byte[] staged = staged(pos);
             if (staged != null) {
                 return new Located(staged, 0, staged.length);
@@ -427,7 +470,14 @@ public final class CsoStorage implements AutoCloseable {
     public Path pauseForConversion() throws IOException {
         this.lock.lock();
         try {
+            // One real flush FIRST, while the gate is still open — this is the last chance to
+            // write what was staged before the conversion — then the latch, then the closes.
+            // A read that slips in after the latch answers empty; a read that finished before
+            // it had its handle open, and the close below takes that handle away. Without the
+            // latch, a background reader (the world map's tile thread) would simply reopen
+            // what the close had just closed, and the conversion lost the file again.
             flushPending();
+            this.conversionPaused = true;
             IOException failure = null;
             for (CsoRegionFile file : this.regions.values()) {
                 try {
@@ -445,10 +495,36 @@ public final class CsoStorage implements AutoCloseable {
                 }
             }
             this.legacyRegions.clear();
+            try {
+                this.vanillaHandles.pauseForConversion();
+            } catch (IOException e) {
+                if (failure == null) {
+                    failure = e;
+                }
+            }
             if (failure != null) {
                 throw failure;
             }
             return this.folder;
+        } finally {
+            this.lock.unlock();
+        }
+    }
+
+    /**
+     * Ends a conversion's pause: the latch comes off both sides, and anything staged while
+     * the folder was being rewritten — writes arrive from the game's own queue, which the
+     * command keeps blocked, so this is normally empty — lands in the new files right now.
+     * Released storages only unlatch the vanilla side; their folder is vanilla's again.
+     */
+    public void resumeAfterConversion() throws IOException {
+        this.lock.lock();
+        try {
+            this.conversionPaused = false;
+            if (!this.released) {
+                flushPending();
+            }
+            this.vanillaHandles.resumeAfterConversion();
         } finally {
             this.lock.unlock();
         }
@@ -523,6 +599,13 @@ public final class CsoStorage implements AutoCloseable {
     /** Writes every staged chunk, grouping by bucket so each bucket is recompressed once. */
     private void flushPending() throws IOException {
         if (this.pending.isEmpty()) {
+            return;
+        }
+        if (this.conversionPaused) {
+            // The folder is being rewritten under a conversion. Writing now would reopen the
+            // very files it is replacing; the staged data stays in memory and lands right
+            // after the resume instead — the pause itself flushes one last time before
+            // latching, so nothing waits that existed before the conversion.
             return;
         }
         long startedAt = System.nanoTime();

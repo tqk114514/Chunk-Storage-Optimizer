@@ -43,9 +43,19 @@ public final class CsoRegistry {
     }
 
     /**
+     * Ends what {@link #pauseWorld} started: the latches come off, so reads may open files
+     * again and anything the pause kept staged lands in the rewritten files. The conversion
+     * command calls this once its work is done — failed or not, a world must never stay
+     * latched behind it.
+     */
+    public static void resumeWorld(Path root) throws IOException {
+        actOnWorld(root, CsoStorage::resumeAfterConversion);
+    }
+
+    /**
      * Detaches one world's storages for good. After this the game's own Anvil files serve that
-     * world, which is what keeps a converted world from growing new {@code .cso} files beside the
-     * {@code .mca} ones it was just written into.
+     * world, which is what keeps a converted world from growing new {@code .cso} files beside
+     * the {@code .mca} ones it was just written into.
      */
     public static void releaseWorld(Path root) throws IOException {
         actOnWorld(root, CsoStorage::release);

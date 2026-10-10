@@ -26,9 +26,11 @@ import java.util.zip.InflaterInputStream;
  * two 4096-byte header sectors (1024 offsets, 1024 timestamps), 4096-byte sectors, each chunk
  * prefixed with a 4-byte length and a 1-byte compression id.
  *
- * <p>External chunks ({@code c.x.z.mcc}, flagged by compression id | 128) cannot be decoded here;
- * they are counted as unreadable rather than skipped, because the header slot still names a real
- * chunk and a caller must not delete the file that is the only pointer to it.
+ * <p>External chunks ({@code c.x.z.mcc}, flagged by compression id | 128) are decoded too:
+ * the header slot is a pointer and the payload is a raw compressed stream in the sibling file.
+ * An external chunk whose .mcc is missing counts as unreadable rather than skipped, because
+ * the header slot still names a real chunk and a caller must not delete the file that is
+ * the only pointer to it.
  */
 public final class AnvilRegionFile {
 
@@ -116,7 +118,24 @@ public final class AnvilRegionFile {
                 // stops --prune from deleting the .mca that is the only pointer to it. Vanilla's own
                 // reader checks this flag first for the same reason (RegionFile:135).
                 if ((compressionId & EXTERNAL_STREAM_FLAG) != 0) {
-                    unreadable++;
+                    // The stub in the file is a pointer, not the payload: the chunk's bytes
+                    // live in c.<x>.<z>.mcc next to this region, as a raw compressed stream
+                    // whose compression id is the low seven bits of this header byte. A reader
+                    // without this branch counted a real chunk as unreadable, and the file
+                    // holding the only pointer to it was refused by every conversion.
+                    Path external = path.getParent().resolve(
+                        "c." + (regionX(path) * 32 + (i % 32)) + "." + (regionZ(path) * 32 + (i / 32)) + ".mcc");
+                    if (!Files.isRegularFile(external)) {
+                        unreadable++;
+                        continue;
+                    }
+                    byte[] raw = Files.readAllBytes(external);
+                    byte[] nbt = decompress(compressionId & ~EXTERNAL_STREAM_FLAG, raw);
+                    if (nbt != null) {
+                        out.add(new Chunk(i, nbt));
+                    } else {
+                        unreadable++;
+                    }
                     continue;
                 }
                 if (length <= 1) {
@@ -234,6 +253,24 @@ public final class AnvilRegionFile {
             }
             throw failure;
         }
+    }
+
+    /** The r.X.Z part of an { r.X.Z.mca} name, or 0 for a name that does not carry it. */
+    private static int regionX(Path path) {
+        String name = path.getFileName().toString();
+        if (!name.startsWith("r.")) {
+            return 0;
+        }
+        return Integer.parseInt(name.substring(2, name.indexOf('.', 2)));
+    }
+
+    private static int regionZ(Path path) {
+        String name = path.getFileName().toString();
+        if (!name.startsWith("r.")) {
+            return 0;
+        }
+        int first = name.indexOf('.', 2);
+        return Integer.parseInt(name.substring(first + 1, name.indexOf('.', first + 1)));
     }
 
     private static byte[] decompress(int compressionId, byte[] raw) {

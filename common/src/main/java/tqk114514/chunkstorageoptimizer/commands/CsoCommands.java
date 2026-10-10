@@ -435,8 +435,19 @@ public final class CsoCommands {
             source.sendFailure(Component.literal(message));
             return 0;
         } finally {
-            // Whatever happened — finished, failed, anything — the bar goes away; the chat
-            // message is what carries the outcome.
+            // Whatever happened — finished, failed, anything between — the pause comes off
+            // before the bar does: a latched storage must never outlive the command, and it
+            // is this finally that runs once the worker pool above has fully drained, so no
+            // zombie can reopen a file past this point either.
+            try {
+                CsoRegistry.resumeWorld(root);
+            } catch (IOException e) {
+                // The conversion's outcome is already decided at this point; a resume
+                // failure goes to the log rather than replacing it. The latch itself is
+                // already off (the flag clears before the flush this may have failed on).
+                LOGGER.error("Re-attaching storage after the conversion failed", e);
+            }
+            // The bar goes away last; the chat message is what carries the outcome.
             if (progress != null) {
                 progress.close();
             }
