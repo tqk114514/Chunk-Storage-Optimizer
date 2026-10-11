@@ -783,6 +783,9 @@ public final class Converter {
         }
         // Compaction disabled: a freshly converted file is already laid out optimally.
         Path temp = target.resolveSibling(target.getFileName() + ".tmp");
+        // A temp left behind by a crashed run is not empty state to build on: the region file
+        // opens without truncating, so stale sectors would tail the new file as extra chunks.
+        Files.deleteIfExists(temp);
         try (CsoRegionFile file = CsoRegionFile.open(
             temp, grid, CsoFormat.COMPRESSION_ZSTD, level, 4, true, Long.MAX_VALUE, 10.0
         )) {

@@ -39,6 +39,7 @@ import tqk114514.chunkstorageoptimizer.storage.CsoSettings;
 import tqk114514.chunkstorageoptimizer.storage.CsoStorage;
 import tqk114514.chunkstorageoptimizer.storage.CsoWorldMarker;
 import tqk114514.chunkstorageoptimizer.tools.Converter;
+import tqk114514.chunkstorageoptimizer.tools.StreamingConverter;
 
 /**
  * {@code /cso stats | reset | compact} — the only way to see whether the format is actually
@@ -306,14 +307,14 @@ public final class CsoCommands {
             // thread, the caller of the command — waits on completions. The freeze is kept:
             // a blocked server thread is the guarantee that nothing writes the region folders
             // mid-conversion, and that guarantee is what makes it safe to hand them to
-            // workers. The per-file pipeline (read, convert, write, verify) runs entirely
-            // through stateless statics, so files parallelize cleanly. Measured single-
-            // threaded on 8.11 GB across 2061 files (2026-10-09, dedicated server): 232 s —
-            // the pool divides that by its width. The width bound is memory, not CPU: one
-            // task holds a whole region decompressed, and a 32×32 region of large chunks can
-            // reach hundreds of MB, so six at once is the ceiling a default heap takes
-            // standing still.
-            int workers = Math.max(2, Math.min(6, Runtime.getRuntime().availableProcessors() - 1));
+            // workers. The per-file pipeline runs a bucket of chunks at a time
+            // (StreamingConverter), so a worker holds a few hundred KB instead of a whole
+            // decompressed region. Each worker is a deflate or zstd lane, and those do not
+            // share a physical core well: two hyperthreads fighting over the same SIMD units
+            // made a 12-lane pool measurably SLOWER than 6 on a 6C/12T machine, so the width
+            // tracks physical cores (half the logical count) rather than logical, and never
+            // below 2.
+            int workers = Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors() / 2));
             java.util.concurrent.ExecutorService pool =
                 java.util.concurrent.Executors.newFixedThreadPool(workers);
             CsoSettings settings = CsoRuntime.settings();
@@ -485,22 +486,22 @@ public final class CsoCommands {
 
     /**
      * The mca→cso half of one region file, in worker-thread context. The skip rules are the
-     * conversion's safety contract and are documented at each branch; the write itself goes
-     * through the same temp-and-atomic-move path every writer here uses, and the full-strength
-     * verify backs it before any prune may delete the source.
+     * conversion's safety contract and are documented at each branch; the write runs a bucket
+     * at a time ({@link StreamingConverter} — a worker holds one bucket of chunks, not a whole
+     * region, which is what lets the pool below run as wide as the CPU), and the
+     * full-strength verify backs it before any prune may delete the source.
      */
     private static ConvertOutcome convertOneMcaToCso(Path mcaFile, boolean prune, CsoSettings settings)
         throws IOException {
-        // A slot the header names but this parser cannot decode is still a chunk. Counting only
-        // the readable ones is what let prune delete a .mca while leaving those chunks behind
-        // with no copy anywhere.
-        AnvilRegionFile.ReadResult in = AnvilRegionFile.readReporting(mcaFile);
-        if (in.unreadable() > 0) {
-            // Never touch the source: it is the only copy of those chunks. Any .cso written now
-            // would hold a strict subset, so it is skipped as well.
-            return new ConvertOutcome(0, 0, 0, 1, in.unreadable());
+        Path out = mcaFile.resolveSibling(Converter.swapExtension(mcaFile.getFileName().toString(), ".cso"));
+        StreamingConverter.Outcome outcome =
+            StreamingConverter.mcaToCso(mcaFile, out, settings.grid(), settings.level());
+        // A slot the header names but this parser cannot decode is still a chunk. The streaming
+        // pass discards everything it built, and the source keeps being the only copy.
+        if (outcome.unreadable() > 0) {
+            return new ConvertOutcome(0, 0, 0, 1, outcome.unreadable());
         }
-        if (in.chunks().isEmpty()) {
+        if (outcome.sourceChunks() == 0) {
             // Nothing to carry over. Under prune this file would linger forever, and once CSO
             // is off there is no second chance to clean it up.
             if (prune) {
@@ -509,26 +510,25 @@ public final class CsoCommands {
             }
             return new ConvertOutcome(0, 0, 0, 0, 0);
         }
-        Path out = mcaFile.resolveSibling(Converter.swapExtension(mcaFile.getFileName().toString(), ".cso"));
-        // A half-migrated world already has a .cso for this region holding chunks the .mca
-        // never saw. Writing the .mca over it would drop them, so the two are unioned with
-        // the .cso winning — the same order the live reader uses.
-        List<AnvilRegionFile.Chunk> merged = Files.exists(out)
-            ? Converter.prefer(Converter.readCso(out), in.chunks())
-            : in.chunks();
-        Converter.writeCso(out, merged, settings.grid(), settings.level());
-        verify(out, merged.size(), "cso");
+        verify(out, outcome.written(), "cso");
         if (prune) {
             Files.delete(mcaFile);
-            return new ConvertOutcome(1, merged.size(), 1, 0, 0);
+            return new ConvertOutcome(1, outcome.written(), 1, 0, 0);
         }
-        return new ConvertOutcome(1, merged.size(), 0, 0, 0);
+        return new ConvertOutcome(1, outcome.written(), 0, 0, 0);
     }
 
     /** The cso→mca half of one region file; same contract as {@link #convertOneMcaToCso}. */
     private static ConvertOutcome convertOneCsoToMca(Path csoFile, boolean prune) throws IOException {
-        List<AnvilRegionFile.Chunk> in = Converter.readCso(csoFile);
-        if (in.isEmpty()) {
+        Path out = csoFile.resolveSibling(Converter.swapExtension(csoFile.getFileName().toString(), ".mca"));
+        StreamingConverter.Outcome outcome = StreamingConverter.csoToMca(csoFile, out);
+        // An existing .mca slot that cannot decode is still a chunk; unioning without it would
+        // drop those bytes with no copy anywhere, so the file is refused with both sides
+        // untouched — the same hard stop the offline Converter makes.
+        if (outcome.unreadable() > 0) {
+            return new ConvertOutcome(0, 0, 0, 1, outcome.unreadable());
+        }
+        if (outcome.sourceChunks() == 0) {
             // An empty file carries nothing, so prune removes it instead of leaving it behind.
             if (prune) {
                 Files.delete(csoFile);
@@ -536,27 +536,12 @@ public final class CsoCommands {
             }
             return new ConvertOutcome(0, 0, 0, 0, 0);
         }
-        Path out = csoFile.resolveSibling(Converter.swapExtension(csoFile.getFileName().toString(), ".mca"));
-        // A .mca already on disk may carry chunks this .cso never had. It must be read with
-        // the reporting reader, not plain read(): a slot that cannot decode is still a chunk,
-        // and unioning without it drops those bytes — the offline Converter hard-stops on
-        // exactly this case. Leave both files untouched and report the skip.
-        AnvilRegionFile.ReadResult existing = Files.exists(out)
-            ? AnvilRegionFile.readReporting(out)
-            : null;
-        if (existing != null && existing.unreadable() > 0) {
-            return new ConvertOutcome(0, 0, 0, 1, existing.unreadable());
-        }
-        List<AnvilRegionFile.Chunk> merged = existing != null
-            ? Converter.prefer(in, existing.chunks())
-            : in;
-        AnvilRegionFile.write(out, merged);
-        verify(out, merged.size(), "mca");
+        verify(out, outcome.written(), "mca");
         if (prune) {
             Files.delete(csoFile);
-            return new ConvertOutcome(1, merged.size(), 1, 0, 0);
+            return new ConvertOutcome(1, outcome.written(), 1, 0, 0);
         }
-        return new ConvertOutcome(1, merged.size(), 0, 0, 0);
+        return new ConvertOutcome(1, outcome.written(), 0, 0, 0);
     }
 
     /** The optional second word after {@code convert <target>}, or null when omitted. */

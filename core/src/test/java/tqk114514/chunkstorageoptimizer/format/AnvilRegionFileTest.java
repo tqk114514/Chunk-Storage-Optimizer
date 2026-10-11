@@ -130,6 +130,110 @@ class AnvilRegionFileTest {
     }
 
     @Test
+    void slotReaderAgreesWithTheBulkSweepOnEveryBranch(@TempDir Path dir) throws IOException {
+        // Every slot shape the reader has a branch for: present, absent, external with its
+        // sibling, external without it, and an unknown compression id. The streaming conversion
+        // reads slots in bucket order through the random-access reader, so its answers must be
+        // the bulk sweep's answers — slot for slot, including the refusal counters.
+        Path mca = dir.resolve("r.0.0.mca");
+        writeRawMca(mca, new int[] {0, 1, 2, 3, 4}, new int[] {2, 130, 2, 130, 7});
+        Path mcc = mca.getParent().resolve("c.1.0.mcc");
+        Files.write(mcc, deflateBytes(chunkData(2)));
+
+        AnvilRegionFile.ReadResult bulk = AnvilRegionFile.readReporting(mca);
+        int seenChunks = 0;
+        int seenUnreadable = 0;
+        try (AnvilRegionFile.SlotReader reader = AnvilRegionFile.SlotReader.open(mca)) {
+            assertEquals(bulk.occupied(), reader.occupied(), "occupied is known whole at open");
+            for (int i = 0; i < 1024; i++) {
+                AnvilRegionFile.Slot slot = reader.read(i);
+                if (slot.unreadable()) {
+                    seenUnreadable++;
+                } else if (slot.nbt() != null) {
+                    seenChunks++;
+                }
+            }
+        }
+        assertEquals(bulk.chunks().size(), seenChunks, "the same slots decode");
+        assertEquals(bulk.unreadable(), seenUnreadable, "the same slots are refused");
+        assertEquals(bulk.occupied(), seenChunks + seenUnreadable);
+    }
+
+    @Test
+    void slotReaderCountsAFileShorterThanTheHeaderAsEmpty(@TempDir Path dir) throws IOException {
+        Path mca = dir.resolve("r.0.0.mca");
+        Files.write(mca, new byte[] {1, 2, 3});
+        try (AnvilRegionFile.SlotReader reader = AnvilRegionFile.SlotReader.open(mca)) {
+            assertEquals(0, reader.occupied());
+            assertEquals(AnvilRegionFile.Slot.ABSENT.nbt(), reader.read(0).nbt());
+            assertFalse(reader.read(0).unreadable());
+        }
+    }
+
+    @Test
+    void slotWriterRoundTripsWhatTheBulkWriterProduces(@TempDir Path dir) throws IOException {
+        List<AnvilRegionFile.Chunk> chunks = List.of(
+            new AnvilRegionFile.Chunk(4, chunkData(4)),
+            new AnvilRegionFile.Chunk(1023, chunkData(1023)),
+            new AnvilRegionFile.Chunk(513, chunkData(513))
+        );
+        // Out-of-order arrival is the streaming caller's order (bucket-major); the logical
+        // content must come back identical regardless of which sectors landed first.
+        Path out = dir.resolve("r.0.0.mca");
+        try (AnvilRegionFile.SlotWriter writer = AnvilRegionFile.SlotWriter.open(out)) {
+            writer.write(chunks.get(1).index(), chunks.get(1).nbt());
+            writer.write(chunks.get(0).index(), chunks.get(0).nbt());
+            writer.write(chunks.get(2).index(), chunks.get(2).nbt());
+        }
+        AnvilRegionFile.ReadResult back = AnvilRegionFile.readReporting(out);
+        assertTrue(back.isComplete());
+        assertEquals(chunks.size(), back.chunks().size());
+        for (AnvilRegionFile.Chunk chunk : chunks) {
+            assertArrayEquals(chunk.nbt(),
+                back.chunks().stream().filter(c -> c.index() == chunk.index()).findFirst().orElseThrow().nbt(),
+                "slot " + chunk.index() + " survived the out-of-order write");
+        }
+    }
+
+    @Test
+    void slotWriterRefusalAndAbortLeaveNoFileAndNoTemp(@TempDir Path dir) throws IOException {
+        // The bulk writer validates everything up front; the streaming one cannot, so its
+        // refusal lands mid-file instead — and must leave the same state: no target, no temp.
+        byte[] oversize = new byte[1_300_000];
+        new Random(1).nextBytes(oversize); // incompressible: ~317 sectors, over the 255 cap
+        Path refused = dir.resolve("r.0.0.mca");
+        try (AnvilRegionFile.SlotWriter writer = AnvilRegionFile.SlotWriter.open(refused)) {
+            writer.write(0, chunkData(0));
+            assertThrows(IOException.class, () -> writer.write(1, oversize));
+        }
+        assertFalse(Files.exists(refused), "a refused file must not exist");
+        assertFalse(Files.exists(refused.resolveSibling(refused.getFileName() + ".tmp")),
+            "a refused file must not leave its temp behind");
+
+        Path abandoned = dir.resolve("r.1.1.mca");
+        try (AnvilRegionFile.SlotWriter writer = AnvilRegionFile.SlotWriter.open(abandoned)) {
+            writer.write(0, chunkData(0));
+            writer.abort();
+        }
+        assertFalse(Files.exists(abandoned), "an aborted file must not exist");
+        assertFalse(Files.exists(abandoned.resolveSibling(abandoned.getFileName() + ".tmp")));
+    }
+
+    @Test
+    void slotWriterReplacesStaleTempStateOnOpen(@TempDir Path dir) throws IOException {
+        // A temp left by a crashed run tails into whatever opens next, because sectors append —
+        // the open must clear it rather than build on it.
+        Path out = dir.resolve("r.0.0.mca");
+        Path temp = out.resolveSibling(out.getFileName() + ".tmp");
+        Files.write(temp, new byte[] {9, 9, 9});
+        try (AnvilRegionFile.SlotWriter writer = AnvilRegionFile.SlotWriter.open(out)) {
+            writer.write(0, chunkData(0));
+        }
+        assertFalse(Files.exists(temp));
+        assertEquals(1, AnvilRegionFile.readReporting(out).chunks().size());
+    }
+
+    @Test
     void externalAndUnknownCompressionSlotsAreReportedAsUnreadable(@TempDir Path dir) throws IOException {
         // The exact shape of the silent-loss bug: the header names five chunks, but three of them
         // are of a kind this parser cannot turn back into NBT. Counting only the readable ones made

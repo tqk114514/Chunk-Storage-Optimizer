@@ -48,6 +48,20 @@ public final class AnvilRegionFile {
     }
 
     /**
+     * One slot's answer. Absent is {@code nbt == null} with {@code unreadable == false}: the
+     * header does not name a chunk there. A non-null {@code nbt} always means {@code
+     * unreadable == false}; a slot that names a chunk this parser cannot decode is
+     * {@code nbt == null, unreadable == true} and, exactly as in {@link ReadResult}, counts
+     * as a chunk that would be lost, never as one that is not there.
+     */
+    public record Slot(byte[] nbt, boolean unreadable) {
+
+        static final Slot ABSENT = new Slot(null, false);
+
+        static final Slot UNREADABLE = new Slot(null, true);
+    }
+
+    /**
      * What a read found, including what it could not read.
      *
      * <p>{@code unreadable} counts header slots that name a chunk whose bytes this parser cannot
@@ -77,106 +91,278 @@ public final class AnvilRegionFile {
     public static ReadResult readReporting(Path path) throws IOException {
         List<Chunk> out = new ArrayList<>();
         int unreadable = 0;
-        int occupied = 0;
-        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
-            if (channel.size() < HEADER_BYTES) {
-                return new ReadResult(out, 0, 0);
+        try (SlotReader reader = SlotReader.open(path)) {
+            for (int i = 0; i < CHUNKS; i++) {
+                Slot slot = reader.read(i);
+                if (slot.unreadable()) {
+                    unreadable++;
+                } else if (slot.nbt() != null) {
+                    out.add(new Chunk(i, slot.nbt()));
+                }
+            }
+            // Every slot the header named either decoded or was counted, so these three numbers have
+            // to agree. They cannot disagree today — every path past the `packed == 0` test either
+            // adds a chunk or bumps `unreadable` — and the check is here anyway, because the failure
+            // it guards is exactly the one that started this: a slot skipped without being counted,
+            // which reads as a smaller world rather than as an error.
+            if (reader.occupied() != out.size() + unreadable) {
+                throw new IllegalStateException(
+                    "Read " + out.size() + " chunks and " + unreadable + " unreadable from " + path
+                        + ", but the header names " + reader.occupied() + " slots"
+                );
+            }
+            return new ReadResult(out, unreadable, reader.occupied());
+        }
+    }
+
+    /**
+     * A per-slot view over an open region file, for callers that convert a file one bucket of
+     * chunks at a time instead of holding a whole region decompressed in memory.
+     *
+     * <p>Every slot-decoding rule of {@link #readReporting} lives here; that method is now a full
+     * sweep over this reader, so the two cannot drift apart.
+     */
+    public static final class SlotReader implements AutoCloseable {
+
+        private static final int[] EMPTY = new int[CHUNKS];
+
+        private final Path path;
+        private final FileChannel channel;
+        private final long size;
+        private final int[] packed;
+        private final int occupied;
+
+        private SlotReader(Path path, FileChannel channel, long size, int[] packed) {
+            this.path = path;
+            this.channel = channel;
+            this.size = size;
+            this.packed = packed;
+            int occupied = 0;
+            for (int slot : packed) {
+                if (slot != 0) {
+                    occupied++;
+                }
+            }
+            this.occupied = occupied;
+        }
+
+        /** A file shorter than the header names no chunks and every slot reads as absent. */
+        public static SlotReader open(Path path) throws IOException {
+            FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
+            long size = channel.size();
+            if (size < HEADER_BYTES) {
+                channel.close();
+                return new SlotReader(path, null, size, EMPTY);
             }
             ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
             readFully(channel, header, 0L);
             header.flip();
-
+            int[] packed = new int[CHUNKS];
             for (int i = 0; i < CHUNKS; i++) {
-                int packed = header.getInt(i * 4);
-                // A zero slot is an unwritten slot, not a chunk we failed on.
-                if (packed == 0) {
-                    continue;
+                packed[i] = header.getInt(i * 4);
+            }
+            return new SlotReader(path, channel, size, packed);
+        }
+
+        /** Slots the header names as holding a chunk — known whole at open, without decoding. */
+        public int occupied() {
+            return this.occupied;
+        }
+
+        /**
+         * One slot's bytes, decoded on demand. Random access: the conversion reads a file in
+         * bucket order, so the sectors it touches are whatever order vanilla wrote them in.
+         */
+        public Slot read(int index) throws IOException {
+            int entry = this.packed[index];
+            // A zero slot is an unwritten slot, not a chunk we failed on.
+            if (entry == 0) {
+                return Slot.ABSENT;
+            }
+            // Past here the header names a chunk, so anything that stops us from decoding it
+            // means one chunk would be lost rather than absent.
+            int sector = (entry >> 8) & 0xFFFFFF;
+            int sectorCount = entry & 0xFF;
+            if (sector < 2 || sectorCount == 0) {
+                return Slot.UNREADABLE;
+            }
+            long position = (long) sector * SECTOR_BYTES;
+            if (position + 5 > this.size) {
+                return Slot.UNREADABLE;
+            }
+            ByteBuffer prefix = ByteBuffer.allocate(5).order(ByteOrder.BIG_ENDIAN);
+            readFully(this.channel, prefix, position);
+            prefix.flip();
+            int length = prefix.getInt();
+            int compressionId = prefix.get() & 0xFF;
+            // The external flag has to be read before the length is judged. Vanilla writes an
+            // external chunk's stub as length 1 with no payload (RegionFile.createExternalStub),
+            // which is the same length an empty slot has — so a reader that looks at the length
+            // first calls a real chunk "nothing here", and then neither reports it as a loss nor
+            // stops --prune from deleting the .mca that is the only pointer to it. Vanilla's own
+            // reader checks this flag first for the same reason (RegionFile:135).
+            if ((compressionId & EXTERNAL_STREAM_FLAG) != 0) {
+                // The stub in the file is a pointer, not the payload: the chunk's bytes
+                // live in c.<x>.<z>.mcc next to this region, as a raw compressed stream
+                // whose compression id is the low seven bits of this header byte. A reader
+                // without this branch counted a real chunk as unreadable, and the file
+                // holding the only pointer to it was refused by every conversion.
+                Path external = this.path.getParent().resolve(
+                    "c." + (regionX(this.path) * 32 + (index % 32)) + "."
+                        + (regionZ(this.path) * 32 + (index / 32)) + ".mcc");
+                if (!Files.isRegularFile(external)) {
+                    return Slot.UNREADABLE;
                 }
-                // Past here the header names a chunk, so anything that stops us from decoding it
-                // means one chunk would be lost rather than absent.
-                occupied++;
-                int sector = (packed >> 8) & 0xFFFFFF;
-                int sectorCount = packed & 0xFF;
-                if (sector < 2 || sectorCount == 0) {
-                    unreadable++;
-                    continue;
-                }
-                long position = (long) sector * SECTOR_BYTES;
-                if (position + 5 > channel.size()) {
-                    unreadable++;
-                    continue;
-                }
-                ByteBuffer prefix = ByteBuffer.allocate(5).order(ByteOrder.BIG_ENDIAN);
-                readFully(channel, prefix, position);
-                prefix.flip();
-                int length = prefix.getInt();
-                int compressionId = prefix.get() & 0xFF;
-                // The external flag has to be read before the length is judged. Vanilla writes an
-                // external chunk's stub as length 1 with no payload (RegionFile.createExternalStub),
-                // which is the same length an empty slot has — so a reader that looks at the length
-                // first calls a real chunk "nothing here", and then neither reports it as a loss nor
-                // stops --prune from deleting the .mca that is the only pointer to it. Vanilla's own
-                // reader checks this flag first for the same reason (RegionFile:135).
-                if ((compressionId & EXTERNAL_STREAM_FLAG) != 0) {
-                    // The stub in the file is a pointer, not the payload: the chunk's bytes
-                    // live in c.<x>.<z>.mcc next to this region, as a raw compressed stream
-                    // whose compression id is the low seven bits of this header byte. A reader
-                    // without this branch counted a real chunk as unreadable, and the file
-                    // holding the only pointer to it was refused by every conversion.
-                    Path external = path.getParent().resolve(
-                        "c." + (regionX(path) * 32 + (i % 32)) + "." + (regionZ(path) * 32 + (i / 32)) + ".mcc");
-                    if (!Files.isRegularFile(external)) {
-                        unreadable++;
-                        continue;
+                byte[] raw = Files.readAllBytes(external);
+                byte[] nbt = decompress(compressionId & ~EXTERNAL_STREAM_FLAG, raw);
+                return nbt != null ? new Slot(nbt, false) : Slot.UNREADABLE;
+            }
+            if (length <= 1) {
+                // An allocated slot with no payload. Vanilla's writer never emits this: even an
+                // empty compound serializes to its TAG_End byte, so a zero-length stream is
+                // damage rather than an absence. Counting it as a loss is the safe reading —
+                // a false positive only skips the file, a false negative deletes a chunk.
+                return Slot.UNREADABLE;
+            }
+            int streamLength = length - 1;
+            if (position + 5 + streamLength > this.size) {
+                return Slot.UNREADABLE;
+            }
+            byte[] raw = new byte[streamLength];
+            readFully(this.channel, ByteBuffer.wrap(raw), position + 5);
+            byte[] nbt = decompress(compressionId, raw);
+            // External .mcc, unknown id, missing lz4, or a failed inflate.
+            return nbt != null ? new Slot(nbt, false) : Slot.UNREADABLE;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (this.channel != null) {
+                this.channel.close();
+            }
+        }
+    }
+
+
+    /**
+     * An incremental Anvil writer, for callers that produce a file's chunks one bucket at a
+     * time instead of holding a whole region decompressed in memory.
+     *
+     * <p>Sectors are appended in arrival order and both header tables are written at {@link
+     * #close()}, so the on-disk layout differs from {@link #write}'s slot-order — the logical
+     * content does not, and every caller of this class verifies by reading the file back. The
+     * durability contract matches {@link #write} exactly: everything lands in a sibling
+     * {@code .tmp}, only a clean {@link #close()} moves it over the target, and every other
+     * exit — a failed {@link #write}, an explicit {@link #abort()}, a thrown {@link #close()}
+     * — deletes the temp and leaves the target as it was.
+     */
+    public static final class SlotWriter implements AutoCloseable {
+
+        private final Path target;
+        private final Path temp;
+        private final FileChannel channel;
+        private final int[] offsets = new int[CHUNKS];
+        private final int timestamp;
+        private int sector = 2;
+        private boolean closed;
+        private boolean abandoned;
+        private boolean failed;
+
+        private SlotWriter(Path target, Path temp, FileChannel channel, int timestamp) {
+            this.target = target;
+            this.temp = temp;
+            this.channel = channel;
+            this.timestamp = timestamp;
+        }
+
+        public static SlotWriter open(Path target) throws IOException {
+            Path temp = target.resolveSibling(target.getFileName() + ".tmp");
+            // A temp left behind by a crashed run is not empty state to build on: the writer
+            // appends, so stale sectors would tail the new file as readable extra chunks.
+            Files.deleteIfExists(temp);
+            FileChannel channel = FileChannel.open(
+                temp, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
+            );
+            writeFully(channel, ByteBuffer.allocate(HEADER_BYTES), 0L);
+            return new SlotWriter(target, temp, channel, (int) (System.currentTimeMillis() / 1000L));
+        }
+
+        /**
+         * Deflates one chunk and appends its sectors. The 255-sector ceiling of the bulk writer
+         * is enforced per chunk here: a chunk that cannot be represented fails the whole file —
+         * a header entry that packed its count into the sector field would name the wrong
+         * offset — and marks the writer failed so {@link #close()} cleans up instead of moving.
+         */
+        public void write(int index, byte[] nbt) throws IOException {
+            if (this.closed) {
+                throw new IllegalStateException("writer is closed");
+            }
+            byte[] compressed = deflate(nbt, Deflater.DEFAULT_COMPRESSION);
+            int sectorCount = (compressed.length + 5 + SECTOR_BYTES - 1) / SECTOR_BYTES;
+            if (sectorCount > 255) {
+                this.failed = true;
+                throw new IOException("chunk at slot " + index + " is " + compressed.length
+                    + " bytes compressed and needs " + sectorCount + " sectors, but the Anvil"
+                    + " header stores only 255. Vanilla would have written it to an external"
+                    + " .mcc; refusing rather than writing a header entry the game could not"
+                    + " read back");
+            }
+            ByteBuffer block = ByteBuffer.allocate(sectorCount * SECTOR_BYTES).order(ByteOrder.BIG_ENDIAN);
+            block.putInt(compressed.length + 1);
+            block.put((byte) 2); // zlib
+            block.put(compressed);
+            block.flip();
+            writeFully(this.channel, block, (long) this.sector * SECTOR_BYTES);
+            this.offsets[index] = (this.sector << 8) | sectorCount;
+            this.sector += sectorCount;
+        }
+
+        /** Declares the target must not be replaced; {@link #close()} discards the temp. */
+        public void abort() {
+            this.abandoned = true;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (this.closed) {
+                return;
+            }
+            this.closed = true;
+            boolean moved = false;
+            try {
+                if (!this.abandoned && !this.failed) {
+                    ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.BIG_ENDIAN);
+                    for (int offset : this.offsets) {
+                        header.putInt(offset);
                     }
-                    byte[] raw = Files.readAllBytes(external);
-                    byte[] nbt = decompress(compressionId & ~EXTERNAL_STREAM_FLAG, raw);
-                    if (nbt != null) {
-                        out.add(new Chunk(i, nbt));
-                    } else {
-                        unreadable++;
+                    for (int offset : this.offsets) {
+                        header.putInt(offset == 0 ? 0 : this.timestamp);
                     }
-                    continue;
+                    header.flip();
+                    writeFully(this.channel, header, 0L);
+                    FileMoves.settle(this.temp, this.target,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    moved = true;
                 }
-                if (length <= 1) {
-                    // An allocated slot with no payload. Vanilla's writer never emits this: even an
-                    // empty compound serializes to its TAG_End byte, so a zero-length stream is
-                    // damage rather than an absence. Counting it as a loss is the safe reading —
-                    // a false positive only skips the file, a false negative deletes a chunk.
-                    unreadable++;
-                    continue;
+            } finally {
+                try {
+                    this.channel.close();
+                } catch (IOException closeFailure) {
+                    if (moved) {
+                        throw closeFailure;
+                    }
                 }
-                int streamLength = length - 1;
-                if (position + 5 + streamLength > channel.size()) {
-                    unreadable++;
-                    continue;
-                }
-                byte[] raw = new byte[streamLength];
-                readFully(channel, ByteBuffer.wrap(raw), position + 5);
-                byte[] nbt = decompress(compressionId, raw);
-                if (nbt != null) {
-                    out.add(new Chunk(i, nbt));
-                } else {
-                    // External .mcc, unknown id, missing lz4, or a failed inflate.
-                    unreadable++;
+                if (!moved) {
+                    try {
+                        Files.deleteIfExists(this.temp);
+                    } catch (IOException cleanupFailure) {
+                        // The outcome this caller already has — refusal or failure — is the
+                        // important one; a leftover temp is cleaned by the next open.
+                    }
                 }
             }
         }
-        // Every slot the header named either decoded or was counted, so these three numbers have
-        // to agree. They cannot disagree today — every path past the `packed == 0` test either adds
-        // a chunk or bumps `unreadable` — and the check is here anyway, because the failure it
-        // guards is exactly the one that started this: a slot skipped without being counted, which
-        // reads as a smaller world rather than as an error. Counting `occupied` in this same pass
-        // is also what retired the second file open the old accessor needed.
-        if (occupied != out.size() + unreadable) {
-            throw new IllegalStateException(
-                "Read " + out.size() + " chunks and " + unreadable + " unreadable from " + path
-                    + ", but the header names " + occupied + " slots"
-            );
-        }
-        return new ReadResult(out, unreadable, occupied);
     }
-
 
     /** Writes chunks with zlib compression, matching what vanilla writes by default. */
     public static void write(Path path, List<Chunk> chunks) throws IOException {
