@@ -108,10 +108,16 @@ jobs:
               jq -r '.[] | .minecraft_version + "/" + .loader' <<< "$matrix" >&2
               exit 1
             fi
+            # jq: `as` binds a variable without changing the input, and `$e |` rebinds `.` —
+            # under -n the untouched input is null, which is how this filter once emitted
+            # [null] instead of the pairs. The pair's two strings are hoisted into $mc and
+            # $pair before either can happen.
             matrix=$(jq -nc --argjson m "$matrix" --argjson e "$entries" '
-                [$m[] as $p
-                 | select(($e | index($p.minecraft_version)) != null
-                     or ($e | index($p.minecraft_version + "/" + $p.loader)) != null)]')
+                [$m[]
+                 | select((.minecraft_version) as $mc
+                     | (.minecraft_version + "/" + .loader) as $pair
+                     | ($e | index($mc)) != null
+                       or ($e | index($pair)) != null)]')
             echo "partial release: the scope keeps $(printf '%s' "$matrix" | jq length) of the matrix"
           fi
 
