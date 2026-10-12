@@ -309,12 +309,13 @@ public final class CsoCommands {
             // mid-conversion, and that guarantee is what makes it safe to hand them to
             // workers. The per-file pipeline runs a bucket of chunks at a time
             // (StreamingConverter), so a worker holds a few hundred KB instead of a whole
-            // decompressed region. Each worker is a deflate or zstd lane, and those do not
-            // share a physical core well: two hyperthreads fighting over the same SIMD units
-            // made a 12-lane pool measurably SLOWER than 6 on a 6C/12T machine, so the width
-            // tracks physical cores (half the logical count) rather than logical, and never
-            // below 2.
-            int workers = Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors() / 2));
+            // decompressed region — which is what lets the width follow the CPU: every
+            // worker is a deflate or zstd lane, and those DO share hyperthreads well
+            // (measured on 6C/12T: 12 lanes beat 6 by 31%, 2867 ms vs 4142 ms over the same
+            // 48 files; the deflate-bound direction agreed, 215.5 s vs 243.0 s over a whole
+            // world). The cap of sixteen is queue sanity for the many-core boxes this
+            // formula otherwise scales onto; it never goes below two.
+            int workers = Math.max(2, Math.min(16, Runtime.getRuntime().availableProcessors()));
             java.util.concurrent.ExecutorService pool =
                 java.util.concurrent.Executors.newFixedThreadPool(workers);
             CsoSettings settings = CsoRuntime.settings();
