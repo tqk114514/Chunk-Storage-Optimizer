@@ -55,3 +55,5 @@ compat/Chunky/
 # Test runs drop log4j output next to the module working dirs.
 fabric/logs/
 neoforge/logs/
+
+*.log

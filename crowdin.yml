@@ -94,8 +94,8 @@
     }
   },
   {
-    "source": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/en_us.json",
-    "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/%two_letters_code%.json",
+    "source": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer_voxycompat/lang/en_us.json",
+    "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer_voxycompat/lang/%two_letters_code%.json",
     "languages_mapping": {
       "two_letters_code": {
         "zh-CN": "zh_cn",

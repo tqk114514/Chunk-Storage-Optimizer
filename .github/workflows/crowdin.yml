@@ -13,7 +13,7 @@ on:
     paths:
       - core/src/main/resources/assets/chunkstorageoptimizer/lang/en_us.json
       - compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/en_us.json
-      - compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/en_us.json
+      - compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer_voxycompat/lang/en_us.json
       - crowdin.yml
   schedule:
     # Monday 04:00 UTC — early afternoon in CST.

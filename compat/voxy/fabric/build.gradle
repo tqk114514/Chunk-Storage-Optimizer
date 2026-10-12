@@ -26,7 +26,7 @@ plugins {
 // the compat itself changes, so a main-mod release never has to bump it. The nested copy always
 // builds from this source tree together with the core it reads, so the two cannot drift apart.
 def compatVersion = '1.0.0'
-def compatId = 'chunkstorageoptimizer-voxycompat'
+def compatId = 'chunkstorageoptimizer_voxycompat'
 
 version = compatVersion
 // A group of this compat's own, not the main mod's: the compat jar modules are named 'fabric'
