@@ -12,6 +12,22 @@ only from a `## [version]` heading down, and a missing or empty section fails th
   is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
   player needs before running the new build (1.1.4's max-tick-time note is the example).
 
+## [1.1.7] - 2026-10-12
+
+### Changed
+- **`/cso convert` now works through one bucket of chunks at a time instead of holding a
+  whole region file in memory, and its worker count now follows your CPU.** On multi-core
+  machines conversions run up to about a third faster than before and use a fraction of
+  the memory, with the same verification on every file as always.
+
+### Fixed
+- **A leftover `.tmp` file from a crashed conversion is now cleared before writing.**
+  Before, it could tail into the new region file as readable chunks, and the next
+  conversion would refuse that file until the temp was deleted by hand.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.6] - 2026-10-10
 
 ### Fixed
