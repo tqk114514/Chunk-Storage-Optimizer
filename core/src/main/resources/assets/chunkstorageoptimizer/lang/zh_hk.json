@@ -2,40 +2,28 @@
   "chunkstorageoptimizer.configuration.title": "區塊儲存優化 設定",
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml": "區塊儲存優化 設定",
   "chunkstorageoptimizer.configuration.section.chunkstorageoptimizer.common.toml.title": "區塊儲存優化 設定",
-
   "chunkstorageoptimizer.configuration.enabled": "啟用",
   "chunkstorageoptimizer.configuration.enabled.tooltip": "總開關。關閉後使用原版 Anvil 存檔，不會改動任何已有檔案；但只存在於 .cso 裡的進度對原版不可見。",
-
   "chunkstorageoptimizer.configuration.grid": "分桶網格邊長",
   "chunkstorageoptimizer.configuration.grid.tooltip": "一個 32×32 的 region 會被切成 grid × grid 個桶。網格越大 = 桶越小 = 寫放大越低、壓縮率越差。只對新建的 region 檔案生效，已有檔案保持自己出生時的 grid。實測（889 MB 城市存檔）：16 相較於 8 大約把寫入量與寫入耗時都減半，代價是多佔約 7.5% 空間；32 反而比 16 更差——每桶只剩 1 個區塊，失去跨區塊共享壓縮上下文的收益。取值：1 = 整個 region 一個桶（壓縮最好、寫入代價最高，適合冷存檔/封存）；8 = 每桶 16 個區塊；16 = 每桶 4 個區塊（預設，寫入代價最低）。",
-
   "chunkstorageoptimizer.configuration.compression": "壓縮方式",
   "chunkstorageoptimizer.configuration.compression.tooltip": "壓縮方式：zstd 或 none。",
-
   "chunkstorageoptimizer.configuration.zstdLevel": "zstd 等級",
   "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "熱寫入路徑使用的 zstd 等級。3 是預設的折衷；等級越高壓縮越好、寫入越慢。",
-
   "chunkstorageoptimizer.configuration.cachedBuckets": "快取桶數量",
   "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "每個 region 檔案在記憶體中快取的已解壓桶數量。越大越能降低玩家附近的讀放大，代價是堆記憶體。快取另受每檔案 8 MB 的位元組預算約束——小網格時單一桶可能裝著整個 region 的區塊，超過預算的桶不會被快取。一個桶最多裝 (32/grid)^2 個區塊；grid=8 時是 16 個。",
-
   "chunkstorageoptimizer.configuration.verifyCrc": "驗證 CRC32",
   "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "讀取時驗證桶的 CRC32，用來發現損壞，而不是靜默回傳垃圾數據或空區塊。除非在做基準測試，否則請保持開啟。",
-
   "chunkstorageoptimizer.configuration.fallbackToMca": "回退讀取 .mca",
   "chunkstorageoptimizer.configuration.fallbackToMca.tooltip": "當 .cso 裡沒有該區塊時，回退去讀同名的 .mca。這讓本 mod 可以安全地啟用於既有存檔：已儲存的數據不會遺失，新寫入逐步遷移到新格式。",
-
   "chunkstorageoptimizer.configuration.compactionMinBytes": "整理觸發下限（位元組）",
   "chunkstorageoptimizer.configuration.compactionMinBytes.tooltip": "觸發空間整理所需的最小浪費位元組數。",
-
   "chunkstorageoptimizer.configuration.compactionRatio": "整理觸發比例",
   "chunkstorageoptimizer.configuration.compactionRatio.tooltip": "觸發整理的浪費/存活數據比（0.25 = 25% 浪費）。",
-
   "chunkstorageoptimizer.configuration.batchMaxChunks": "批次處理區塊數",
   "chunkstorageoptimizer.configuration.batchMaxChunks.tooltip": "寫入一個區塊意味著重壓它所在的整個桶，所以寫入先在記憶體暫存、再按桶合併寫入磁碟：同一個桶裡的 N 個區塊只壓縮一次，而不是 N 次。這裡設定攢夠多少個區塊就提前寫入磁碟。設為 1 可關閉批次處理。",
-
   "chunkstorageoptimizer.configuration.batchMaxDelayMs": "批次處理最長延遲（毫秒）",
   "chunkstorageoptimizer.configuration.batchMaxDelayMs.tooltip": "暫存寫入在記憶體中的最長停留時間，逾時即強制寫入磁碟。它決定發生意外中斷時最多會遺失多少。自動儲存時一律會寫入磁碟。",
-
   "modmenu.nameTranslation.chunkstorageoptimizer": "區塊儲存優化器",
   "modmenu.summaryTranslation.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。",
   "modmenu.descriptionTranslation.chunkstorageoptimizer": "將 Minecraft 的 Anvil region 檔案替換為自研的、基於分桶並以 zstd 壓縮的儲存格式——存檔更小，區塊讀寫更快。",
