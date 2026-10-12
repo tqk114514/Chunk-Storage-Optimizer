@@ -45,6 +45,12 @@ jobs:
           auto_approve_imported: ${{ inputs.seed }}
           import_eq_suggestions: true
           download_translations: true
+          # Minecraft falls back to en_us for every key a language file lacks, so a language
+          # contributes a file only once it has translated something, and the file carries
+          # only what has been translated: the twenty-one not-yet-started languages stay out
+          # of the jars instead of shipping as empty shells.
+          skip_untranslated_strings: true
+          skip_untranslated_files: true
           push_translations: true
           localization_branch_name: l10n_crowdin
           commit_message: 'l10n: 从 Crowdin 同步译文'
