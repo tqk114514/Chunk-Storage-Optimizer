@@ -46,10 +46,9 @@ jobs:
           import_eq_suggestions: true
           download_translations: true
           # Minecraft falls back to en_us for every key a language file lacks, so a language
-          # contributes a file only once it has translated something, and the file carries
-          # only what has been translated: the twenty-one not-yet-started languages stay out
-          # of the jars instead of shipping as empty shells.
-          skip_untranslated_strings: true
+          # contributes a file only once it has translated something: the twenty-one
+          # not-yet-started languages stay out of the jars instead of shipping as empty
+          # shells. (The CLI rejects skipping strings and files together.)
           skip_untranslated_files: true
           push_translations: true
           localization_branch_name: l10n_crowdin
