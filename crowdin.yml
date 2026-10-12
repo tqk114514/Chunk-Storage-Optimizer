@@ -9,8 +9,12 @@
 # Fabric-only on purpose: NeoForge's Mods screen reads neoforge.mods.toml directly, so the
 # nested neoforge compat carries no lang files at all.
 #
-# Crowdin's language codes (zh-CN, pt-BR, ja...) become Minecraft's lowercase-with-underscore
-# file names (zh_cn, pt_br, ja_jp) through the mapping repeated below — deliberately NOT a
+# Crowdin language codes (zh-CN, pt-BR, ja...) become Minecraft's lowercase-with-underscore file
+# names (zh_cn, pt_br, ja_jp) through the mapping repeated below — keyed on the
+# BUILT-IN %two_letters_code% placeholder, because the CLI validator rejects patterns
+# whose only placeholder is a custom mapping name (measured: "The 'translation'
+# parameter should contain at least one language placeholder"). The mapping values
+# replace the placeholder output entirely, so every project language needs an entry — deliberately NOT a
 # YAML anchor: the CLI's config validator reads aliased entries as strings and rejects them
 # (measured: exactly one "expected record, received string" per aliased entry). Languages that
 # are not enabled in the Crowdin project ignore their mapping until they are, so the list is
@@ -23,9 +27,9 @@
 "files": [
   {
     "source": "/core/src/main/resources/assets/chunkstorageoptimizer/lang/en_us.json",
-    "translation": "/core/src/main/resources/assets/chunkstorageoptimizer/lang/%minecraft%.json",
+    "translation": "/core/src/main/resources/assets/chunkstorageoptimizer/lang/%two_letters_code%.json",
     "languages_mapping": {
-      "minecraft": {
+      "two_letters_code": {
         "zh-CN": "zh_cn",
         "zh-TW": "zh_tw",
         "zh-HK": "zh_hk",
@@ -57,9 +61,9 @@
   },
   {
     "source": "/compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/en_us.json",
-    "translation": "/compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/%minecraft%.json",
+    "translation": "/compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/%two_letters_code%.json",
     "languages_mapping": {
-      "minecraft": {
+      "two_letters_code": {
         "zh-CN": "zh_cn",
         "zh-TW": "zh_tw",
         "zh-HK": "zh_hk",
@@ -91,9 +95,9 @@
   },
   {
     "source": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/en_us.json",
-    "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/%minecraft%.json",
+    "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/%two_letters_code%.json",
     "languages_mapping": {
-      "minecraft": {
+      "two_letters_code": {
         "zh-CN": "zh_cn",
         "zh-TW": "zh_tw",
         "zh-HK": "zh_hk",
