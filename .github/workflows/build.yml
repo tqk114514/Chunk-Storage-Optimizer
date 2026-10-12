@@ -6,6 +6,13 @@ name: Build
 # tags per release, and because GitHub starts a run per tag that was fourteen runs, thirteen of which
 # had nothing to do.
 #
+# A PARTIAL release narrows that matrix without changing the version number: the tag's annotation
+# carries `scope:` lines — `scope: 26.3.0` for both loaders of one Minecraft, `scope: 26.3.0/neoforge`
+# for one pair, one line per entry. A tag with no scope lines builds everything, which is what every
+# release so far has been; a scope entry the csv has no jar for fails the run instead of quietly
+# publishing less than was asked for. The workflow_dispatch `scope` input accepts the same syntax
+# for dry-run rehearsals of a narrowed release.
+#
 # A manual run does everything a release does without cutting a tag, which is how the upload path
 # gets exercised. It plans by default and publishes when the box is unticked.
 on:
@@ -19,6 +26,10 @@ on:
         description: Build and plan the upload without calling Modrinth
         type: boolean
         default: true
+      scope:
+        description: 'Only build these pairs — "26.3.0" or "26.3.0/neoforge", one per line; empty builds all'
+        type: string
+        default: ''
 
 jobs:
   # The pins in supported-versions.csv are checked against upstream rather than trusted, so a row
@@ -48,6 +59,9 @@ jobs:
 
       - name: Work out the matrix, and what this event is for
         id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_SCOPE: ${{ github.event.inputs.scope }}
         run: |
           set -euo pipefail
           rows=$(grep -v '^#' supported-versions.csv | tr -d ' \t\r' | grep -v '^$')
@@ -63,6 +77,44 @@ jobs:
                   + (if .[4] != "-" then [{loader: "fabric", minecraft_version: .[0]}] else [] end)
                 )
               | add')
+
+          # The scope of a partial release (see the header comment): from the tag annotation on a
+          # tag run — read through the API, because the annotated tag object does not reliably
+          # reach this checkout — or from the dispatch input on a manual run. Empty scope means
+          # the full matrix, which is the default and the shape every earlier release had.
+          scope=""
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag_object=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME")
+            tag_type=$(printf '%s' "$tag_object" | jq -r .object.type)
+            if [ "$tag_type" = "tag" ]; then
+              tag_sha=$(printf '%s' "$tag_object" | jq -r .object.sha)
+              scope=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq .message \
+                | grep -i '^scope:' | sed -E 's/^[Ss][Cc][Oo][Pp][Ee]:[[:space:]]*//')
+            fi
+          elif [ -n "${DISPATCH_SCOPE:-}" ]; then
+            scope=$(printf '%s' "$DISPATCH_SCOPE" | tr ';' '\n' | grep -v '^$')
+          fi
+
+          if [ -n "$scope" ]; then
+            entries=$(printf '%s\n' "$scope" | jq -Rsc 'split("\n") | map(select(length > 0))')
+            unknown=$(jq -n --argjson m "$matrix" --argjson e "$entries" '
+                [$e[] as $x
+                 | select(([$m[] | .minecraft_version, (.minecraft_version + "/" + .loader)]
+                     | index($x)) == null)
+                 | $x]')
+            if [ "$(printf '%s' "$unknown" | jq length)" != "0" ]; then
+              echo "scope names $(printf '%s' "$unknown" | jq -c .)" \
+                "but the csv has no jar for those pairs; valid entries are:" >&2
+              jq -r '.[] | .minecraft_version + "/" + .loader' <<< "$matrix" >&2
+              exit 1
+            fi
+            matrix=$(jq -n --argjson m "$matrix" --argjson e "$entries" '
+                [$m[] as $p
+                 | select(($e | index($p.minecraft_version)) != null
+                     or ($e | index($p.minecraft_version + "/" + $p.loader)) != null)])
+            echo "partial release: the scope keeps $(printf '%s' "$matrix" | jq length) of the matrix"
+          fi
+
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "matrix: $matrix"
 
