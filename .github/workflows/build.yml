@@ -111,7 +111,7 @@ jobs:
             matrix=$(jq -n --argjson m "$matrix" --argjson e "$entries" '
                 [$m[] as $p
                  | select(($e | index($p.minecraft_version)) != null
-                     or ($e | index($p.minecraft_version + "/" + $p.loader)) != null)])
+                     or ($e | index($p.minecraft_version + "/" + $p.loader)) != null)]')
             echo "partial release: the scope keeps $(printf '%s' "$matrix" | jq length) of the matrix"
           fi
 
