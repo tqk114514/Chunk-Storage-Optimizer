@@ -1,0 +1,60 @@
+name: Crowdin
+
+# Translations live on crowdin.com; this workflow is the pipe. Sources (the three en_us.json)
+# flow up to Crowdin whenever they change, finished translations flow back down as a pull
+# request against main, and the weekly schedule catches translations finished in between. The
+# seed input exists for the one-time setup: it also uploads the translations already in the
+# repo, so Crowdin starts from what the jars ship instead of from nothing. It must not run
+# that way again after the first time — every later seed would overwrite Crowdin-side work
+# with the repo's older files.
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/src/main/resources/assets/chunkstorageoptimizer/lang/en_us.json
+      - compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/en_us.json
+      - compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/en_us.json
+      - crowdin.yml
+  schedule:
+    # Monday 04:00 UTC — early afternoon in CST.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Also upload the repo's existing translations (first-time setup only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync sources and translations with Crowdin
+        uses: crowdin/github-action@v3
+        with:
+          upload_sources: true
+          upload_translations: ${{ inputs.seed }}
+          # Seeding imports the shipped translations as finished work, not as suggestions.
+          auto_approve_imported: ${{ inputs.seed }}
+          import_eq_suggestions: true
+          download_translations: true
+          push_translations: true
+          localization_branch_name: l10n_crowdin
+          commit_message: 'l10n: 从 Crowdin 同步译文'
+          create_pull_request: true
+          pull_request_title: 'l10n: Crowdin 译文同步'
+          pull_request_base_branch_name: main
+        env:
+          # The built-in token can push the branch and open the PR, but a pull request it
+          # opened does not trigger other workflows — fine here: a translations-only PR has
+          # nothing to test until it merges, and the merge runs the full matrix.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}

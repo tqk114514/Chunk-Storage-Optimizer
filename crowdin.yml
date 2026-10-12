@@ -1,0 +1,64 @@
+# Crowdin CLI / GitHub Action configuration. The values that identify the project live in
+# repository secrets (set up at Settings -> Secrets and variables -> Actions):
+#   CROWDIN_PROJECT_ID      the numeric ID from crowdin.com/project/<name>/tools/api
+#   CROWDIN_PERSONAL_TOKEN  created at crowdin.com/settings#api-key — scopes: Projects (read),
+#                           Source files & strings (read+write), Translations (read+write)
+#
+# Three source trees, one entry each: the main mod's strings (shipped by both loaders via
+# core's shared resources) and the two compat mods' Mod Menu strings. The compat entries are
+# Fabric-only on purpose: NeoForge's Mods screen reads neoforge.mods.toml directly, so the
+# nested neoforge compat carries no lang files at all.
+#
+# Crowdin's language codes (zh-CN, pt-BR, ja...) become Minecraft's lowercase-with-underscore
+# file names (zh_cn, pt_br, ja_jp) through the shared mapping below. Languages that are not
+# enabled in the Crowdin project ignore their mapping until they are, so the list is
+# deliberately wider than the six languages the mod ships today.
+"project_id_env": "CROWDIN_PROJECT_ID"
+"api_token_env": "CROWDIN_PERSONAL_TOKEN"
+"base_path": "."
+"preserve_hierarchy": true
+
+"files": [
+  {
+    "source": "/core/src/main/resources/assets/chunkstorageoptimizer/lang/en_us.json",
+    "translation": "/core/src/main/resources/assets/chunkstorageoptimizer/lang/%minecraft%.json",
+    "languages_mapping": &minecraft_mapping {
+      "zh-CN": "zh_cn",
+      "zh-TW": "zh_tw",
+      "zh-HK": "zh_hk",
+      "ja": "ja_jp",
+      "ko": "ko_kr",
+      "de": "de_de",
+      "es-ES": "es_es",
+      "fr": "fr_fr",
+      "it": "it_it",
+      "pt-BR": "pt_br",
+      "ru": "ru_ru",
+      "nl": "nl_nl",
+      "pl": "pl_pl",
+      "tr": "tr_tr",
+      "uk": "uk_ua",
+      "cs": "cs_cz",
+      "sv-SE": "sv_se",
+      "da": "da_dk",
+      "fi": "fi_fi",
+      "hu": "hu_hu",
+      "ro": "ro_ro",
+      "el": "el_gr",
+      "id": "id_id",
+      "vi": "vi_vn",
+      "th": "th_th",
+      "ar": "ar_sa"
+    }
+  },
+  {
+    "source": "/compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/en_us.json",
+    "translation": "/compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang/%minecraft%.json",
+    "languages_mapping": *minecraft_mapping
+  },
+  {
+    "source": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/en_us.json",
+    "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer-voxycompat/lang/%minecraft%.json",
+    "languages_mapping": *minecraft_mapping
+  }
+]
