@@ -12,6 +12,16 @@ only from a `## [version]` heading down, and a missing or empty section fails th
   is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
   player needs before running the new build (1.1.4's max-tick-time note is the example).
 
+## [1.1.7-1] - 2026-10-12
+
+### Changed
+- **The Minecraft 26.3 NeoForge build now requires NeoForge 26.3.0.76**, the first stable
+  build of that line, instead of the beta from before. If your loader is already on the
+  stable build, 1.1.7 runs on it as-is — this only raises the declared minimum.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.7] - 2026-10-12
 
 ### Changed
