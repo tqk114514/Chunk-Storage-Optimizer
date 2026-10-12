@@ -108,7 +108,7 @@ jobs:
               jq -r '.[] | .minecraft_version + "/" + .loader' <<< "$matrix" >&2
               exit 1
             fi
-            matrix=$(jq -n --argjson m "$matrix" --argjson e "$entries" '
+            matrix=$(jq -nc --argjson m "$matrix" --argjson e "$entries" '
                 [$m[] as $p
                  | select(($e | index($p.minecraft_version)) != null
                      or ($e | index($p.minecraft_version + "/" + $p.loader)) != null)]')
