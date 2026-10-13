@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy 相容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "使 Voxy 匯入生界時，能讀塊儲優化器所書之 .cso 區檔。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "既裝 Voxy，則 /voxy import world 與 /voxy import current 亦讀塊儲優化器所書之 .cso 區檔，非惟原版之 .mca 而已。無 Voxy，則一無所為。"
+}

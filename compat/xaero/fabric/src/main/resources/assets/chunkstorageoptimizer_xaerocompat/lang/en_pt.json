@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Shipmate",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Makes Xaero's World Map spot th' .cso region files written by Chunk Stowage Optimizer.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "With Xaero's World Map aboard, th' map lists this mod's .cso region files th' way it lists vanilla .mca ones, so terrain drawn from th' world save keeps showin' across voyages. Does nothin' without Xaero's World Map aboard."
+}

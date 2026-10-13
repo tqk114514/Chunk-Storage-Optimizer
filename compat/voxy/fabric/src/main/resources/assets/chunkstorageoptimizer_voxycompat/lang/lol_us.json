@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Kompat",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Letz Voxy's wurld import read teh .cso region filez riten by Chonk Storage Optimizer.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Wif Voxy installd, /voxy import world n /voxy import current also read teh .cso region filez riten by Chonk Storage Optimizer, not just teh vanilla .mca wunz. Doez nuthin wifout Voxy."
+}
