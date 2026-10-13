@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Compat",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Maketh Xaero's World Map espy the .cso region files written by Chunk Storage Optimizer.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "With Xaero's World Map installed, the map listeth this mod's .cso region files as it listeth vanilla .mca ones, so terrain drawn from the world save keepeth showing across sessions. It doth nothing without Xaero's World Map installed."
+}

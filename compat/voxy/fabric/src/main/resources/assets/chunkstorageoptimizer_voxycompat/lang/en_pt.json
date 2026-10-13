@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Shipmate",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Lets Voxy's world import read th' .cso region files written by Chunk Stowage Optimizer.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "With Voxy aboard, /voxy import world an' /voxy import current also read th' .cso region files written by Chunk Stowage Optimizer, not just th' vanilla .mca ones. Does nothin' without Voxy aboard."
+}

@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero 相容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "使 Xaero 之寰宇輿圖，識塊儲優化器所書之 .cso 區檔。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "既裝 Xaero 之寰宇輿圖，則圖中列此模組之 .cso 區檔，一如其列原版 .mca 者；故存檔所繪之地形，歷諸會皆見。無 Xaero 之寰宇輿圖，則一無所為。"
+}
