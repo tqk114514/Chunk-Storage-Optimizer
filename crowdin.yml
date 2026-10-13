@@ -55,7 +55,10 @@
         "id": "id_id",
         "vi": "vi_vn",
         "th": "th_th",
-        "ar": "ar_sa"
+        "ar": "ar_sa",
+        "en-PT": "en_pt",
+        "en-UD": "en_ud",
+        "lol": "lol_us"
       }
     }
   },
@@ -89,7 +92,10 @@
         "id": "id_id",
         "vi": "vi_vn",
         "th": "th_th",
-        "ar": "ar_sa"
+        "ar": "ar_sa",
+        "en-PT": "en_pt",
+        "en-UD": "en_ud",
+        "lol": "lol_us"
       }
     }
   },
@@ -123,7 +129,10 @@
         "id": "id_id",
         "vi": "vi_vn",
         "th": "th_th",
-        "ar": "ar_sa"
+        "ar": "ar_sa",
+        "en-PT": "en_pt",
+        "en-UD": "en_ud",
+        "lol": "lol_us"
       }
     }
   }
