@@ -12,6 +12,17 @@ only from a `## [version]` heading down, and a missing or empty section fails th
   is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
   player needs before running the new build (1.1.4's max-tick-time note is the example).
 
+## [1.1.8] - 2026-10-14
+
+### Added
+- **31 interface languages, up from 6** — everything the mod shows (config screen, command
+  feedback, Mod Menu entries) now also ships in 25 more languages, including Shakespearean
+  English, Classical Chinese (文言), lolcat, Pirate Speak and upside-down English. Translations
+  are maintained on Crowdin and pull requests arrive automatically, so the list keeps growing.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.7-1] - 2026-10-12
 
 ### Changed
