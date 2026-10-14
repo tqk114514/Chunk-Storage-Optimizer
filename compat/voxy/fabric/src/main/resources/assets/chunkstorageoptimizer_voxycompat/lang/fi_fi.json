@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy-yhteensopivuus",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Antaa Voxyn maailman tuonnin lukea .cso-aluetiedostot, jotka Chunk-tallennuksen optimoija kirjoittaa.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Kun Voxy on asennettuna, komennot /voxy import world ja /voxy import current lukevat myös Chunk-tallennuksen optimoijan kirjoittamat .cso-aluetiedostot, eivät pelkästään vanilla-pelin .mca-tiedostoja. Ei tee mitään, jos Voxy ei ole asennettuna."
+}

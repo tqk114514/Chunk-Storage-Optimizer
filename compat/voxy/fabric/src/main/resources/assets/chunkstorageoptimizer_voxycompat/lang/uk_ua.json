@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO: сумісність з Voxy",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Дозволяє імпорту світу Voxy читати файли регіонів .cso, записані Оптимізатором сховища чанків.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Якщо встановлено Voxy, команди /voxy import world і /voxy import current також читають файли регіонів .cso, записані Оптимізатором сховища чанків, а не лише ванільні .mca. Нічого не робить, якщо Voxy не встановлено."
+}

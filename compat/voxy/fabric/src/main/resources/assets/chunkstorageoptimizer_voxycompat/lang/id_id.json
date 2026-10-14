@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Kompatibilitas",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Membuat fitur impor dunia Voxy dapat membaca file region .cso yang ditulis oleh Pengoptimal Penyimpanan Chunk.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Dengan Voxy terpasang, /voxy import world dan /voxy import current juga membaca file region .cso yang ditulis oleh Pengoptimal Penyimpanan Chunk, bukan hanya file .mca vanilla. Tidak melakukan apa pun tanpa Voxy terpasang."
+}

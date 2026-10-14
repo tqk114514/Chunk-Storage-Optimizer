@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Uyumluluğu",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Xaero's World Map modunun, Chunk Depolama Optimizasyonu tarafından yazılan .cso bölge dosyalarını algılamasını sağlar.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Xaero's World Map kuruluysa harita bu modun .cso bölge dosyalarını da vanilla .mca dosyaları gibi listeler, böylece dünya kaydından çizilen arazi oturumlar arasında görünmeye devam eder. Xaero's World Map kurulu değilken hiçbir şey yapmaz."
+}

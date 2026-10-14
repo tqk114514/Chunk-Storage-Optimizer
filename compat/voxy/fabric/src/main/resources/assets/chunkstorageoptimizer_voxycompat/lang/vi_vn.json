@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Tương thích",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Cho phép chức năng nhập thế giới của Voxy đọc các tệp vùng .cso do Trình tối ưu hóa lưu trữ chunk ghi ra.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Khi đã cài Voxy, /voxy import world và /voxy import current cũng đọc các tệp vùng .cso do Trình tối ưu hóa lưu trữ chunk ghi ra, chứ không chỉ tệp .mca của vanilla. Không có tác dụng gì nếu chưa cài Voxy."
+}

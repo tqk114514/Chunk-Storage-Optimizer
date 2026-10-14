@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Uyumluluğu",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Voxy'nin dünya içe aktarma özelliğinin, Chunk Depolama Optimizasyonu tarafından yazılan .cso bölge dosyalarını okumasına olanak tanır.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Voxy kuruluysa /voxy import world ve /voxy import current komutları, yalnızca vanilla .mca dosyalarını değil, Chunk Depolama Optimizasyonu tarafından yazılan .cso bölge dosyalarını da okur. Voxy kurulu değilken hiçbir şey yapmaz."
+}

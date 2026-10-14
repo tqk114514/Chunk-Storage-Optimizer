@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Συμβατότητα",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Επιτρέπει στην εισαγωγή κόσμου του Voxy να διαβάζει τα αρχεία περιοχής .cso που γράφει ο Βελτιστοποιητής Αποθήκευσης Chunk.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Με εγκατεστημένο το Voxy, τα /voxy import world και /voxy import current διαβάζουν επίσης τα αρχεία περιοχής .cso που γράφει ο Βελτιστοποιητής Αποθήκευσης Chunk, και όχι μόνο τα vanilla .mca. Δεν κάνει τίποτα χωρίς εγκατεστημένο το Voxy."
+}

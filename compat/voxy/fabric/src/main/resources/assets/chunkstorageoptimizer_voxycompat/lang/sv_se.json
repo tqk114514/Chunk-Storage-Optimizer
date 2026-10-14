@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy-kompatibilitet",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Låter Voxys världsimport läsa de .cso-regionsfiler som skrivs av Chunklagringsoptimeraren.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Med Voxy installerat läser /voxy import world och /voxy import current även de .cso-regionsfiler som skrivs av Chunklagringsoptimeraren, inte bara vanilla .mca-filerna. Gör ingenting utan Voxy installerat."
+}
