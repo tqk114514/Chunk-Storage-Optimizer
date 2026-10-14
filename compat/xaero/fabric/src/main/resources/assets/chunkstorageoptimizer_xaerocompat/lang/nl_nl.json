@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Compatibiliteit",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Zorgt dat Xaero's World Map de .cso-regiobestanden detecteert die door Chunk-opslagoptimalisatie zijn geschreven.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Als Xaero's World Map geïnstalleerd is, toont de kaart de .cso-regiobestanden van deze mod zoals hij de vanilla .mca-bestanden toont, zodat terrein dat uit de wereldopslag wordt getekend ook in latere sessies zichtbaar blijft. Doet niets als Xaero's World Map niet is geïnstalleerd."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Als Xaero's World Map geïnstalleerd is, toont de kaart de .cso-regiobestanden van deze mod zoals hij de vanilla .mca-bestanden toont, zodat terrein dat uit de wereldopslag wordt getekend ook in latere sessies zichtbaar blijft. Doet niets als Xaero's World Map niet is geïnstalleerd.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Zorgt dat Xaero's World Map de .cso-regiobestanden detecteert die door Chunk-opslagoptimalisatie zijn geschreven.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Zorgt dat Xaero's World Map de .cso-regiobestanden detecteert die door Chunk-opslagoptimalisatie zijn geschreven."
 }

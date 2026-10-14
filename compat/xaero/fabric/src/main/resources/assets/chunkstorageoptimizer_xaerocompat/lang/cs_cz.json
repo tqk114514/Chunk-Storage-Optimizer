@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "Kompatibilita CSO s Xaero",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Naučí mapu Xaero's World Map rozpoznávat soubory regionů .cso, které zapisuje Optimalizátor úložiště chunků.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Když je nainstalovaná mapa Xaero's World Map, výpis mapy obsahuje soubory regionů .cso tohoto modu stejně jako vanilla soubory .mca, takže terén vykreslený z uloženého světa zůstává na mapě viditelný napříč relacemi. Bez nainstalované mapy Xaero's World Map mod nic nedělá."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Když je nainstalovaná mapa Xaero's World Map, výpis mapy obsahuje soubory regionů .cso tohoto modu stejně jako vanilla soubory .mca, takže terén vykreslený z uloženého světa zůstává na mapě viditelný napříč relacemi. Bez nainstalované mapy Xaero's World Map mod nic nedělá.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Naučí mapu Xaero's World Map rozpoznávat soubory regionů .cso, které zapisuje Optimalizátor úložiště chunků.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Naučí mapu Xaero's World Map rozpoznávat soubory regionů .cso, které zapisuje Optimalizátor úložiště chunků."
 }

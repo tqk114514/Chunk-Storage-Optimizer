@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Συμβατότητα",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Κάνει το Xaero's World Map να ανιχνεύει τα αρχεία περιοχής .cso που γράφει ο Βελτιστοποιητής Αποθήκευσης Chunk.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Με εγκατεστημένο το Xaero's World Map, ο χάρτης παραθέτει τα αρχεία περιοχής .cso αυτού του mod όπως παραθέτει τα vanilla .mca, ώστε το έδαφος που σχεδιάζεται από την αποθήκευση του κόσμου να συνεχίζει να εμφανίζεται μεταξύ συνεδριών. Δεν κάνει τίποτα χωρίς εγκατεστημένο το Xaero's World Map."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Με εγκατεστημένο το Xaero's World Map, ο χάρτης παραθέτει τα αρχεία περιοχής .cso αυτού του mod όπως παραθέτει τα vanilla .mca, ώστε το έδαφος που σχεδιάζεται από την αποθήκευση του κόσμου να συνεχίζει να εμφανίζεται μεταξύ συνεδριών. Δεν κάνει τίποτα χωρίς εγκατεστημένο το Xaero's World Map.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Κάνει το Xaero's World Map να ανιχνεύει τα αρχεία περιοχής .cso που γράφει ο Βελτιστοποιητής Αποθήκευσης Chunk.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Κάνει το Xaero's World Map να ανιχνεύει τα αρχεία περιοχής .cso που γράφει ο Βελτιστοποιητής Αποθήκευσης Chunk."
 }

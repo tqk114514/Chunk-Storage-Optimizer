@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Kompatibilitás",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Eléri, hogy a Xaero's World Map észlelje a Chunk-tárolás optimalizáló által írt .cso régiófájlokat.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Ha a Xaero's World Map telepítve van, a térkép a mod .cso régiófájljait ugyanúgy sorolja fel, mint a vanilla .mca fájlokat, így a világmentésből kirajzolt terep a munkamenetek között is látható marad. Xaero's World Map nélkül nem csinál semmit."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Ha a Xaero's World Map telepítve van, a térkép a mod .cso régiófájljait ugyanúgy sorolja fel, mint a vanilla .mca fájlokat, így a világmentésből kirajzolt terep a munkamenetek között is látható marad. Xaero's World Map nélkül nem csinál semmit.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Eléri, hogy a Xaero's World Map észlelje a Chunk-tárolás optimalizáló által írt .cso régiófájlokat.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Eléri, hogy a Xaero's World Map észlelje a Chunk-tárolás optimalizáló által írt .cso régiófájlokat."
 }

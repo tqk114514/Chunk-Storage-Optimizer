@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero-kompatibilitet",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Får Xaero's World Map til at registrere de .cso-regionsfiler, som Chunk-lagringsoptimeringen skriver.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Med Xaero's World Map installeret viser kortet .cso-regionsfilerne fra denne mod på samme måde som de .mca-filer, vanilla bruger, så terræn, der tegnes ud fra den gemte verden, bliver ved med at vises på tværs af sessioner. Gør intet uden Xaero's World Map installeret."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Med Xaero's World Map installeret viser kortet .cso-regionsfilerne fra denne mod på samme måde som de .mca-filer, vanilla bruger, så terræn, der tegnes ud fra den gemte verden, bliver ved med at vises på tværs af sessioner. Gør intet uden Xaero's World Map installeret.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Får Xaero's World Map til at registrere de .cso-regionsfiler, som Chunk-lagringsoptimeringen skriver.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Får Xaero's World Map til at registrere de .cso-regionsfiler, som Chunk-lagringsoptimeringen skriver."
 }

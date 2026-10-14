@@ -109,6 +109,38 @@ tasks.withType(JavaCompile).configureEach {
 // The loader-independent half of the compat: the mixin itself.
 sourceSets.main.java.srcDir rootProject.file('compat/xaero/common/src/main/java')
 
+// The lang files, staged from the Fabric half beside their Mod Menu siblings. The Mods screen
+// does not read the description out of neoforge.mods.toml — it looks the description up in the
+// language map first, under fml.menu.mods.info.description.<id> (FML 11, every row through
+// 26.2) and neoforge.screen.mods.info.description.<id> (FML 12, 26.3 onwards; the key
+// prefixes are FML's own, read out of DefaultModDisplayInfo and ModListScreen), and the toml's
+// English text is only the fallback shown where no translation exists. The Fabric half's lang
+// folder is the single source for both halves — the same files Crowdin fills — so this jar
+// stages it rather than keeping a copy. Staged as generated resources under assets/ so the
+// jar include below picks it up; the rest of the Fabric half's resources (fabric.mod.json
+// above all) stays out of a NeoForge jar.
+// The lang files, staged from the Fabric half beside their Mod Menu siblings. The Mods screen
+// does not read the description out of neoforge.mods.toml — it looks the description up in the
+// language map first, under fml.menu.mods.info.description.<id> (FML 11, every row through
+// 26.2) and neoforge.screen.mods.info.description.<id> (FML 12, 26.3 onwards; the key
+// prefixes are FML's own, read out of DefaultModDisplayInfo and ModListScreen), and the toml's
+// English text is only the fallback shown where no translation exists. The Fabric half's lang
+// folder is the single source for both halves — the same files Crowdin fills — so this jar
+// stages it rather than keeping a copy. The staging works like the metadata one below: the
+// task's destination becomes a resources source dir, so the tree inside it must already carry
+// the jar-relative path — the child `into` puts the files under
+// assets/chunkstorageoptimizer_xaerocompat/lang/, because staging them straight into the
+// destination root would land every json at the jar's root (measured). Only the lang folder
+// comes over: the Fabric half's resources also hold fabric.mod.json, which must not leak into
+// a NeoForge jar.
+def stageCompatLang = tasks.register('stageCompatLang', Sync) {
+    into 'build/generated/sources/compatLang'
+    from(rootProject.file('compat/xaero/fabric/src/main/resources/assets/chunkstorageoptimizer_xaerocompat/lang')) {
+        into 'assets/chunkstorageoptimizer_xaerocompat/lang'
+    }
+}
+sourceSets.main.resources.srcDir stageCompatLang
+
 neoForge {
     // The fixed compile pin (see the header). No runs of its own: the compat is exercised
     // through :neoforge:runClient, which loads it from its classpath via the jarJar wiring.

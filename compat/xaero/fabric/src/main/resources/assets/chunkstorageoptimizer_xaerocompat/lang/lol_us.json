@@ -1,5 +1,7 @@
 {
   "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Kompat",
   "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Makz Xaero's World Map see teh .cso region filez riten by Chonk Storage Optimizer.",
-  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Wif Xaero's World Map installd, teh map listz dis modz .cso region filez liek it listz vanilla .mca wunz, so terrain drawn frum teh wurld save keepz showin acros sesshuns. Doez nuthin wifout Xaero's World Map."
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Wif Xaero's World Map installd, teh map listz dis modz .cso region filez liek it listz vanilla .mca wunz, so terrain drawn frum teh wurld save keepz showin acros sesshuns. Doez nuthin wifout Xaero's World Map.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_xaerocompat": "Makz Xaero's World Map see teh .cso region filez riten by Chonk Storage Optimizer.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_xaerocompat": "Makz Xaero's World Map see teh .cso region filez riten by Chonk Storage Optimizer."
 }
