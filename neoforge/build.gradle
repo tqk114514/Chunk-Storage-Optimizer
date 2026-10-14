@@ -191,6 +191,9 @@ dependencies {
     // mixin transformer, so the compat's mixins cannot reach classes loaded from one
     // (measured; the Xaero pin to copy is in compat/xaero/neoforge/build.gradle).
     implementation(jarJar(project(':compat:xaero:neoforge')))
+    // The C2ME compat rides the same way: nested, its mixins applied by the game's Mixin from
+    // the jar-in-jar, stood down by its plugin wherever C2ME's rewrite class is absent.
+    implementation(jarJar(project(':compat:c2me:neoforge')))
 
     // The shared storage-layer suite (common/src/test, wired into this module's test source
     // set above): JUnit itself, same pin as core/build.gradle. The game classes reach the

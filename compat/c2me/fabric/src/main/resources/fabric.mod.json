@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "${compat_id}",
+  "version": "${compat_version}",
+  "name": "CSO C2ME Compat",
+  "description": "Keeps Chunk Storage Optimizer worlds on their .cso format while C2ME is installed, bridging C2ME's chunk IO rewrite back to the vanilla worker for the folders it serves.",
+  "icon": "assets/chunkstorageoptimizer_c2mecompat/icon.png",
+  "authors": [
+    "tqk114514"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/chunk-storage-optimizer",
+    "issues": "https://github.com/tqk114514/Chunk-Storage-Optimizer/issues"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+  },
+  "mixins": [
+    "${compat_id}.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.22",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21",
+    "chunkstorageoptimizer": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "parent": "chunkstorageoptimizer"
+    }
+  }
+}

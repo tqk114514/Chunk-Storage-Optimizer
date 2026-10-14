@@ -49,11 +49,13 @@ if (minecraftVersionProperty.isPresent()) {
     if (columns[3] != '-') {
         include 'neoforge'
         include 'compat:xaero:neoforge'
+        include 'compat:c2me:neoforge'
     }
     if (columns[4] != '-') {
         include 'fabric'
         include 'compat:voxy:fabric'
         include 'compat:xaero:fabric'
+        include 'compat:c2me:fabric'
     }
 } else {
     include 'neoforge'
@@ -61,6 +63,8 @@ if (minecraftVersionProperty.isPresent()) {
     include 'compat:voxy:fabric'
     include 'compat:xaero:fabric'
     include 'compat:xaero:neoforge'
+    include 'compat:c2me:fabric'
+    include 'compat:c2me:neoforge'
 }
 
 // The compatibility modules, laid out the way the main mod splits its loader-independent code
@@ -69,11 +73,14 @@ if (minecraftVersionProperty.isPresent()) {
 // plays for the main mod) and one jar module per loader, which ships nested inside that
 // loader's main jar and rides its csv column exactly like the loader module itself. Xaero's
 // World Map ships for both loaders, so both halves exist; Voxy ships for Fabric only, so only
-// that half does — the neoforge position stays reserved for the day it ships one. The jar
-// modules are otherwise deliberately outside the supported-versions matrix — each pins its
-// own compile target and toolchain internally, so the same source serves every row — but
-// their METADATA declares the requirements of the row they build for, resolved exactly like
-// the loader modules' own (see their build.gradle files).
+// that half does — the neoforge position stays reserved for the day it ships one. The C2ME
+// compat ships for both loaders and has no Gradle-module half of its own: its mixins name
+// Minecraft classes, so its sources compile inside the jar modules (which have the game on
+// the classpath) and its tests ride those modules' test source sets. The jar modules are
+// otherwise deliberately outside the supported-versions matrix — each pins its own compile
+// target and toolchain internally, so the same source serves every row — but their METADATA
+// declares the requirements of the row they build for, resolved exactly like the loader
+// modules' own (see their build.gradle files).
 include 'compat:xaero:common'
 include 'compat:voxy:common'
 
@@ -85,7 +92,11 @@ include 'compat:voxy:common'
 // named 'fabric' (compat:voxy:fabric, compat:xaero:fabric), and they always keep the classic
 // remap pipeline — their compile pin is 1.21.11 on every row.
 gradle.beforeProject { project ->
-    if (project.path == ':fabric' && requestedMinecraft != null && requestedMinecraft.startsWith('26.')) {
+    // The C2ME compat's fabric half always compiles against the 26.x pin, so it always needs
+    // the no-remap pipeline — unconditionally, not per requested row.
+    if (project.path == ':compat:c2me:fabric'
+            || (project.path == ':fabric' && requestedMinecraft != null
+                && requestedMinecraft.startsWith('26.'))) {
         project.ext['fabric.loom.disableObfuscation'] = 'true'
     }
 }

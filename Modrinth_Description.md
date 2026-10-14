@@ -237,9 +237,11 @@ Measured on the 889 MB city world:
 1. Saves are no longer vanilla-readable; see the pre-installation notes at the top.
 2. **Do not set `fallbackToMca` to `false`.** Chunks missing from the `.cso` would be treated as
    ungenerated and terrain would be silently regenerated.
-3. Not compatible with C2ME. If C2ME is detected the mod disables itself and falls back to
-   vanilla storage, logging the reason. Both rewrite chunk IO, and running them together would
-   split a world across two formats.
+3. Coexists with C2ME, per world (26.x builds): folders this mod serves are bridged back to the
+   vanilla chunk IO worker, while plain-Anvil worlds keep C2ME's rewritten IO — nothing to
+   configure on either side. On 1.21 builds, and whenever the bundled compat cannot apply
+   (a future C2ME release that changes its internals), the mod still disables itself on
+   detecting C2ME, and a converted world then refuses to open rather than silently regenerate.
 4. Density, not the dimension, decides whether the saving is positive. A lightly explored Nether
    measured −2%: chunks near or above 4 KiB spread thin, so vanilla's padding waste is already
    small while the bucket table adds a fixed 16 KB per region file. The same dimension, worked

@@ -38,8 +38,30 @@ public final class CsoRuntime {
     private static volatile Supplier<CsoSettings> settingsSource = CsoSettings::defaults;
     private static volatile boolean installed;
     private static volatile String forcedOff;
+    private static volatile boolean c2meBridge;
 
     private CsoRuntime() {
+    }
+
+    /**
+     * True once the C2ME compat's mixins have been approved for application.
+     *
+     * <p>Its plugin sets this after probing for C2ME's chunk IO rewrite class, and its swap mixin
+     * applies with the default {@code require} — it either installs or the game fails loudly — so
+     * the flag honestly means "the per-world bridge is in place", not just "C2ME was seen". The
+     * loader entrypoints consult it to decide between coexistence and the fail-safe disable; the
+     * flag itself is deliberately not a gate on the swap, which asks {@link #isActive} per folder.
+     */
+    public static boolean isC2meBridge() {
+        return c2meBridge;
+    }
+
+    /**
+     * Called once by the C2ME compat's mixin plugin when its probe of C2ME's rewrite succeeded.
+     * Later calls are harmless; the first is the one that matters.
+     */
+    public static void markC2meBridge() {
+        c2meBridge = true;
     }
 
     /** Called once by the loader entrypoint. Later calls are ignored. */

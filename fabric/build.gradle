@@ -159,6 +159,7 @@ dependencies {
     // row as this module and writes that row's requirements into its metadata.
     include project(':compat:voxy:fabric')
     include project(':compat:xaero:fabric')
+    include project(':compat:c2me:fabric')
 
     // zstd-jni ships inside the jar through loom's `include`, which nests it the way NeoForge's
     // jarJar does. The mixin probes it once and falls back to Anvil if it cannot be loaded.

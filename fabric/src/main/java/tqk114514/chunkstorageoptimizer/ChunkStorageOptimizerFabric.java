@@ -46,16 +46,30 @@ public final class ChunkStorageOptimizerFabric implements ModInitializer {
             return;
         }
         if (FabricLoader.getInstance().isModLoaded(C2ME_MOD_ID)) {
-            // C2ME's ioSystem.replaceImpl takes over region IO. If it reads .mca while we write
-            // .cso, the world splits and terrain silently regenerates. Refuse to take that risk.
-            CsoRuntime.disable("C2ME is installed");
-            LOGGER.error(
-                "Chunk Storage Optimizer disabled: C2ME is installed and would bypass this mod, "
-                    + "which can split a world between .mca and .cso. To use both, set "
-                    + "ioSystem.replaceImpl=false in config/c2me.toml, then remove this mod's guard "
-                    + "only if you understand the risk. Vanilla Anvil storage will be used."
-            );
-            return;
+            if (CsoRuntime.isC2meBridge()) {
+                LOGGER.info("Chunk Storage Optimizer + C2ME: the compat bridge is in place. Worlds"
+                    + " this mod serves keep the vanilla chunk IO worker through it; worlds on"
+                    + " plain Anvil keep C2ME's rewritten IO. Nothing to configure on either side.");
+            } else {
+                // C2ME's chunk IO rewrite drives RegionFile directly, past every hook this mod
+                // has: it would read .mca files that are not there while the .cso ones sit
+                // unread, and the world regenerates on top of them. The compat bridge that
+                // swaps CSO-served worlds back to the vanilla worker did not apply — its probe
+                // of C2ME's rewrite failed, most likely a C2ME release this build predates.
+                // Disable rather than risk the split; the storage layer's orphaned-.cso
+                // refusal then makes a converted world fail to open with an explanation
+                // instead of opening into a regenerated copy of itself.
+                CsoRuntime.disable("C2ME is installed");
+                LOGGER.error(
+                    "Chunk Storage Optimizer disabled: C2ME is installed and its chunk IO rewrite"
+                        + " would drive the region files straight past this mod's storage layer, so"
+                        + " a .cso world opened through it would have its terrain silently"
+                        + " regenerated. The compat bridge that reconciles the two did not apply;"
+                        + " update Chunk Storage Optimizer. Vanilla Anvil storage will be used, and"
+                        + " converted worlds will refuse to open rather than regenerate."
+                );
+                return;
+            }
         }
         CsoSettings settings = loaded.settings();
         LOGGER.info(

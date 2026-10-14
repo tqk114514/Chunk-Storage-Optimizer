@@ -1,0 +1,211 @@
+// The Fabric half of the C2ME compatibility: a small fabric mod whose mixins keep C2ME's chunk
+// IO rewrite away from the folders Chunk Storage Optimizer serves. It ships as a NESTED mod
+// inside the main fabric jar (fabric/build.gradle includes it; C2ME bundles its modules the
+// same way), so players download exactly one file and Mod Menu lists the compat as a child of
+// the main mod. Never published or installed on its own.
+//
+// Deliberately decoupled from the main code: core, the main mod's common half and this
+// compat's own half are compiled from source only, and the jar packages nothing but this
+// module's own classes — the main mod (a required runtime dependency) provides core, common
+// and its nested zstd at runtime, and shipping a second copy would put two versions of one
+// class on the classpath.
+//
+// Unlike the other compat lines this one pins the 26.x family, because its mixins name
+// Minecraft's own classes — SimpleRegionStorage and its recreating sibling are the 26.x
+// spellings, and the 1.21 rows never see them (the plugin probes for the classes and stands
+// the mixins down there, which keeps the main mod's guard in charge of those rows). The pin
+// is fixed rather than row-resolved: the same jar serves every row it rides in, and only its
+// METADATA is written per row, exactly like the other compat lines — the row's Minecraft
+// bound in fabric.mod.json. 26.3 is the pin because it is the row the bridge was verified on;
+// the sibling classes are identical through the family (the decompiled rows agree, and so
+// does every C2ME release's redirect — the version matrix test holds that line).
+plugins {
+    id 'java-library'
+    id 'fabric-loom' version '1.18.2'
+}
+
+// The compat's version number is its own, deliberately not the main mod's: it moves only when
+// the compat itself changes, so a main-mod release never has to bump it.
+def compatVersion = '1.0.0'
+def compatId = 'chunkstorageoptimizer_c2mecompat'
+
+version = compatVersion
+// A group of this compat's own, not the main mod's: the compat jar modules are named 'fabric'
+// and 'neoforge' after the loader halves they sit beside, and Gradle requires every project
+// to have unique group+name coordinates (measured: the collision turns include/jarJar project
+// resolution into a task cycle).
+group = "${mod_group_id}.compat.c2me"
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    mavenCentral()
+}
+
+base.archivesName = compatId
+
+// The row this build ships for — the same resolution the main fabric module runs, default
+// 26.3.0 (the pin). The row's Minecraft bound goes into fabric.mod.json; everything else in
+// this module is row-independent.
+def supportedVersions = [:]
+def versionTable = rootProject.file('supported-versions.csv')
+versionTable.eachLine { line ->
+    def trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith('#')) {
+        return
+    }
+    supportedVersions[trimmed.split(',')[0].trim()] = true
+}
+def mcVersion = (project.findProperty('minecraft_version') ?: '26.3.0') as String
+if (!supportedVersions.containsKey(mcVersion)) {
+    throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
+        + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
+}
+// The game's own version id drops a trailing ".0" that the csv row key keeps ("26.3.0" is the
+// loader-line spelling of the game version "26.3"), and fabric.mod.json needs the game's
+// spelling.
+def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
+        ? mcVersion.substring(0, mcVersion.length() - 2)
+        : mcVersion
+
+// Toolchain 25 because the pinned 26.3 game classes are compiled for it (class file 69) and a
+// Java 21 compiler cannot even read them. The OUTPUT stays at release 21: the jar rides every
+// row the main mod ships for, and only its plugin decides where the mixins come alive.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+// Core (the codec the storage layer names), the main mod's common half (CsoRuntime and the
+// storage classes live there) with the two version seams its 26.3 row selects, and this
+// compat's own sources. All compiled from source only — see the header note.
+sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
+sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
+sourceSets.main.java.srcDir rootProject.file('common/src/version/modern/java')
+sourceSets.main.java.srcDir rootProject.file('common/src/version/uuid/java')
+sourceSets.main.java.srcDir rootProject.file('compat/c2me/common/src/main/java')
+// The compat's tests: the vanilla-shape contract runs against the pinned game on this
+// module's test classpath, and the C2ME version matrix reads downloaded jars.
+sourceSets.test.java.srcDir rootProject.file('compat/c2me/common/src/test/java')
+
+dependencies {
+    minecraft 'com.mojang:minecraft:26.3'
+    // No mappings block on purpose: 26.x carries official names already, and the flag in
+    // settings.gradle switches this module to loom's no-remap pipeline (the same way the main
+    // fabric module builds its 26.x rows).
+    implementation 'net.fabricmc:fabric-loader:0.19.5'
+
+    // The mixin annotations — provided by the game's own Mixin at runtime.
+    compileOnly 'net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7'
+    // Core's codec imports zstd; runtime always comes from the main mod's nested jar.
+    implementation 'com.github.luben:zstd-jni:1.5.6-3'
+
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // The C2ME version matrix test reads release jars as bytecode, the level Mixin works at.
+    testImplementation 'org.ow2.asm:asm-tree:9.10.1'
+}
+
+// Plain JUnit, no game launch: the contract under test is the shape of the classes the mixins
+// glue to, not the mixed result — that half belongs to the headless smoke run. Loom puts the
+// pinned Minecraft on the test classpath the same way it feeds the main source set.
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// Only this module's own classes and resources ship (see the header note). Everything else on
+// the compile classpath — the main mod's halves above all — is provided by the main mod at
+// runtime.
+tasks.named('jar', Jar).configure {
+    include 'tqk114514/chunkstorageoptimizer/compat/**'
+    include 'fabric.mod.json'
+    include "${compatId}.mixins.json"
+    include 'assets/**'
+}
+
+// fabric.mod.json's placeholders are expanded here, the same way the main module expands its
+// own. A missing key fails the task rather than shipping an unresolved ${...}.
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            compat_id     : compatId,
+            compat_version: compatVersion,
+            minecraft_version: gameVersion,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}
+
+// ------------------------------------------------------------------ the target-mod version matrix
+//
+// The tests do not stop at the pinned release: every release of C2ME, on both of its projects
+// (c2me-fabric, c2me-neoforge), for every 26.x Minecraft this repo ships for, is fetched and
+// its bytecode checked against everything the bridge needs (see C2meVersionMatrixTest). The
+// fetch is incremental, and it re-queries the list on every run, so a fresh C2ME release
+// fails the build the day it appears. Offline escape hatch: -PcsoTargetModsOffline runs
+// against whatever the cache already holds.
+def targetModsOffline = project.hasProperty('csoTargetModsOffline')
+def targetModsDir = layout.buildDirectory.dir('target-mods/c2me')
+def downloadTargetMods = tasks.register('downloadTargetMods') {
+    description = 'Fetches every C2ME release for the 26.x Minecrafts, both loaders, and extracts each rewrite module.'
+    outputs.dir(targetModsDir)
+    doLast {
+        def dir = targetModsDir.get().asFile
+        dir.mkdirs()
+        def lines = []
+        ['c2me-fabric'   : 'fabric',
+         'c2me-neoforge' : 'neoforge'].each { projectSlug, loader ->
+            // The API wants JSON arrays; building them by hand keeps the task dependency-free.
+            def query = '?game_versions=' + java.net.URLEncoder.encode('["26.1","26.2","26.3"]', 'UTF-8') +
+                '&loaders=' + java.net.URLEncoder.encode("[\"${loader}\"]", 'UTF-8')
+            def versions = new groovy.json.JsonSlurper().parse(
+                new URL("https://api.modrinth.com/v2/project/${projectSlug}/version" + query))
+            versions.each { version ->
+                def primary = version.files.find { it.primary } ?: version.files[0]
+                def outer = new File(dir, primary.filename)
+                if (!outer.exists() || outer.length() != (long) primary.size) {
+                    if (targetModsOffline) {
+                        return
+                    }
+                    new URL(primary.url).withInputStream { input ->
+                        outer.withOutputStream { output -> output << input }
+                    }
+                }
+                // C2ME nests its rewrite module inside the release jar; the module's classes
+                // are what the test reads, so it is extracted beside the outer jar once.
+                def moduleName = primary.filename.replaceFirst(/\.(jar|zip)$/, '') + '.rewrites-chunkio.jar'
+                def module = new File(dir, "${projectSlug}__${moduleName}")
+                if (!module.exists()) {
+                    def nested = new java.util.jar.JarFile(outer).entries().findAll { entry ->
+                        entry.name.endsWith('.jar') && entry.name.contains('rewrites-chunkio')
+                    }
+                    if (nested.isEmpty()) {
+                        throw new GradleException("C2ME ${primary.filename} has no rewrites-chunkio module jar")
+                    }
+                    new java.util.jar.JarFile(outer).withCloseable { jar ->
+                        jar.getInputStream(jar.getJarEntry(nested[0].name)).withStream { input ->
+                            module.withOutputStream { output -> output << input }
+                        }
+                    }
+                }
+                lines << [version.id, version.version_number, loader, version.game_versions.join('+'),
+                          primary.filename].join('\t')
+            }
+        }
+        new File(dir, 'manifest.tsv').text = String.join('\n', lines)
+        logger.lifecycle("target-mod matrix: {} C2ME release jars in {}", lines.size(), dir)
+    }
+}
+tasks.named('test', Test).configure {
+    dependsOn downloadTargetMods
+    systemProperty 'cso.targetMods.c2me', targetModsDir.get().asFile.absolutePath
+}

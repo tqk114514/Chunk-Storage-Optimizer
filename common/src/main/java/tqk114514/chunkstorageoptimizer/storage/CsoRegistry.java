@@ -6,6 +6,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.slf4j.Logger;
+
+import com.mojang.logging.LogUtils;
+
 /**
  * Live {@link CsoStorage} instances, so commands can act on them.
  *
@@ -15,13 +19,46 @@ import java.util.List;
  */
 public final class CsoRegistry {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private static final List<CsoStorage> STORAGES = Collections.synchronizedList(new ArrayList<>());
 
     private CsoRegistry() {
     }
 
     public static void add(CsoStorage storage) {
+        abandonSuperseded(storage.folder());
         STORAGES.add(storage);
+    }
+
+    /**
+     * Enforces the invariant the registry is silently built on: at most one live storage per
+     * folder. Region, entity and POI stores sit in different folders, so in the game's own flow
+     * the second storage for one folder never happens while the first is live. The one flow that
+     * breaks it is another mod's throwaway worker: C2ME's chunk IO rewrite constructs worker
+     * objects it then discards (the C2ME compat swaps in the real one), and each throwaway builds
+     * a {@code RegionFileStorage} of its own — which initialises a storage of ours on the way
+     * through. Those orphans never serve a chunk, so nothing ever closes them: unreferenced
+     * wrappers mean no unload path, and a registered storage holds its timer and its registry
+     * entry forever — the zombie-storages shape the 1.1.5 crash came from. A superseded storage
+     * here is always such an orphan; closing one cancels its timer, removes it from the registry,
+     * and is otherwise a no-op — opens are lazy and nothing was ever staged through it.
+     */
+    private static void abandonSuperseded(Path folder) {
+        Path normalized = folder.normalize();
+        for (CsoStorage existing : all()) {
+            if (existing.isReleased() || !existing.folder().normalize().equals(normalized)) {
+                // Released storages stay registered on purpose until their world unloads; the
+                // conversion that released them still needs to reach them.
+                continue;
+            }
+            try {
+                existing.close();
+            } catch (IOException e) {
+                LOGGER.error("Chunk Storage Optimizer: could not retire a superseded storage for {}",
+                    folder, e);
+            }
+        }
     }
 
     public static void remove(CsoStorage storage) {

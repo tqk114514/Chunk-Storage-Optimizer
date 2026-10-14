@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "package": "tqk114514.chunkstorageoptimizer.compat.c2me.mixin",
+  "plugin": "tqk114514.chunkstorageoptimizer.compat.c2me.CsoC2meMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "IOWorkerAccessor",
+    "RecreatingSimpleRegionStorageMixin",
+    "SimpleRegionStorageMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

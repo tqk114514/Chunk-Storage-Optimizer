@@ -4,14 +4,16 @@
 #   CROWDIN_PERSONAL_TOKEN  created at crowdin.com/settings#api-key — scopes: Projects (read),
 #                           Source files & strings (read+write), Translations (read+write)
 #
-# Three source trees, one entry each: the main mod's strings (shipped by both loaders via
+# Four source trees, one entry each: the main mod's strings (shipped by both loaders via
 # core's shared resources) and the two compat mods' strings. The Xaero entry's files are the
 # single source for BOTH halves of that compat: the Fabric jar ships them as its own
 # resources, and the nested NeoForge jar stages them at build time — NeoForge's Mods screen
 # translates a mod's description through the language map (fml.menu.mods.info.description /
 # neoforge.screen.mods.info.description), with the neoforge.mods.toml text as the English
 # fallback, so the nested compat needs the lang files after all. The Voxy entry stays
-# Fabric-only because that compat has no NeoForge half.
+# Fabric-only because that compat has no NeoForge half; the C2ME entry files are shared by
+# that compat's two halves the same way — the Fabric jar ships them, the nested NeoForge jar
+# stages them at build time.
 #
 # Crowdin language codes (zh-CN, pt-BR, ja...) become Minecraft's lowercase-with-underscore file
 # names (zh_cn, pt_br, ja_jp) through the mapping repeated below — keyed on the
@@ -106,6 +108,43 @@
   {
     "source": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer_voxycompat/lang/en_us.json",
     "translation": "/compat/voxy/fabric/src/main/resources/assets/chunkstorageoptimizer_voxycompat/lang/%locale%.json",
+    "languages_mapping": {
+      "locale": {
+        "zh-CN": "zh_cn",
+        "zh-TW": "zh_tw",
+        "zh-HK": "zh_hk",
+        "ja": "ja_jp",
+        "ko": "ko_kr",
+        "de": "de_de",
+        "es-ES": "es_es",
+        "fr": "fr_fr",
+        "it": "it_it",
+        "pt-BR": "pt_br",
+        "ru": "ru_ru",
+        "nl": "nl_nl",
+        "pl": "pl_pl",
+        "tr": "tr_tr",
+        "uk": "uk_ua",
+        "cs": "cs_cz",
+        "sv-SE": "sv_se",
+        "da": "da_dk",
+        "fi": "fi_fi",
+        "hu": "hu_hu",
+        "ro": "ro_ro",
+        "el": "el_gr",
+        "id": "id_id",
+        "vi": "vi_vn",
+        "th": "th_th",
+        "ar": "ar_sa",
+        "en-PT": "en_pt",
+        "en-UD": "en_ud",
+        "lol": "lol_us"
+      }
+    }
+  }
+  {
+    "source": "/compat/c2me/fabric/src/main/resources/assets/chunkstorageoptimizer_c2mecompat/lang/en_us.json",
+    "translation": "/compat/c2me/fabric/src/main/resources/assets/chunkstorageoptimizer_c2mecompat/lang/%locale%.json",
     "languages_mapping": {
       "locale": {
         "zh-CN": "zh_cn",

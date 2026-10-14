@@ -1,0 +1,59 @@
+# The metadata of the C2ME compat, NeoForge side — the counterpart of the Fabric half's
+# fabric.mod.json. The loader and Minecraft ranges are written at build time for the row this
+# jar ships in (the same row resolution the main neoforge module uses), because the jar
+# travels nested inside that module's jar and can never meet another Minecraft. C2ME is not
+# among the dependencies for the same reason the Xaero compat omits its target: an unsatisfied
+# required dependency of a nested mod would fail the whole jar's load for players without it,
+# and presence needs no check of its own — the plugin probes for the rewrite's class and
+# stands the mixins down without it.
+
+# modLoader and loaderVersion became optional only in newer loaders: FML 4.x (NeoForge for
+# Minecraft 1.21) refuses the jar outright without them. The floor stays deliberately low:
+# the exact NeoForge range below already pins which loader we run under.
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+# The same issues URL the main mod ships: FML writes it into every crash report.
+issueTrackerURL="https://github.com/tqk114514/Chunk-Storage-Optimizer/issues"
+
+[[mods]]
+modId="${compat_id}"
+version="${compat_version}"
+displayName="CSO C2ME Compat"
+displayURL="https://modrinth.com/mod/chunk-storage-optimizer"
+authors="tqk114514"
+description='''Lets Chunk Storage Optimizer worlds keep their .cso format with C2ME installed.'''
+# The same icon the main mod ships, resolved against this jar's resource root. The field name
+# is the FML seam: 12 renamed logoFile to iconFile, and the old name still works but warns.
+${mod_icon_field}="assets/chunkstorageoptimizer_c2mecompat/icon.png"
+
+# The [[mixins]] block declares the compat's mixin config to FML.
+[[mixins]]
+config="${compat_id}.mixins.json"
+
+# C2ME is deliberately NOT among the dependencies, the same decision the Xaero compat makes:
+# an unsatisfied required dependency of a nested mod would fail the whole jar's load for
+# players without it, and its presence needs no check of its own — the plugin probes for the
+# rewrite's class and stands the mixins down without it.
+[[dependencies.${compat_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},${neo_version_upper})"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${compat_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Any version: the outer jar carries this mod, so the two always arrive together.
+[[dependencies.${compat_id}]]
+    modId="chunkstorageoptimizer"
+    type="required"
+    versionRange="[0,)"
+    ordering="NONE"
+    side="BOTH"

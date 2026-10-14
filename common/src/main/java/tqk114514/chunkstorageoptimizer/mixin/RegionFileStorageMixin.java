@@ -29,6 +29,7 @@ import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.Compressor;
 import tqk114514.chunkstorageoptimizer.format.CsoFormat;
+import tqk114514.chunkstorageoptimizer.storage.CsoOrphanedRegionGuard;
 import tqk114514.chunkstorageoptimizer.storage.CsoStorage;
 
 /**
@@ -77,7 +78,12 @@ public class RegionFileStorageMixin {
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void cso$init(RegionStorageInfo info, Path folder, boolean sync, CallbackInfo ci) {
-        if (!CsoRuntime.isActive(folder) || !cso$zstdUsable()) {
+        if (!CsoRuntime.isActive(folder)) {
+            cso$refuseOrphanedCso(folder, CsoRuntime.reason(folder));
+            return;
+        }
+        if (!cso$zstdUsable()) {
+            cso$refuseOrphanedCso(folder, "zstd is unavailable in this session");
             return;
         }
         try {
@@ -119,7 +125,22 @@ public class RegionFileStorageMixin {
             // Never let storage init kill the world: fall back to vanilla Anvil.
             LOGGER.error("Chunk Storage Optimizer failed to initialise for {}; using vanilla storage", folder, t);
             this.cso$storage = null;
+            // Falling back hands the folder to vanilla Anvil — fine for a folder without .cso
+            // files, but one that holds them would have every .cso region read as missing.
+            cso$refuseOrphanedCso(folder, "the storage layer failed to initialise");
         }
+    }
+
+    /**
+     * The fail-closed backstop for a folder this session cannot serve but the disk says it owns
+     * — see {@link CsoOrphanedRegionGuard}. Every path that ends in "the custom format is off
+     * for this folder" reaches it, and because this constructor also runs under mods that build
+     * their own RegionFileStorage to drive RegionFile directly (C2ME's chunk IO rewrite does
+     * exactly that), it covers the bypassing reader too, not just the vanilla one.
+     */
+    @Unique
+    private static void cso$refuseOrphanedCso(Path folder, String why) {
+        CsoOrphanedRegionGuard.refuseOrphanedCso(folder, why);
     }
 
     /**
