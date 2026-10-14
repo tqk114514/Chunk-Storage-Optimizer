@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy เข้ากันได้",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "ทำให้การนำเข้าโลกของ Voxy อ่านไฟล์รีเจียน .cso ที่ตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์เขียนขึ้นได้.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "เมื่อติดตั้ง Voxy ไว้ /voxy import world และ /voxy import current จะอ่านไฟล์รีเจียน .cso ที่ตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์เขียนขึ้นด้วย ไม่ใช่แค่ไฟล์ .mca แบบแวนิลลา. จะไม่ทำอะไรเลยหากไม่ได้ติดตั้ง Voxy."
+}

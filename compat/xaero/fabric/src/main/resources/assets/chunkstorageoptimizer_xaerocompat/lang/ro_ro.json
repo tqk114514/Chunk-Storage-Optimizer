@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "Compatibilitate CSO Xaero",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Face ca Xaero's World Map să detecteze fișierele de regiune .cso scrise de Optimizatorul de stocare a chunk-urilor.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Cu Xaero's World Map instalat, harta listează fișierele de regiune .cso ale acestui mod așa cum listează fișierele .mca vanilla, astfel încât terenul desenat din salvarea lumii continuă să fie afișat între sesiuni. Nu face nimic fără Xaero's World Map instalat."
+}

@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "Kompatybilność CSO z Voxy",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Sprawia, że import świata w Voxy odczytuje pliki regionów .cso zapisane przez Optymalizator przechowywania chunków.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Po zainstalowaniu Voxy komendy /voxy import world i /voxy import current czytają też pliki regionów .cso zapisane przez Optymalizator przechowywania chunków, a nie tylko pliki .mca z wersji vanilla. Nic nie robi bez zainstalowanego Voxy."
+}

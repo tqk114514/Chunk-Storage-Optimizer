@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Tương thích",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Khiến Xaero's World Map nhận diện các tệp vùng .cso do Trình tối ưu hóa lưu trữ chunk ghi ra.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Khi đã cài Xaero's World Map, bản đồ sẽ liệt kê các tệp vùng .cso của mod này giống như cách nó liệt kê tệp .mca của vanilla, nhờ vậy địa hình được vẽ từ bản lưu thế giới vẫn tiếp tục hiển thị giữa các phiên chơi. Không có tác dụng gì nếu chưa cài Xaero's World Map."
+}

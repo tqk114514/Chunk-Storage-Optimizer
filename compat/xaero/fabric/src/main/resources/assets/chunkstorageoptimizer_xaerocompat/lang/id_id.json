@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero Kompatibilitas",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Membuat Xaero's World Map mendeteksi file region .cso yang ditulis oleh Pengoptimal Penyimpanan Chunk.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Dengan Xaero's World Map terpasang, peta tersebut mencantumkan file region .cso dari mod ini seperti halnya file .mca vanilla, sehingga medan yang digambar dari simpanan dunia tetap tampil dari sesi ke sesi. Tidak melakukan apa pun tanpa Xaero's World Map terpasang."
+}

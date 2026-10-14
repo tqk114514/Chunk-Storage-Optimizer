@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero เข้ากันได้",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "ทำให้ Xaero's World Map ตรวจจับไฟล์รีเจียน .cso ที่ตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์เขียนขึ้นได้.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "เมื่อติดตั้ง Xaero's World Map ไว้ แผนที่จะแสดงรายการไฟล์รีเจียน .cso ของม็อดนี้เช่นเดียวกับที่แสดงรายการไฟล์ .mca แบบแวนิลลา ภูมิประเทศที่วาดจากไฟล์เซฟโลกจึงยังคงแสดงผลต่อเนื่องข้ามเซสชัน. จะไม่ทำอะไรเลยหากไม่ได้ติดตั้ง Xaero's World Map."
+}

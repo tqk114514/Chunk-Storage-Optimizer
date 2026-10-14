@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO – Compatibilité Voxy",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Permet à l’importation de mondes de Voxy de lire les fichiers de région .cso écrits par l’Optimiseur de stockage des chunks.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Quand Voxy est installé, /voxy import world et /voxy import current lisent aussi les fichiers de région .cso écrits par l’Optimiseur de stockage des chunks, et pas seulement les .mca vanille. Ne fait rien si Voxy n’est pas installé."
+}

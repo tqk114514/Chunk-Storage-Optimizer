@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "Kompatibilita CSO s Voxy",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Umožňuje importu světa ve Voxy číst soubory regionů .cso, které zapisuje Optimalizátor úložiště chunků.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "S nainstalovaným Voxy příkazy /voxy import world a /voxy import current načítají i soubory regionů .cso, které zapisuje Optimalizátor úložiště chunků, nejen vanilla soubory .mca. Bez nainstalovaného Voxy mod nic nedělá."
+}

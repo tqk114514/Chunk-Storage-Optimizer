@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO: сумісність з Xaero",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Змушує Xaero's World Map розпізнавати файли регіонів .cso, записані Оптимізатором сховища чанків.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Якщо встановлено Xaero's World Map, карта перелічує файли регіонів .cso цього моду так само, як ванільні .mca, тому ландшафт, який карта малює зі збереження світу, не зникає від сесії до сесії. Нічого не робить, якщо Xaero's World Map не встановлено."
+}

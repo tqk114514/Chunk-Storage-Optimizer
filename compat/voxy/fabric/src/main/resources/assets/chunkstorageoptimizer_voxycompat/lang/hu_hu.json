@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_voxycompat": "CSO Voxy Kompatibilitás",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_voxycompat": "Lehetővé teszi, hogy a Voxy világimportja olvassa a Chunk-tárolás optimalizáló által írt .cso régiófájlokat.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_voxycompat": "Ha a Voxy telepítve van, a /voxy import world és a /voxy import current parancsok is olvassák a Chunk-tárolás optimalizáló által írt .cso régiófájlokat, nem csak a vanilla .mca fájlokat. Voxy nélkül nem csinál semmit."
+}

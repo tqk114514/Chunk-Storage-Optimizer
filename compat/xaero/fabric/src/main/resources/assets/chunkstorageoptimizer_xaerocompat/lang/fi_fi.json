@@ -1,0 +1,5 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_xaerocompat": "CSO Xaero-yhteensopivuus",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_xaerocompat": "Saa Xaero's World Mapin havaitsemaan .cso-aluetiedostot, jotka Chunk-tallennuksen optimoija kirjoittaa.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_xaerocompat": "Kun Xaero's World Map on asennettuna, kartta listaa tämän modin .cso-aluetiedostot samalla tavalla kuin vanilla-pelin .mca-tiedostot, joten maailman tallennuksesta piirretty maasto pysyy näkyvissä istuntojen välillä. Ei tee mitään, jos Xaero's World Map ei ole asennettuna."
+}
