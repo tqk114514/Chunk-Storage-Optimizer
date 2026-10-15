@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "Kompatibilita CSO s C2ME",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Umožňuje, aby světy Optimalizátora úložiště chunků zachovaly formát .cso i s nainstalovaným C2ME.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Přepis chunk IO od C2ME by četl soubory .mca přímo kolem Optimalizátora úložiště chunků, a převedený svět by tak mlčky dostal znovu vygenerovaný terén. Tahle kompatibilita propojuje oba přístupy po světech: světy, které Optimalizátor úložiště chunků obsluhuje, si podrží vanilla IO workera, a světy na čistém Anvilu si podrží přepis C2ME. Bez nainstalovaného C2ME mod nic nedělá.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Umožňuje, aby světy Optimalizátora úložiště chunků zachovaly formát .cso i s nainstalovaným C2ME.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Umožňuje, aby světy Optimalizátora úložiště chunků zachovaly formát .cso i s nainstalovaným C2ME."
+}

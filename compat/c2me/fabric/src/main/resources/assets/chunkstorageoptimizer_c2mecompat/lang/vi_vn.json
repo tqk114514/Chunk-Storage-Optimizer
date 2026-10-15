@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Tương thích",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Cho phép các thế giới của Trình tối ưu hóa lưu trữ chunk giữ nguyên định dạng .cso của mình ngay cả khi đã cài C2ME.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Bản viết lại chunk IO của C2ME sẽ đọc các tệp .mca theo cách bỏ qua Trình tối ưu hóa lưu trữ chunk, khiến thế giới đã chuyển đổi có địa hình bị tái tạo trong im lặng. Bản tương thích này kết nối cả hai theo từng thế giới: thế giới do mod lưu trữ phục vụ giữ nguyên IO worker của vanilla, thế giới dùng Anvil thuần giữ nguyên bản viết lại của C2ME. Không có tác dụng gì nếu chưa cài C2ME.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Cho phép các thế giới của Trình tối ưu hóa lưu trữ chunk giữ nguyên định dạng .cso của mình ngay cả khi đã cài C2ME.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Cho phép các thế giới của Trình tối ưu hóa lưu trữ chunk giữ nguyên định dạng .cso của mình ngay cả khi đã cài C2ME."
+}

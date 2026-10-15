@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME 互換",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "C2ME がインストールされていても、チャンクストレージ最適化のワールドが .cso 形式を維持できるようにします。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME のチャンク IO の書き換えは、チャンクストレージ最適化を素通りして .mca ファイルを読み込んでしまい、変換済みのワールドでは地形が黙って再生成されてしまいます。この互換 mod は、ワールドごとに両者を橋渡しします。ストレージ mod が扱うワールドはバニラの IO worker を使い続け、素の Anvil 形式のワールドは C2ME の書き換えを維持します。C2ME がない環境では何もしません。",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME がインストールされていても、チャンクストレージ最適化のワールドが .cso 形式を維持できるようにします。",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME がインストールされていても、チャンクストレージ最適化のワールドが .cso 形式を維持できるようにします。"
+}

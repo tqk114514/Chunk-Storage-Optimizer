@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO – Compatibilità C2ME",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Permette ai mondi dell'Ottimizzatore di archiviazione dei chunk di mantenere il loro formato .cso con C2ME installato.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "La riscrittura dell'IO dei chunk di C2ME leggerebbe i file .mca passando dritto oltre l'Ottimizzatore di archiviazione dei chunk, e un mondo convertito vedrebbe il suo terreno rigenerato in silenzio. Questa compatibilità fa da ponte fra i due, mondo per mondo: i mondi serviti dal mod di archiviazione mantengono l'IO worker vanilla, i mondi su Anvil puro mantengono la riscrittura di C2ME. Non fa nulla senza C2ME installato.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permette ai mondi dell'Ottimizzatore di archiviazione dei chunk di mantenere il loro formato .cso con C2ME installato.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permette ai mondi dell'Ottimizzatore di archiviazione dei chunk di mantenere il loro formato .cso con C2ME installato."
+}

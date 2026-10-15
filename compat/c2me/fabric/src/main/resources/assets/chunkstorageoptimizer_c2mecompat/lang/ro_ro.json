@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "Compatibilitate CSO C2ME",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Permite lumilor Optimizatorului de stocare a chunk-urilor să își păstreze formatul .cso cu C2ME instalat.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Rescrierea IO-ului de chunk-uri din C2ME ar citi fișierele .mca trecând direct pe lângă Optimizatorul de stocare a chunk-urilor, iar o lume convertită și-ar vedea terenul regenerat în tăcere. Această compatibilitate face puntea între cele două pentru fiecare lume: lumile deservite de modul de stocare păstrează IO worker-ul vanilla, lumile pe Anvil simplu păstrează rescrierea C2ME. Nu face nimic fără C2ME instalat.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permite lumilor Optimizatorului de stocare a chunk-urilor să își păstreze formatul .cso cu C2ME instalat.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permite lumilor Optimizatorului de stocare a chunk-urilor să își păstreze formatul .cso cu C2ME instalat."
+}

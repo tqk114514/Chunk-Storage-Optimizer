@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Compat",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Suffereth Chunk Storage Optimizer worlds to keep their .cso format with C2ME installed.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME's chunk IO rewrite would read the .mca files right past Chunk Storage Optimizer, and a converted world should have its terrain silently born anew. This compat joineth the two, world by world: worlds the storage mod serveth keep the vanilla IO worker, worlds upon plain Anvil keep C2ME's rewrite. It doth nothing without C2ME.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Suffereth Chunk Storage Optimizer worlds to keep their .cso format with C2ME installed.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Suffereth Chunk Storage Optimizer worlds to keep their .cso format with C2ME installed."
+}

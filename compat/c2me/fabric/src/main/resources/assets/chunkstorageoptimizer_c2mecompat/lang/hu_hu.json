@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Kompatibilitás",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Eléri, hogy a Chunk-tárolás optimalizáló világai a C2ME telepítése mellett is megtarthassák a .cso formátumukat.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "A C2ME újraírt chunk IO-ja a .mca fájlokat közvetlenül a Chunk-tárolás optimalizáló mellett olvasná el, egy átalakított világ terepe pedig csendben újragenerálódna. Ez a kompatibilitás világonként teremt hidat a kettő között: a tároló mod által kiszolgált világok a vanilla IO workert, a sima Anvil formátumú világok pedig a C2ME újraírását tartják meg. C2ME nélkül nem csinál semmit.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Eléri, hogy a Chunk-tárolás optimalizáló világai a C2ME telepítése mellett is megtarthassák a .cso formátumukat.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Eléri, hogy a Chunk-tárolás optimalizáló világai a C2ME telepítése mellett is megtarthassák a .cso formátumukat."
+}

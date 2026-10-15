@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Kompat",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Letz Chonk Storage Optimizer wurldz keep der .cso format wif C2ME installd.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME'z chunk IO rewrite wud read teh .mca filez strait past Chonk Storage Optimizer, an a convertid wurld wud get its terrain silentli regenerayted. Dis Kompat bridgez teh two per wurld: wurldz teh storage mod servz keep teh vanilla IO worker, wurldz on plain Anvil keep C2ME'z rewrite. Doez nuthin wifout C2ME.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Letz Chonk Storage Optimizer wurldz keep der .cso format wif C2ME installd.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Letz Chonk Storage Optimizer wurldz keep der .cso format wif C2ME installd."
+}

@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Kompatibilitas",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Membuat dunia Pengoptimal Penyimpanan Chunk tetap mempertahankan format .cso mereka saat C2ME terpasang.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Penulisan ulang IO chunk milik C2ME akan membaca file .mca begitu saja melewati Pengoptimal Penyimpanan Chunk, dan dunia yang sudah dikonversi akan mendapati medannya dibuat ulang secara diam-diam. Kompatibilitas ini menjembatani keduanya per dunia: dunia yang dilayani mod penyimpanan tetap memakai IO worker vanilla, dunia berformat Anvil biasa tetap memakai penulisan ulang C2ME. Tidak melakukan apa pun tanpa C2ME terpasang.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Membuat dunia Pengoptimal Penyimpanan Chunk tetap mempertahankan format .cso mereka saat C2ME terpasang.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Membuat dunia Pengoptimal Penyimpanan Chunk tetap mempertahankan format .cso mereka saat C2ME terpasang."
+}

@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO: совместимость с C2ME",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Позволяет мирам Оптимизатора хранилища чанков сохранять формат .cso при установленном C2ME.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Переписанный в C2ME chunk IO читал бы файлы .mca напрямую в обход Оптимизатора хранилища чанков, и преобразованный мир молча получил бы заново сгенерированный рельеф. Эта совместимость наводит мосты между ними для каждого мира: миры, которые обслуживает мод хранения, сохраняют ванильный IO worker, а миры в чистом Anvil-формате — переписанный IO от C2ME. Ничего не делает, если C2ME не установлен.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Позволяет мирам Оптимизатора хранилища чанков сохранять формат .cso при установленном C2ME.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Позволяет мирам Оптимизатора хранилища чанков сохранять формат .cso при установленном C2ME."
+}

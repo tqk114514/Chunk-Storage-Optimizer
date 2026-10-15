@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO – Compatibilité C2ME",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Permet aux mondes de l’Optimiseur de stockage des chunks de conserver leur format .cso quand C2ME est installé.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "La réécriture de l’IO des chunks de C2ME lirait les fichiers .mca en passant outre l’Optimiseur de stockage des chunks, et un monde converti verrait son terrain régénéré en silence. Cette compatibilité fait le pont entre les deux, monde par monde : les mondes que sert le mod de stockage gardent l’IO worker vanilla, les mondes en Anvil pur gardent la réécriture de C2ME. Ne fait rien si C2ME n’est pas installé.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permet aux mondes de l’Optimiseur de stockage des chunks de conserver leur format .cso quand C2ME est installé.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Permet aux mondes de l’Optimiseur de stockage des chunks de conserver leur format .cso quand C2ME est installé."
+}

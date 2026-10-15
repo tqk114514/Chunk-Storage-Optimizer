@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME-kompatibilitet",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Låter Chunklagringsoptimerarens världar behålla sitt .cso-format med C2ME installerat.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME:s omskrivning av chunk-IO skulle läsa .mca-filerna rakt förbi Chunklagringsoptimeraren, och en konverterad värld skulle få sin terräng tyst genererad på nytt. Den här kompatibiliteten binder samman de två per värld: världar som lagringsmodden betjänar behåller vanilla-IO-workern, världar på rent Anvil behåller C2ME:s omskrivning. Gör ingenting utan C2ME installerat.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Låter Chunklagringsoptimerarens världar behålla sitt .cso-format med C2ME installerat.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Låter Chunklagringsoptimerarens världar behålla sitt .cso-format med C2ME installerat."
+}

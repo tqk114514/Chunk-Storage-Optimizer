@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME-yhteensopivuus",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Saa Chunk-tallennuksen optimoijan maailmot pitämään .cso-muotonsa, vaikka C2ME on asennettuna.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME:n uudelleenkirjoittama chunk-IO lukisi .mca-tiedostot suoraan Chunk-tallennuksen optimoijan ohitse, jolloin muunnetun maailman maasto generoituisi hiljaisesti uudelleen. Tämä yhteensopivuus yhdistää ne maailmakohtaisesti: tallennusmodin palvelemat maailmat pitävät vanillan IO-workerin, ja tavallista Anvil-formaattia käyttävät maailmat pitävät C2ME:n uudelleenkirjoituksen. Ei tee mitään, jos C2ME ei ole asennettuna.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Saa Chunk-tallennuksen optimoijan maailmot pitämään .cso-muotonsa, vaikka C2ME on asennettuna.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Saa Chunk-tallennuksen optimoijan maailmot pitämään .cso-muotonsa, vaikka C2ME on asennettuna."
+}

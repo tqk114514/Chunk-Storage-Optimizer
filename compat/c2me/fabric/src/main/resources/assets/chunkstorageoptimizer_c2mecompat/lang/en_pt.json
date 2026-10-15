@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Shipmate",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Lets th' worlds o' Chunk Stowage Optimizer keep their .cso format with C2ME aboard.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME's chunk IO rewrite would read th' .mca files straight past Chunk Stowage Optimizer, an' a converted world would have its terrain reborn without a whisper. This here compat bridges th' two, world by world: worlds served by th' stowage mod keep th' vanilla IO worker, worlds on plain Anvil keep C2ME's rewrite. Does nothin' without C2ME aboard.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Lets th' worlds o' Chunk Stowage Optimizer keep their .cso format with C2ME aboard.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Lets th' worlds o' Chunk Stowage Optimizer keep their .cso format with C2ME aboard."
+}

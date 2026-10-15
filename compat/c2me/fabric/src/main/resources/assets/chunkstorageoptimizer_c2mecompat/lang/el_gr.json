@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Συμβατότητα",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "Επιτρέπει στους κόσμους του Βελτιστοποιητή Αποθήκευσης Chunk να διατηρούν τη μορφή .cso τους με εγκατεστημένο το C2ME.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "Η επανεγγραφή του chunk IO από το C2ME θα διάβαζε τα αρχεία .mca παρακάμπτοντας απευθείας τον Βελτιστοποιητή Αποθήκευσης Chunk, κι έτσι ένας κόσμος που έχει μετατραπεί θα έβλεπε το έδαφός του να ξαναδημιουργείται σιωπηλά. Αυτή η συμβατότητα γεφυρώνει τα δύο ανά κόσμο: οι κόσμοι που εξυπηρετεί το mod αποθήκευσης κρατούν τον vanilla IO worker, ενώ οι κόσμοι σε σκέτο Anvil κρατούν την επανεγγραφή του C2ME. Δεν κάνει τίποτα χωρίς εγκατεστημένο το C2ME.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "Επιτρέπει στους κόσμους του Βελτιστοποιητή Αποθήκευσης Chunk να διατηρούν τη μορφή .cso τους με εγκατεστημένο το C2ME.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "Επιτρέπει στους κόσμους του Βελτιστοποιητή Αποθήκευσης Chunk να διατηρούν τη μορφή .cso τους με εγκατεστημένο το C2ME."
+}

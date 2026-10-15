@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME 호환",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "C2ME가 설치되어 있어도 청크 스토리지 최적화의 월드가 .cso 형식을 유지할 수 있게 합니다.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME의 청크 IO 재작성은 청크 스토리지 최적화를 무시하고 .mca 파일을 읽어버려, 변환된 월드의 지형이 소리 없이 다시 생성됩니다. 이 호환은 월드별로 둘을 이어 줍니다. 스토리지 모드가 관리하는 월드는 바닐라 IO worker를 유지하고, 일반 Anvil 형식의 월드는 C2ME의 재작성을 유지합니다. C2ME가 없으면 아무 동작도 하지 않습니다.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME가 설치되어 있어도 청크 스토리지 최적화의 월드가 .cso 형식을 유지할 수 있게 합니다.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME가 설치되어 있어도 청크 스토리지 최적화의 월드가 .cso 형식을 유지할 수 있게 합니다."
+}

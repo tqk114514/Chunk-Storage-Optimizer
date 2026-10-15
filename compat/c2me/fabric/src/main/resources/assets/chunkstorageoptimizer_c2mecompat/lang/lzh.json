@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME 相容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "使塊儲優化器之生界，雖裝 C2ME，猶存 .cso 之式。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME 改寫塊 IO，則必徑讀 .mca 之檔，越塊儲優化器而不顧；既轉之生界，其地亦將默然復生。此相容模組，逐界為橋：塊儲優化器所事之生界，仍用原版之 IO worker；純 Anvil 之生界，仍從 C2ME 之所改。無 C2ME，則一無所為。",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "使塊儲優化器之生界，雖裝 C2ME，猶存 .cso 之式。",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "使塊儲優化器之生界，雖裝 C2ME，猶存 .cso 之式。"
+}

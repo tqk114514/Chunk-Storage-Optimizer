@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME Uyumluluğu",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "C2ME kurulu olsa bile Chunk Depolama Optimizasyonu dünyelerinin .cso formatını korumasını sağlar.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME'nin chunk IO yeniden yazımı, .mca dosyalarını Chunk Depolama Optimizasyonu'nu atlayarak okurdu ve dönüştürülmüş bir dünyanın arazisi sessizce yeniden oluşturulurdu. Bu uyumluluk ikisini dünya başına birleştirir: depolama modunun hizmet ettiği dünyeler vanilla IO worker'ı korur, saf Anvil üzerindeki dünyeler C2ME'nin yeniden yazımını korur. C2ME kurulu değilken hiçbir şey yapmaz.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME kurulu olsa bile Chunk Depolama Optimizasyonu dünyelerinin .cso formatını korumasını sağlar.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "C2ME kurulu olsa bile Chunk Depolama Optimizasyonu dünyelerinin .cso formatını korumasını sağlar."
+}

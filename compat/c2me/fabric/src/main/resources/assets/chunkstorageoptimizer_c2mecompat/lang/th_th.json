@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME เข้ากันได้",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "ทำให้โลกของตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์คงใช้รูปแบบ .cso ต่อไปได้แม้ติดตั้ง C2ME.",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "การเขียน chunk IO ใหม่ของ C2ME จะอ่านไฟล์ .mca โดยไม่สนตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์ ทำให้โลกที่แปลงแล้วมีภูมิประเทศถูกสร้างขึ้นใหม่อย่างเงียบ ๆ คอมแพตตัวนี้เชื่อมทั้งสองระบบเป็นรายโลก โลกที่ม็อดจัดเก็บดูแลยังคงใช้ IO worker แบบแวนิลลา ส่วนโลกที่ใช้ Anvil ธรรมดายังคงใช้การเขียนใหม่ของ C2ME จะไม่ทำอะไรเลยหากไม่ได้ติดตั้ง C2ME.",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "ทำให้โลกของตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์คงใช้รูปแบบ .cso ต่อไปได้แม้ติดตั้ง C2ME.",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "ทำให้โลกของตัวเพิ่มประสิทธิภาพการจัดเก็บชังก์คงใช้รูปแบบ .cso ต่อไปได้แม้ติดตั้ง C2ME."
+}

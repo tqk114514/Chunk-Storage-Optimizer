@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.chunkstorageoptimizer_c2mecompat": "CSO C2ME 相容",
+  "modmenu.summaryTranslation.chunkstorageoptimizer_c2mecompat": "讓區塊儲存優化器的世界在安裝 C2ME 後仍能保留 .cso 格式。",
+  "modmenu.descriptionTranslation.chunkstorageoptimizer_c2mecompat": "C2ME 的區塊 IO 重寫會直接繞過區塊儲存優化器讀取 .mca 檔案，令已轉換的世界地形無聲地重新生成。本相容以每個世界為單位橋接兩者：由儲存 mod 服務的世界保留原版 IO worker，使用原版 Anvil 的世界則保留 C2ME 的重寫。未安裝 C2ME 時本附屬不會有任何作為。",
+  "fml.menu.mods.info.description.chunkstorageoptimizer_c2mecompat": "讓區塊儲存優化器的世界在安裝 C2ME 後仍能保留 .cso 格式。",
+  "neoforge.screen.mods.info.description.chunkstorageoptimizer_c2mecompat": "讓區塊儲存優化器的世界在安裝 C2ME 後仍能保留 .cso 格式。"
+}
