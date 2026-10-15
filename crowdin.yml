@@ -141,7 +141,7 @@
         "lol": "lol_us"
       }
     }
-  }
+  },
   {
     "source": "/compat/c2me/fabric/src/main/resources/assets/chunkstorageoptimizer_c2mecompat/lang/en_us.json",
     "translation": "/compat/c2me/fabric/src/main/resources/assets/chunkstorageoptimizer_c2mecompat/lang/%locale%.json",
