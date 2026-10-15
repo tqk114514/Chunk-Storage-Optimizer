@@ -88,8 +88,13 @@ jobs:
             tag_type=$(printf '%s' "$tag_object" | jq -r .object.type)
             if [ "$tag_type" = "tag" ]; then
               tag_sha=$(printf '%s' "$tag_object" | jq -r .object.sha)
+              # A tag without a scope line is the normal full release — grep would exit 1 on
+              # the miss and set -e would take the whole job down (measured: the first
+              # annotated full-release tag did exactly that; every earlier release tag was
+              # lightweight and never reached this read), so the match and the strip are one
+              # sed that prints nothing and still exits 0 when there is nothing to find.
               scope=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq .message \
-                | grep -i '^scope:' | sed -E 's/^[Ss][Cc][Oo][Pp][Ee]:[[:space:]]*//')
+                | sed -n -E 's/^[Ss][Cc][Oo][Pp][Ee]:[[:space:]]*//p')
             fi
           elif [ -n "${DISPATCH_SCOPE:-}" ]; then
             scope=$(printf '%s' "$DISPATCH_SCOPE" | tr ';' '\n' | grep -v '^$')
