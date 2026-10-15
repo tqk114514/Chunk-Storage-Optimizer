@@ -12,6 +12,28 @@ only from a `## [version]` heading down, and a missing or empty section fails th
   is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
   player needs before running the new build (1.1.4's max-tick-time note is the example).
 
+## [1.1.9] - 2026-10-15
+
+### Added
+- **C2ME can now run alongside this mod** (26.x builds). Worlds this mod serves keep their
+  `.cso` format while worlds on plain Anvil keep C2ME's chunk IO — nothing to configure,
+  install both and it works. On 1.21 builds the old behavior remains: this mod steps aside
+  when C2ME is detected. The new C2ME compat entry in the mod list ships in all 31 interface
+  languages.
+
+### Changed
+- **A world whose region folders hold `.cso` files now refuses to open through storage that
+  cannot read them**, with an explanation naming the cause — instead of opening into
+  silently regenerated terrain. This covers switching the mod off, a failed zstd load and the
+  C2ME fallback above. To leave the format for good, convert back first with `/cso convert mca`.
+
+### Fixed
+- The Xaero compat's description in NeoForge's Mods screen now follows the interface language
+  instead of always showing English.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.8] - 2026-10-14
 
 ### Added

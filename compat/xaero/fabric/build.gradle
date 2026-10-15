@@ -21,7 +21,7 @@ plugins {
 // The compat's version number is its own, deliberately not the main mod's: it moves only when
 // the compat itself changes, so a main-mod release never has to bump it. The nested copy always
 // builds from this source tree, so the two cannot drift apart.
-def compatVersion = '1.0.0'
+def compatVersion = '1.0.1'
 // Underscore, because NeoForge restricts mod ids to [a-z0-9_] and both halves of this compat
 // share one id (see the shared half's CsoXaeroCompatCore.COMPAT_ID).
 def compatId = 'chunkstorageoptimizer_xaerocompat'
