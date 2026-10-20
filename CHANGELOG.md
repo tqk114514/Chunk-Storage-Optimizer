@@ -12,6 +12,23 @@ only from a `## [version]` heading down, and a missing or empty section fails th
   is unchanged — a drop-in upgrade for any 1.x world." — plus any operational warning the
   player needs before running the new build (1.1.4's max-tick-time note is the example).
 
+## [1.1.10] - 2026-10-20
+
+### Added
+- **C2ME can now coexist with this mod on every supported Minecraft and both loaders.** The
+  1.21–1.21.10 builds used to step aside whenever C2ME was installed; those worlds now keep
+  their `.cso` format under C2ME too, while worlds on plain Anvil keep C2ME's chunk IO.
+  Nothing to configure on either side.
+
+### Changed
+- **The C2ME compat now refuses to half-apply.** It counts the storage paths it actually
+  covered and only enables coexistence when every path C2ME rewrites is bridged; otherwise
+  the mod falls back to standing aside, so chunks can never be left on C2ME's worker while
+  entities and POI are served by this mod.
+
+### Note
+- The file format is unchanged — a drop-in upgrade for any 1.x world.
+
 ## [1.1.9] - 2026-10-15
 
 ### Added
