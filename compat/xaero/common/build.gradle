@@ -57,6 +57,10 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.11.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // The scan-pattern test reads the mixin's constants out of its class file. Reflection cannot
+    // do it: the mixin's fields are typed with Xaero's classes, which are compileOnly here, so
+    // getDeclaredFields() dies with NoClassDefFoundError before it hands back anything.
+    testImplementation 'org.ow2.asm:asm-tree:9.10.1'
 }
 
 tasks.named('test', Test).configure {

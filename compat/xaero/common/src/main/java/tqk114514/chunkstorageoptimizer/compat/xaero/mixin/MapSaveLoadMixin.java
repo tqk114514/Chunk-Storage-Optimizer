@@ -1,7 +1,6 @@
 package tqk114514.chunkstorageoptimizer.compat.xaero.mixin;
 
 import java.io.File;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
@@ -19,6 +18,8 @@ import xaero.map.file.RegionDetection;
 import xaero.map.file.worldsave.WorldDataHandler;
 import xaero.map.region.MapRegion;
 import xaero.map.world.MapDimension;
+
+import tqk114514.chunkstorageoptimizer.compat.xaero.CsoXaeroCompatCore;
 
 /**
  * Teaches Xaero's world-save region detection that region files can be {@code .cso}.
@@ -96,13 +97,12 @@ public abstract class MapSaveLoadMixin {
             return;
         }
         WorldDataHandler worldDataHandler = this.mapProcessor.getWorldDataHandler();
-        Path worldDir = worldDataHandler == null ? null : worldDataHandler.getWorldDir();
-        if (worldDir == null) {
-            return;
-        }
-        Path cso = worldDir.resolve("region")
-            .resolve("r." + region.getRegionX() + "." + region.getRegionZ() + ".cso");
-        if (Files.isRegularFile(cso)) {
+        // The lookup — and the "is there a .cso to prefer at all" decision — lives in the core
+        // so its three outcomes are testable without Xaero on the classpath.
+        Path cso = CsoXaeroCompatCore.csoBackingFile(
+            worldDataHandler == null ? null : worldDataHandler.getWorldDir(),
+            region.getRegionX(), region.getRegionZ());
+        if (cso != null) {
             cir.setReturnValue(cso.toFile());
             cir.cancel();
         }

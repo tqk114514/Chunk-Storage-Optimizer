@@ -1,12 +1,15 @@
 package tqk114514.chunkstorageoptimizer.compat.xaero;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import org.slf4j.Logger;
 
 /**
  * The loader-independent half of the compat: the identifiers, the probe that checks whether
- * Xaero's World Map still has the shape this compat mixins into, and the one report that says
- * which state the compat is in. Each loader jar carries this class and calls it from its own
- * entrypoint.
+ * Xaero's World Map still has the shape this compat mixins into, the backing-file lookup the
+ * mixin's fallback hook needs, and the one report that says which state the compat is in. Each
+ * loader jar carries this class and calls it from its own entrypoint.
  *
  * <p>The report goes only to the players it concerns: the compat ships nested inside the main
  * mod's jar to every player, and the entrypoints call this only when Xaero's World Map is
@@ -25,6 +28,27 @@ public final class CsoXaeroCompatCore {
     public static final String XAERO_WORLD_MAP = "xaeroworldmap";
 
     private CsoXaeroCompatCore() {
+    }
+
+    /**
+     * The {@code .cso} file that backs a world-save region, or null when there is none.
+     *
+     * <p>This is the decision the mixin's {@code getFile} hook makes: Xaero resolves
+     * {@code region/r.X.Z.mca} for a region whose file the detection scan did not report, and
+     * that file does not exist in a world this mod wrote — the sibling {@code .cso} is the file
+     * to hand it instead. Anything else (a real {@code .mca}, no region folder, a directory
+     * that happens to carry the name) answers null and lets Xaero's own resolution run
+     * unchanged, which is what keeps mixed worlds behaving exactly as before.
+     *
+     * <p>Lives here, out of the mixin, so the three outcomes can be tested without Xaero or a
+     * game on the classpath.
+     */
+    public static Path csoBackingFile(Path worldDir, int regionX, int regionZ) {
+        if (worldDir == null) {
+            return null;
+        }
+        Path cso = worldDir.resolve("region").resolve("r." + regionX + "." + regionZ + ".cso");
+        return Files.isRegularFile(cso) ? cso : null;
     }
 
     /**
