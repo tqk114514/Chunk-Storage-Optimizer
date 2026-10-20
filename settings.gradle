@@ -92,11 +92,19 @@ include 'compat:voxy:common'
 // named 'fabric' (compat:voxy:fabric, compat:xaero:fabric), and they always keep the classic
 // remap pipeline — their compile pin is 1.21.11 on every row.
 gradle.beforeProject { project ->
-    // The C2ME compat's fabric half always compiles against the 26.x pin, so it always needs
-    // the no-remap pipeline — unconditionally, not per requested row.
-    if (project.path == ':compat:c2me:fabric'
-            || (project.path == ':fabric' && requestedMinecraft != null
-                && requestedMinecraft.startsWith('26.'))) {
+    // The C2ME compat's fabric half is built per row now, so it follows the row's pipeline
+    // instead of always taking the no-remap one: 26.x ships unobfuscated (no mappings, no
+    // remap), while 1.21 rows compile against their own game with mappings and must be remapped
+    // to intermediary — without that its mixin targets never match the runtime's class names.
+    // Its default row is 26.3.0, which is the no-remap case.
+    def compatC2meRow = requestedMinecraft ?: '26.3.0'
+    if (project.path == ':compat:c2me:fabric' && compatC2meRow.startsWith('26.')) {
+        project.ext['fabric.loom.disableObfuscation'] = 'true'
+    }
+    // The main fabric module keeps its own rule: 26.x rows only, and only when one was asked
+    // for (its default row, 1.21.11, is obfuscated).
+    if (project.path == ':fabric' && requestedMinecraft != null
+            && requestedMinecraft.startsWith('26.')) {
         project.ext['fabric.loom.disableObfuscation'] = 'true'
     }
 }

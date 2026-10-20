@@ -242,3 +242,38 @@ properties）、命令注册钩子、配置界面。NeoForge 复用 FML 自带�
 API；每个选项是一个循环取值的按钮，点击即写入文件。不使用文本框，也不自绘，以减少界面依赖的
 客户端 API 数量。界面用到的其余签名（`Tooltip.create`、`Component.plainCopy`、`Screen.width`）
 已在 1.21 与 1.21.8 的反编译源码中核对，两端一致。
+
+### C2ME 附属的按行构建
+
+附属的 mixin 目标按**运行时类名**绑定，而两个加载器的运行时类名不一样：NeoForge 自 1.21 起用
+官方类名，Fabric 在混淆版本上（1.21 至 1.21.11）用 intermediary。
+
+**NeoForge 侧不需要重映射**：附属固定编译在 26.3 上，官方名在每一行都对得上，1.21.10 的冒烟已验证。
+
+Fabric 侧的 1.21.10 也跑过同一套四阶段冒烟。dev 运行时用的是命名映射，所以 `tools/c2me-smoke.sh`
+必须取 `build/devlibs/*-dev.jar`，不能取 `build/libs` 里那份 intermediary 产物——后者放进 dev 运行会
+让每个 mixin 目标都解析不到，表现得像桥没装上。
+
+**Fabric 侧必须按行构建。** 26.x 的行不混淆，沿用主模块的 no-remap 流水线（`settings.gradle` 按行
+注入 `fabric.loom.disableObfuscation`）；1.21 的行则取该行的 `minecraft` 依赖加
+`loom.officialMojangMappings()` 编译，由 loom 重映射成 intermediary。主 jar 自己的类一直是这样处理的，
+附属此前是例外——它只编译一次、原样嵌套，于是命名目标在 intermediary 运行时里找不到，那几行只能退让。
+嵌套 jar **不会**被主 jar 的重映射连带处理（实测：1.21.1 主 jar 里 `RegionFileStorageMixin` 是
+`net/minecraft/class_2867`，同一 jar 内嵌的附属里 `SimpleRegionStorageMixin` 仍是官方名），所以重映射
+必须发生在附属自己的构建里。
+
+实测两条流水线的产物：1.21.10 的主 jar 里 `ChunkStorageMixin` 的目标是 `net/minecraft/class_3977`，
+26.3 的仍是 `net.minecraft.world.level.chunk.storage.ChunkStorage`。
+
+行还决定主 mod 的缝：1.21 行用 `legacy` + `plain`，26.x 用 `modern` + `uuid`。
+
+### 桥"完整"的判定
+
+`mixins.json` 在每一行都列出两种形状的 mixin，插件只批准目标能解析的那些。构建把该行的形状写进
+`chunkstorageoptimizer_c2mecompat.shape.properties`（`legacy` / `modern`），插件拿它算出"必须绑上
+几个"——modern 3、legacy 5，都含 `IOWorkerAccessor`——数满了才 `markC2meBridge()`。少一个就保持未
+标记，入口守卫按"检测到 C2ME"整体停用。
+
+形状文件缺失读作 `unknown`，永远数不满：猜成 `modern` 在 legacy 行上就是半桥。形状值是
+`generateCompatShape` 的**输入**而不是只写在 `doLast` 里——否则 Gradle 会在下一行构建时判它
+up-to-date，jar 里留着上一行的形状（实测踩过）。

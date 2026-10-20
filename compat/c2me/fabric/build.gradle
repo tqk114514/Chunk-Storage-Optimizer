@@ -10,15 +10,21 @@
 // and its nested zstd at runtime, and shipping a second copy would put two versions of one
 // class on the classpath.
 //
-// Unlike the other compat lines this one pins the 26.x family, because its mixins name
-// Minecraft's own classes — SimpleRegionStorage and its recreating sibling are the 26.x
-// spellings, and the 1.21 rows never see them (the plugin probes for the classes and stands
-// the mixins down there, which keeps the main mod's guard in charge of those rows). The pin
-// is fixed rather than row-resolved: the same jar serves every row it rides in, and only its
-// METADATA is written per row, exactly like the other compat lines — the row's Minecraft
-// bound in fabric.mod.json. 26.3 is the pin because it is the row the bridge was verified on;
-// the sibling classes are identical through the family (the decompiled rows agree, and so
-// does every C2ME release's redirect — the version matrix test holds that line).
+// This half is built PER ROW, like the main fabric module: the mixins name Minecraft's own
+// classes, and which classes those are — and what they are called at runtime — depends on the
+// row. 26.x ships unobfuscated, so the module keeps the pinned no-remap build the rest of the
+// 26.x family uses. 1.21 through 1.21.11 are obfuscated, so the module compiles against that
+// row with Mojang mappings and lets loom remap the output to intermediary; the nested jar then
+// carries the names the Fabric runtime actually has, which is what makes the bridge bind there
+// at all. (A single unremapped jar cannot: its named targets never match an intermediary game,
+// which is why these rows used to stand down.)
+//
+// The row also decides how many storage classes the bridge needs. 1.21 through 1.21.10 keep
+// chunk IO on ChunkStorage and entity/POI storage on SimpleRegionStorage; 1.21.11 deleted
+// ChunkStorage and moved ChunkMap onto SimpleRegionStorage. The mixin config lists both pairs
+// on every row and the plugin stands the ones down whose target does not resolve, so the same
+// config serves both shapes; what the build writes per row is the SHAPE, which the plugin reads
+// to know how much of the bridge has to bind before it may call itself complete.
 plugins {
     id 'java-library'
     id 'fabric-loom' version '1.18.2'
@@ -26,7 +32,7 @@ plugins {
 
 // The compat's version number is its own, deliberately not the main mod's: it moves only when
 // the compat itself changes, so a main-mod release never has to bump it.
-def compatVersion = '1.0.0'
+def compatVersion = '1.1.0'
 def compatId = 'chunkstorageoptimizer_c2mecompat'
 
 version = compatVersion
@@ -47,8 +53,9 @@ repositories {
 base.archivesName = compatId
 
 // The row this build ships for — the same resolution the main fabric module runs, default
-// 26.3.0 (the pin). The row's Minecraft bound goes into fabric.mod.json; everything else in
-// this module is row-independent.
+// 26.3.0. Everything the jar's contents depend on comes from that row: the game it compiles
+// against, whether that game is obfuscated, which version seams the main mod's shared sources
+// need, and the class shape the plugin reads at runtime.
 def supportedVersions = [:]
 def versionTable = rootProject.file('supported-versions.csv')
 versionTable.eachLine { line ->
@@ -56,46 +63,86 @@ versionTable.eachLine { line ->
     if (trimmed.isEmpty() || trimmed.startsWith('#')) {
         return
     }
-    supportedVersions[trimmed.split(',')[0].trim()] = true
+    def columns = trimmed.split(',').collect { it.trim() }
+    supportedVersions[columns[0]] = [
+        javaLevel: columns[1] as int,
+        family   : columns[2],
+        boss     : columns[8]
+    ]
 }
 def mcVersion = (project.findProperty('minecraft_version') ?: '26.3.0') as String
-if (!supportedVersions.containsKey(mcVersion)) {
+def row = supportedVersions[mcVersion]
+if (row == null) {
     throw new GradleException("Minecraft ${mcVersion} is not listed in supported-versions.csv " \
         + "(known: ${supportedVersions.keySet().join(', ')}). Add a row before building for it.")
 }
+// 26.x ships unobfuscated; every 1.21 row is obfuscated, so it needs mappings + a remap.
+def unobfuscated = mcVersion.startsWith('26.')
 // The game's own version id drops a trailing ".0" that the csv row key keeps ("26.3.0" is the
-// loader-line spelling of the game version "26.3"), and fabric.mod.json needs the game's
-// spelling.
+// loader-line spelling of the game version "26.3"), and both the game dependency and
+// fabric.mod.json need the game's spelling.
 def gameVersion = mcVersion.startsWith('26.') && mcVersion.endsWith('.0')
         ? mcVersion.substring(0, mcVersion.length() - 2)
         : mcVersion
 
-// Toolchain 25 because the pinned 26.3 game classes are compiled for it (class file 69) and a
-// Java 21 compiler cannot even read them. The OUTPUT stays at release 21: the jar rides every
-// row the main mod ships for, and only its plugin decides where the mixins come alive.
-java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+// Which storage classes this row has. ChunkStorage was deleted in 1.21.11, when ChunkMap began
+// extending SimpleRegionStorage; every row before that keeps the split, and C2ME rewrites both
+// halves there. Written into the jar so the plugin can tell how much of the bridge has to bind
+// before it may call itself complete — see CsoC2meCompatCore.
+def legacyChunkPath = !unobfuscated && mcVersion != '1.21.11'
+
+// Toolchain from the row: the 26.x game classes are class file 69 (Java 25) and a Java 21
+// compiler cannot read them; the 1.21 rows are class file 65. The OUTPUT stays at release 21
+// either way, so one source tree serves every row.
+java.toolchain.languageVersion = JavaLanguageVersion.of(row.javaLevel as int)
 
 tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
 // Core (the codec the storage layer names), the main mod's common half (CsoRuntime and the
-// storage classes live there) with the two version seams its 26.3 row selects, and this
-// compat's own sources. All compiled from source only — see the header note.
+// storage classes live there) with the two version seams THIS row selects, and this compat's
+// own sources. All compiled from source only — see the header note. The seams are the row's,
+// not a fixed pair: 1.21 rows need the legacy permission API and the plain boss bar, 26.x the
+// modern ones.
 sourceSets.main.java.srcDir rootProject.file('core/src/main/java')
 sourceSets.main.java.srcDir rootProject.file('common/src/main/java')
-sourceSets.main.java.srcDir rootProject.file('common/src/version/modern/java')
-sourceSets.main.java.srcDir rootProject.file('common/src/version/uuid/java')
+sourceSets.main.java.srcDir rootProject.file("common/src/version/${row.family}/java")
+sourceSets.main.java.srcDir rootProject.file("common/src/version/${row.boss}/java")
 sourceSets.main.java.srcDir rootProject.file('compat/c2me/common/src/main/java')
 // The compat's tests: the vanilla-shape contract runs against the pinned game on this
 // module's test classpath, and the C2ME version matrix reads downloaded jars.
 sourceSets.test.java.srcDir rootProject.file('compat/c2me/common/src/test/java')
 
+// The class shape this jar was built for, read by the plugin at runtime. A jar that somehow
+// ships without it reads as "unknown" and refuses to bridge — the failure mode has to be
+// "stands down", never "bridges half a row".
+def generateCompatShape = tasks.register('generateCompatShape') {
+    def outDir = layout.buildDirectory.dir('generated/sources/compatShape')
+    // The shape is an INPUT, not just something written in doLast: without it Gradle calls the
+    // task up-to-date on the next row and the jar keeps the previous row's shape — measured,
+    // and exactly the kind of stale metadata that turns a legacy build into a half bridge.
+    def shapeValue = legacyChunkPath ? 'legacy' : 'modern'
+    inputs.property('shape', shapeValue)
+    outputs.dir(outDir)
+    doLast {
+        def file = outDir.get().file("${compatId}.shape.properties").asFile
+        file.parentFile.mkdirs()
+        file.text = "shape=${shapeValue}\n"
+    }
+}
+sourceSets.main.resources.srcDir generateCompatShape
+
 dependencies {
-    minecraft 'com.mojang:minecraft:26.3'
-    // No mappings block on purpose: 26.x carries official names already, and the flag in
-    // settings.gradle switches this module to loom's no-remap pipeline (the same way the main
-    // fabric module builds its 26.x rows).
+    if (unobfuscated) {
+        // The pinned 26.x build: no mappings, no remap, exactly like the main module's 26.x rows.
+        minecraft 'com.mojang:minecraft:26.3'
+    } else {
+        // The row's own game, with Mojang mappings so loom remaps this jar to intermediary —
+        // the names the Fabric runtime actually has on an obfuscated row.
+        minecraft "com.mojang:minecraft:${gameVersion}"
+        mappings loom.officialMojangMappings()
+    }
     implementation 'net.fabricmc:fabric-loader:0.19.5'
 
     // The mixin annotations — provided by the game's own Mixin at runtime.
@@ -128,6 +175,7 @@ tasks.named('jar', Jar).configure {
     include 'tqk114514/chunkstorageoptimizer/compat/**'
     include 'fabric.mod.json'
     include "${compatId}.mixins.json"
+    include "${compatId}.shape.properties"
     include 'assets/**'
 }
 
@@ -155,21 +203,39 @@ tasks.named('processResources', ProcessResources).configure {
 // against whatever the cache already holds.
 def targetModsOffline = project.hasProperty('csoTargetModsOffline')
 def targetModsDir = layout.buildDirectory.dir('target-mods/c2me')
+// The 1.21 rows whose chunk path is still ChunkStorage — the shape the bridge's second mixin
+// pair exists for. Kept in step with C2meVersionMatrixTest.LEGACY_ROWS.
+def legacyRows = ['1.21', '1.21.1', '1.21.2', '1.21.3', '1.21.4', '1.21.5',
+                  '1.21.6', '1.21.7', '1.21.8', '1.21.9', '1.21.10']
 def downloadTargetMods = tasks.register('downloadTargetMods') {
-    description = 'Fetches every C2ME release for the 26.x Minecrafts, both loaders, and extracts each rewrite module.'
+    description = 'Fetches C2ME releases for both class shapes and extracts each rewrite module.'
     outputs.dir(targetModsDir)
     doLast {
         def dir = targetModsDir.get().asFile
         dir.mkdirs()
         def lines = []
-        ['c2me-fabric'   : 'fabric',
-         'c2me-neoforge' : 'neoforge'].each { projectSlug, loader ->
-            // The API wants JSON arrays; building them by hand keeps the task dependency-free.
-            def query = '?game_versions=' + java.net.URLEncoder.encode('["26.1","26.2","26.3"]', 'UTF-8') +
+
+        // One fetch per project/loader, with `newestPerRow` choosing between "every release"
+        // (the modern line, still receiving work) and "the newest build of each row" (the
+        // legacy line, where a row's builds differ only in the game they compile against).
+        def fetch = { String projectSlug, String loader, List<String> gameVersions, boolean newestPerRow ->
+            def query = '?game_versions=' + java.net.URLEncoder.encode(
+                    groovy.json.JsonOutput.toJson(gameVersions), 'UTF-8') +
                 '&loaders=' + java.net.URLEncoder.encode("[\"${loader}\"]", 'UTF-8')
             def versions = new groovy.json.JsonSlurper().parse(
                 new URL("https://api.modrinth.com/v2/project/${projectSlug}/version" + query))
-            versions.each { version ->
+            // Newest first, explicitly: "the newest of a row" must not depend on the API's
+            // default ordering.
+            def ordered = versions.toSorted { a, b -> b.date_published <=> a.date_published }
+            def seen = new HashSet<String>()
+            ordered.each { version ->
+                def releaseRow = version.game_versions.find { gameVersions.contains(it) }
+                if (releaseRow == null) {
+                    return
+                }
+                if (newestPerRow && !seen.add(releaseRow)) {
+                    return
+                }
                 def primary = version.files.find { it.primary } ?: version.files[0]
                 def outer = new File(dir, primary.filename)
                 if (!outer.exists() || outer.length() != (long) primary.size) {
@@ -197,9 +263,14 @@ def downloadTargetMods = tasks.register('downloadTargetMods') {
                         }
                     }
                 }
-                lines << [version.id, version.version_number, loader, version.game_versions.join('+'),
-                          primary.filename].join('\t')
+                lines << [version.id, version.version_number, loader, releaseRow, primary.filename].join('\t')
             }
+        }
+
+        ['c2me-fabric'   : 'fabric',
+         'c2me-neoforge' : 'neoforge'].each { projectSlug, loader ->
+            fetch(projectSlug, loader, ['26.1', '26.2', '26.3'], false)
+            fetch(projectSlug, loader, legacyRows, true)
         }
         new File(dir, 'manifest.tsv').text = String.join('\n', lines)
         logger.lifecycle("target-mod matrix: {} C2ME release jars in {}", lines.size(), dir)

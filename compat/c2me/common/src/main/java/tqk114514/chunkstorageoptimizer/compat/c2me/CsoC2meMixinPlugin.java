@@ -1,5 +1,6 @@
 package tqk114514.chunkstorageoptimizer.compat.c2me;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -10,35 +11,40 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 
 /**
- * Decides whether the compat's mixins apply at all: they must not exist as far as Mixin is
- * concerned unless every class they name is on the classpath.
+ * Decides whether the compat's mixins apply at all, and only then whether the bridge is complete.
  *
  * <p>This is the gate that lets the compat ship as a nested mod inside the main mod's jar —
  * which every player downloads, most of whom do not have C2ME. The loader-level way of doing
  * this, a {@code "c2me"} entry in the dependencies, is not available: an unsatisfied required
- * dependency of a nested mod would fail the whole jar's load for everyone. The probes find
- * bytecode without defining classes — {@link #resolves} is a resource lookup on purpose,
- * because a probe that defined a mixin target before its mixins applied would crash every
- * other mixin on that class, C2ME's own included.
+ * dependency of a nested mod would fail the whole jar's load for everyone. The probe finds
+ * bytecode without defining classes — {@link CsoC2meCompatCore#resolves} is a resource lookup on
+ * purpose, because a probe that defined a mixin target before its mixins applied would crash
+ * every other mixin on that class, C2ME's own included.
  *
- * <p>All-or-nothing is a correctness requirement, not a style choice. The read side and the
- * write side of a served folder must swap together — a world that read through the vanilla
- * worker while C2ME's thread wrote the same regions as {@code .mca} is exactly the split
- * storage this compat exists to prevent — so one combined probe decides for every mixin, and
- * the 1.21 rows (whose vanilla classes carry different names) stand the whole compat down
- * rather than half of it.
+ * <p><b>Two questions, in order.</b> First, may this jar bridge at all: C2ME's rewrite is here,
+ * and the build wrote a shape it understands (see {@link CsoC2meCompatCore.Shape}). If not, no
+ * mixin is applied. Second, has the bridge actually covered the row: Mixin prepares every mixin
+ * in a config at bootstrap and asks this plugin about each one, so the approved set can be
+ * counted against {@link CsoC2meCompatCore.Shape#expectedMixins()} — the accessor plus one per
+ * storage class the row has. Only when that count is reached is the bridge marked in
+ * {@link CsoRuntime}, the flag the loader entrypoints consult before choosing between
+ * coexistence and the fail-safe disable.
  *
- * <p>A successful probe also marks the bridge in {@link CsoRuntime}, which is what keeps the
- * entrypoint guards from disabling the custom format for the whole session. The flag is set
- * here — before any world opens, after the classes were proven present — because the mixins
- * apply with the default {@code require}: they either install, or the game fails loudly. The
- * one way the flag could outlive a dead bridge, a mixin that applies but whose swap condition
- * never fires, would need C2ME to ship the probed class while redirecting to something else
- * entirely; the version matrix test holds that line.
+ * <p>Counting is what makes a half bridge impossible. The mixin config lists both shapes on
+ * every row; the legacy pair's targets simply do not resolve on a modern row, so three bind
+ * there and five on a legacy row. If a target that should have resolved did not — a remap that
+ * produced a name the game does not have, say — the count stays short, the flag stays false, and
+ * the entrypoint disables the format instead of leaving chunks on C2ME's worker while entities
+ * and POI move to ours.
+ *
+ * <p>The count is over <em>distinct</em> mixin names: Mixin may consult the plugin more than once
+ * for the same class, and a repeated call must not stand in for a missing one.
  */
 public final class CsoC2meMixinPlugin implements IMixinConfigPlugin {
 
+    private final Set<String> approved = new HashSet<>();
     private Boolean bridgePossible;
+    private boolean marked;
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -52,12 +58,22 @@ public final class CsoC2meMixinPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (this.bridgePossible == null) {
-            this.bridgePossible = everyProbedClassResolves();
-            if (this.bridgePossible) {
-                CsoRuntime.markC2meBridge();
-            }
+            this.bridgePossible = CsoC2meCompatCore.bridgeCoversEveryRewrittenPath(CsoC2meCompatCore.probe());
         }
-        return this.bridgePossible;
+        if (!this.bridgePossible) {
+            return false;
+        }
+        if (!CsoC2meCompatCore.resolves(targetClassName)) {
+            // A mixin whose target this row does not have: the other shape's half. Not an error,
+            // and deliberately not counted — the expected count is what the row's shape needs.
+            return false;
+        }
+        if (this.approved.add(mixinClassName) && !this.marked
+            && this.approved.size() >= CsoC2meCompatCore.shape().expectedMixins()) {
+            this.marked = true;
+            CsoRuntime.markC2meBridge();
+        }
+        return true;
     }
 
     @Override
@@ -77,25 +93,5 @@ public final class CsoC2meMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName,
         IMixinInfo mixinInfo) {
-    }
-
-    private static boolean everyProbedClassResolves() {
-        return resolves(CsoC2meCompatCore.C2ME_WORKER)
-            && resolves(CsoC2meCompatCore.SIMPLE_REGION_STORAGE)
-            && resolves(CsoC2meCompatCore.RECREATING_REGION_STORAGE)
-            && resolves(CsoC2meCompatCore.VANILLA_IO_WORKER);
-    }
-
-    /**
-     * Looks for the class without defining it. This is the difference between a probe and a
-     * bug: {@code Class.forName} would run the name through the transformer and DEFINE the
-     * class, and a target defined before its mixins apply is a "target was loaded too early"
-     * crash for every other mixin on it — C2ME's own accessor on {@code IOWorker} included,
-     * measured. The resource lookup finds the same bytecode without touching the classloader's
-     * defined-class set.
-     */
-    private static boolean resolves(String name) {
-        String internal = name.replace('.', '/');
-        return CsoC2meMixinPlugin.class.getClassLoader().getResource(internal + ".class") != null;
     }
 }

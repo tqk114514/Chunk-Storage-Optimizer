@@ -11,13 +11,28 @@
 #      server must refuse to open it instead of silently regenerating
 #
 # Every phase is its own server process, stopped before the next starts (rcon stop, then the
-# hard fallback — no server is left behind on any exit path). The fabric and neoforge halves
+# hard fallback — no server is left behind on any exit path). Each phase runs WITHOUT the Gradle
+# daemon on purpose: the hard fallback kills the process tree, and with a daemon the build would
+# be a child of a shared JVM that the kill takes down with it — measured, it left Gradle's script
+# cache in a state where every later build died with a Groovy compiler "BUG!". The fabric and neoforge halves
 # differ in two places this script has to know: the compat jar must be dropped into
 # fabric/run/mods (loom's include is packaging-only, the dev classpath carries none of the
 # comps), while the neoforge dev run gets it from the jarJar wiring already; and each side
 # keeps its config in its own format.
 #
 # Usage: tools/c2me-smoke.sh [loader] [row]        defaults: fabric 26.3.0
+#
+# Run it on both shapes: a modern row (26.3.0, or 1.21.11) exercises the single-class bridge,
+# and a legacy row (1.21.1, 1.21.10) exercises the two-class one — chunks on ChunkStorage,
+# entities and POI on SimpleRegionStorage. Phase B is where a half-applied bridge shows itself:
+# it asserts that the *chunk* store served reads, which the entity store alone cannot satisfy.
+#
+# Caveat on Fabric legacy rows: the dev runtime uses named mappings, so the compat jar handed to
+# it must be loom's named build (build/devlibs/*-dev.jar). build/libs holds the intermediary jar
+# the release ships; dropping that into a dev run leaves every mixin target unresolved and looks
+# like a bridge failure. The selection below prefers the named jar and falls back to libs for a
+# 26.x row, where no remapping happens at all. A Fabric 1.21 run therefore verifies the bridge
+# logic; the shipped jar's packaging is checked separately (see docs/DEVELOPMENT.md).
 # Needs: the dev runtime dirs (fabric/run, neoforge/run) that `gradlew :*:runServer` uses,
 # and a JDK on PATH (or JAVA_HOME) for the embedded RCON client.
 set -euo pipefail
@@ -26,7 +41,10 @@ LOADER="${1:-fabric}"
 ROW="${2:-26.3.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 case "$LOADER" in
-  fabric)   RUN="$ROOT/fabric/run";   GRADLE_TASK=":fabric:runServer";   COMPAT_JAR="compat/c2me/fabric/build/libs/chunkstorageoptimizer_c2mecompat-1.0.0.jar";;
+  fabric)   RUN="$ROOT/fabric/run";   GRADLE_TASK=":fabric:runServer"
+            # Newest build, whatever the compat's version is: the jar name carries it, and a
+            # pinned one silently goes stale the moment the compat bumps.
+            COMPAT_JAR="$(cd "$ROOT" && { ls -t compat/c2me/fabric/build/devlibs/chunkstorageoptimizer_c2mecompat-*-dev.jar 2>/dev/null || ls -t compat/c2me/fabric/build/libs/chunkstorageoptimizer_c2mecompat-*.jar 2>/dev/null; } | head -1)";;
   neoforge) RUN="$ROOT/neoforge/run"; GRADLE_TASK=":neoforge:runServer"; COMPAT_JAR="";;
   *) echo "usage: $0 [fabric|neoforge] [row]" >&2; exit 2;;
 esac
@@ -37,6 +55,12 @@ LOG_DIR="$RUN/logs"
 RCON_PORT=25575
 RCON_PASSWORD=c2mesmoke
 CACHE=/tmp/c2me-smoke-cache
+# Whatever else lives in mods/ is set aside for the run and put back on exit. A dev run
+# directory accumulates mods from unrelated experiments (a world-map jar for a different
+# Minecraft, most memorably), and a mandatory dependency of one of them fails the load before
+# the bridge is ever reached — which reads as a bridge failure. The smoke must only ever load
+# the jars it chose.
+MODS_BACKUP="$(mktemp -d)"
 mkdir -p "$CACHE" "$MODS"
 
 die() { echo "C2ME SMOKE FAILED [$LOADER]: $*" >&2; exit 1; }
@@ -67,13 +91,21 @@ poll_eq() { # <die-message> <count-fn> <expected>
 [ -d "$WORLD" ] && die "$WORLD already exists — remove it before a clean run"
 
 # --- the C2ME release under test, downloaded once ---------------------------------------------
-# The same release the bridge was written against: c2me-fabric 0.4.2-alpha.0.90+26.3,
-# c2me-neoforge 0.4.2-alpha.0.102+26.3 (both pinned by the compat's version matrix test).
-if [ "$LOADER" = fabric ]; then
-    C2ME_VERSION_ID=ODMLK8M9
-else
-    C2ME_VERSION_ID=Z3YsmFxl
-fi
+# Resolved from Modrinth for the row under test rather than pinned: the bridge has two shapes,
+# and the 1.21-through-1.21.10 one needs a C2ME built for that row (its chunk rewrite targets
+# ChunkStorage, which 1.21.11 deleted). The newest release of the row is the one a player gets.
+C2ME_PROJECT=$([ "$LOADER" = fabric ] && echo c2me-fabric || echo c2me-neoforge)
+# Modrinth names a two-part game version the way the game does ("26.3"); the csv row keeps the
+# loader-line spelling ("26.3.0"). Querying the raw row finds no release on every 26.x row.
+MODRINTH_ROW="$ROW"
+case "$ROW" in
+  26.*.0) MODRINTH_ROW="${ROW%.0}" ;;
+esac
+C2ME_VERSION_ID="$(curl -s "https://api.modrinth.com/v2/project/$C2ME_PROJECT/version?game_versions=%5B%22$MODRINTH_ROW%22%5D&loaders=%5B%22$LOADER%22%5D" \
+    | python -c 'import json, sys
+releases = json.load(sys.stdin)
+print(releases[0]["id"] if releases else "")')"
+[ -n "$C2ME_VERSION_ID" ] || die "no C2ME release for Minecraft $ROW on $LOADER"
 C2ME_JAR="$CACHE/c2me-$LOADER-$C2ME_VERSION_ID.jar"
 if [ ! -f "$C2ME_JAR" ]; then
     url="$(curl -s "https://api.modrinth.com/v2/version/$C2ME_VERSION_ID" \
@@ -157,6 +189,15 @@ cp "$PROPS" "$PROPS.smoke-backup"
 
 SERVER_PID=""
 DROPPED=""
+FOREIGN=""
+set_aside_foreign_mods() {
+    for jar in "$MODS"/*.jar; do
+        [ -e "$jar" ] || continue
+        mv "$jar" "$MODS_BACKUP/" || die "could not set aside $jar"
+        FOREIGN="$FOREIGN $jar"
+        echo "   set aside $(basename "$jar") — not part of this run"
+    done
+}
 cleanup() {
     if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
         "${JAVA_HOME:+$JAVA_HOME/bin/}"java -cp "$WORK" RconTool "$RCON_PORT" "$RCON_PASSWORD" stop 8000 >/dev/null 2>&1 || true
@@ -168,6 +209,11 @@ cleanup() {
             taskkill //F //T //PID "$SERVER_PID" >/dev/null 2>&1 || kill "$SERVER_PID" 2>/dev/null || true
         fi
     fi
+    for jar in $FOREIGN; do
+        [ -e "$jar" ] && continue
+        mv "$MODS_BACKUP/$(basename "$jar")" "$jar" 2>/dev/null || true
+    done
+    rmdir "$MODS_BACKUP" 2>/dev/null || true
     for jar in $DROPPED; do
         rm -f "$jar"
     done
@@ -219,7 +265,7 @@ clear_mods() {
 # start <log> — launches the dev server in the background, waits for Done, dies on early exit.
 start() {
     LOG="$1"
-    ( cd "$ROOT" && ./gradlew "$GRADLE_TASK" --console=plain -Pminecraft_version="$ROW" > "$LOG" 2>&1 ) &
+    ( cd "$ROOT" && ./gradlew "$GRADLE_TASK" --no-daemon --console=plain -Pminecraft_version="$ROW" > "$LOG" 2>&1 ) &
     SERVER_PID=$!
     for _ in $(seq 1 90); do
         grep -q "Done (" "$LOG" 2>/dev/null && return 0
@@ -241,6 +287,7 @@ stop() {
 
 # --- phase A: a .cso world without C2ME ------------------------------------------------------
 echo "== [$LOADER] A: build a .cso world without C2ME"
+set_aside_foreign_mods
 clear_mods
 start "$LOG_DIR/c2me-smoke-a.log"
 out="$(rcon 'forceload add -8 -8 8 8' 30000)"
@@ -268,7 +315,12 @@ echo "$out" | grep -q "Marked" || die "B forceload: $out"
 sleep 8
 stats="$(rcon 'cso stats' 15000)"
 echo "$stats" | grep -q "CSO \[active\]" || die "B: stats not active under C2ME: $stats"
-echo "$stats" | grep -Eq "read=[1-9]" || die "B: no reads served through the bridge: $stats"
+# The chunk store specifically, not "some store": a half-applied bridge serves entities and POI
+# while chunks stay on C2ME's worker, and a plain `read=[1-9]` anywhere in the report would call
+# that a success. The label's prefix depends on the save layout (26.x nests it under
+# dimensions/minecraft/<dim>/, 1.21 keeps it at the world root), so match the trailing store name.
+echo "$stats" | grep -E "/region[[:space:]]+read=" | grep -Eq "read=[1-9]" \
+    || die "B: the chunk store served no reads — chunks are still on C2ME's worker: $stats"
 [ "$(mca_count)" -eq 0 ] \
     || die "B: .mca appeared beside the .cso — C2ME is bypassing the bridge"
 # Conversion under C2ME: the pause machinery runs against the bridged vanilla worker.
@@ -313,7 +365,7 @@ stop
 echo "== [$LOADER] D: the refusal over a .cso world with the format switched off"
 config_disable
 LOG="$LOG_DIR/c2me-smoke-d.log"
-( cd "$ROOT" && ./gradlew "$GRADLE_TASK" --console=plain -Pminecraft_version="$ROW" > "$LOG" 2>&1 ) &
+( cd "$ROOT" && ./gradlew "$GRADLE_TASK" --no-daemon --console=plain -Pminecraft_version="$ROW" > "$LOG" 2>&1 ) &
 SERVER_PID=$!
 refused=0
 for _ in $(seq 1 60); do

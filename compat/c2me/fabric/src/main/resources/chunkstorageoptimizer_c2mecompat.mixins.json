@@ -4,7 +4,9 @@
   "plugin": "tqk114514.chunkstorageoptimizer.compat.c2me.CsoC2meMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ChunkStorageMixin",
     "IOWorkerAccessor",
+    "RecreatingChunkStorageMixin",
     "RecreatingSimpleRegionStorageMixin",
     "SimpleRegionStorageMixin"
   ],

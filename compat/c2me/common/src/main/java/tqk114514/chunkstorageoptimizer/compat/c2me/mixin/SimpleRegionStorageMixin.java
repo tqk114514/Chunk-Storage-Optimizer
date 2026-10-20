@@ -22,6 +22,12 @@ import tqk114514.chunkstorageoptimizer.compat.c2me.CsoC2meCompatCore;
 /**
  * The bridge, read side: a folder this mod serves gets the vanilla IO worker back, per folder.
  *
+ * <p>Which stores reach this constructor depends on the row. From 1.21.11 onwards (and on every
+ * 26.x row) {@code ChunkMap} extends this class, so chunks, entities and POI all pass through it
+ * and this one mixin covers them. On 1.21 through 1.21.10 chunks live on {@code ChunkStorage}
+ * instead, and this mixin carries entities and POI alone — {@link ChunkStorageMixin} is the other
+ * half, and the plugin refuses to bridge a row unless both halves can apply.
+ *
  * <p>C2ME's chunk IO rewrite {@code @Redirect}s the {@code new IOWorker(...)} call inside this
  * constructor to its own replacement, which drives {@code RegionFile} objects directly — past
  * every hook the main mod has on {@code RegionFileStorage}. Left in place over a served folder,

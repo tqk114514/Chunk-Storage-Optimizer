@@ -19,7 +19,7 @@ plugins {
 
 // The compat's version number is its own, deliberately not the main mod's: it moves only when
 // the compat itself changes, so a main-mod release never has to bump it.
-def compatVersion = '1.0.0'
+def compatVersion = '1.1.0'
 // Underscore, because NeoForge restricts mod ids to [a-z0-9_] and both halves share one id.
 def compatId = 'chunkstorageoptimizer_c2mecompat'
 
@@ -123,6 +123,25 @@ sourceSets.main.java.srcDir rootProject.file('compat/c2me/common/src/main/java')
 // module's test classpath, and the C2ME version matrix reads downloaded jars.
 sourceSets.test.java.srcDir rootProject.file('compat/c2me/common/src/test/java')
 
+// The class shape this jar was built for, read by the plugin at runtime. NeoForge runs with the
+// official names on every row this compat ships for, so nothing here needs remapping — but the
+// plugin still refuses to bridge without the file, which is what keeps a mis-built jar from
+// guessing "modern" on a legacy row. See CsoC2meCompatCore.
+def generateCompatShape = tasks.register('generateCompatShape') {
+    def outDir = layout.buildDirectory.dir('generated/sources/compatShape')
+    // The shape is an INPUT, not just something written in doLast: without it Gradle calls the
+    // task up-to-date on the next row and the jar keeps the previous row's shape.
+    def shapeValue = (!mcVersion.startsWith('26.') && mcVersion != '1.21.11') ? 'legacy' : 'modern'
+    inputs.property('shape', shapeValue)
+    outputs.dir(outDir)
+    doLast {
+        def file = outDir.get().file("${compatId}.shape.properties").asFile
+        file.parentFile.mkdirs()
+        file.text = "shape=${shapeValue}\n"
+    }
+}
+sourceSets.main.resources.srcDir generateCompatShape
+
 neoForge {
     // The fixed compile pin (see the header). No runs of its own: the compat is exercised
     // through :neoforge:runServer, which loads it from its classpath via the jarJar wiring.
@@ -198,6 +217,7 @@ tasks.named('jar', Jar).configure {
     include 'tqk114514/chunkstorageoptimizer/compat/**'
     include 'META-INF/neoforge.mods.toml'
     include "${compatId}.mixins.json"
+    include "${compatId}.shape.properties"
     include 'assets/**'
 }
 
@@ -208,20 +228,39 @@ tasks.named('jar', Jar).configure {
 // the same line independently. See the fabric half for the mechanics and the offline hatch.
 def targetModsOffline = project.hasProperty('csoTargetModsOffline')
 def targetModsDir = layout.buildDirectory.dir('target-mods/c2me')
+// The 1.21 rows whose chunk path is still ChunkStorage — the shape the bridge's second mixin
+// pair exists for. Kept in step with C2meVersionMatrixTest.LEGACY_ROWS.
+def legacyRows = ['1.21', '1.21.1', '1.21.2', '1.21.3', '1.21.4', '1.21.5',
+                  '1.21.6', '1.21.7', '1.21.8', '1.21.9', '1.21.10']
 def downloadTargetMods = tasks.register('downloadTargetMods') {
-    description = 'Fetches every C2ME release for the 26.x Minecrafts, both loaders, and extracts each rewrite module.'
+    description = 'Fetches C2ME releases for both class shapes and extracts each rewrite module.'
     outputs.dir(targetModsDir)
     doLast {
         def dir = targetModsDir.get().asFile
         dir.mkdirs()
         def lines = []
-        ['c2me-fabric'   : 'fabric',
-         'c2me-neoforge' : 'neoforge'].each { projectSlug, loader ->
-            def query = '?game_versions=' + java.net.URLEncoder.encode('["26.1","26.2","26.3"]', 'UTF-8') +
+
+        // One fetch per project/loader, with `newestPerRow` choosing between "every release"
+        // (the modern line, still receiving work) and "the newest build of each row" (the
+        // legacy line, where a row's builds differ only in the game they compile against).
+        def fetch = { String projectSlug, String loader, List<String> gameVersions, boolean newestPerRow ->
+            def query = '?game_versions=' + java.net.URLEncoder.encode(
+                    groovy.json.JsonOutput.toJson(gameVersions), 'UTF-8') +
                 '&loaders=' + java.net.URLEncoder.encode("[\"${loader}\"]", 'UTF-8')
             def versions = new groovy.json.JsonSlurper().parse(
                 new URL("https://api.modrinth.com/v2/project/${projectSlug}/version" + query))
-            versions.each { version ->
+            // Newest first, explicitly: "the newest of a row" must not depend on the API's
+            // default ordering.
+            def ordered = versions.toSorted { a, b -> b.date_published <=> a.date_published }
+            def seen = new HashSet<String>()
+            ordered.each { version ->
+                def releaseRow = version.game_versions.find { gameVersions.contains(it) }
+                if (releaseRow == null) {
+                    return
+                }
+                if (newestPerRow && !seen.add(releaseRow)) {
+                    return
+                }
                 def primary = version.files.find { it.primary } ?: version.files[0]
                 def outer = new File(dir, primary.filename)
                 if (!outer.exists() || outer.length() != (long) primary.size) {
@@ -247,9 +286,14 @@ def downloadTargetMods = tasks.register('downloadTargetMods') {
                     }
                     jar.close()
                 }
-                lines << [version.id, version.version_number, loader, version.game_versions.join('+'),
-                          primary.filename].join('\t')
+                lines << [version.id, version.version_number, loader, releaseRow, primary.filename].join('\t')
             }
+        }
+
+        ['c2me-fabric'   : 'fabric',
+         'c2me-neoforge' : 'neoforge'].each { projectSlug, loader ->
+            fetch(projectSlug, loader, ['26.1', '26.2', '26.3'], false)
+            fetch(projectSlug, loader, legacyRows, true)
         }
         new File(dir, 'manifest.tsv').text = String.join('\n', lines)
         logger.lifecycle("target-mod matrix: {} C2ME release jars in {}", lines.size(), dir)
