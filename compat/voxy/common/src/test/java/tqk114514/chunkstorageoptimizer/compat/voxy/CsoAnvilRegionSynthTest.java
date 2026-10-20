@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -84,6 +85,78 @@ class CsoAnvilRegionSynthTest {
             CsoAnvilRegionSynth.Synthesis synthesis = CsoAnvilRegionSynth.toAnvilRegion(region);
             assertNull(synthesis.anvil());
             assertEquals(0, synthesis.chunks());
+        }
+    }
+
+    /**
+     * A deleted chunk must not leave a trace in the synthesised Anvil: a header slot that parses
+     * as an empty chunk would import as terrain that no longer exists. The positions span three
+     * buckets and one deletion empties its bucket completely — the state where the bucket table
+     * entry survives while the payload has no chunks left.
+     */
+    @Test
+    void deletedChunksLeaveNoTombstoneInTheSynthesisedAnvil() throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        int[][] positions = {{0, 0}, {1, 1}, {14, 14}, {15, 15}, {16, 16}, {17, 17}};
+        int[][] removed = {{0, 0}, {1, 1}, {14, 14}};
+        Map<Integer, byte[]> live = new HashMap<>();
+        Map<Integer, byte[]> deleted = new HashMap<>();
+
+        try (CsoRegionFile region = open(path)) {
+            for (int i = 0; i < positions.length; i++) {
+                byte[] nbt = new byte[200 + i * 50];
+                new Random(7 + i).nextBytes(nbt);
+                region.writeChunk(positions[i][0], positions[i][1], nbt);
+                live.put(positions[i][1] * 32 + positions[i][0], nbt);
+            }
+            for (int[] position : removed) {
+                region.deleteChunk(position[0], position[1]);
+                int index = position[1] * 32 + position[0];
+                deleted.put(index, live.remove(index));
+            }
+        }
+
+        try (CsoRegionFile region = open(path)) {
+            CsoAnvilRegionSynth.Synthesis synthesis = CsoAnvilRegionSynth.toAnvilRegion(region);
+            assertEquals(live.size(), synthesis.chunks());
+            assertEquals(0, synthesis.skipped());
+            assertNotNull(synthesis.anvil());
+
+            Path anvil = dir.resolve("r.0.0.mca");
+            Files.write(anvil, synthesis.anvil());
+            AnvilRegionFile.ReadResult read = AnvilRegionFile.readReporting(anvil);
+            assertTrue(read.isComplete());
+            assertEquals(live.size(), read.occupied());
+            assertEquals(live.size(), read.chunks().size());
+            for (AnvilRegionFile.Chunk chunk : read.chunks()) {
+                assertArrayEquals(live.get(chunk.index()), chunk.nbt(),
+                    "chunk " + chunk.index() + " changed on the way through Anvil");
+            }
+            for (int index : deleted.keySet()) {
+                assertTrue(read.chunks().stream().noneMatch(chunk -> chunk.index() == index),
+                    "deleted chunk " + index + " came back");
+                // The reader treats a zero header entry as absent; checking the header directly
+                // is what rules out a tombstone that merely parses as an empty chunk.
+                assertEquals(0, ByteBuffer.wrap(synthesis.anvil()).getInt(index * 4),
+                    "deleted chunk " + index + " left a header entry");
+            }
+        }
+    }
+
+    /** Every chunk in the region was deleted, so there is no Anvil region worth handing to Voxy. */
+    @Test
+    void aRegionEmptiedByDeletionSynthesisesToNothing() throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        try (CsoRegionFile region = open(path)) {
+            region.writeChunk(9, 4, new byte[] {1, 2, 3, 4});
+            region.deleteChunk(9, 4);
+        }
+
+        try (CsoRegionFile region = open(path)) {
+            CsoAnvilRegionSynth.Synthesis synthesis = CsoAnvilRegionSynth.toAnvilRegion(region);
+            assertNull(synthesis.anvil());
+            assertEquals(0, synthesis.chunks());
+            assertEquals(0, synthesis.skipped());
         }
     }
 
