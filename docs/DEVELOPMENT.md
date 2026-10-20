@@ -277,3 +277,24 @@ Fabric 侧的 1.21.10 也跑过同一套四阶段冒烟。dev 运行时用的是
 形状文件缺失读作 `unknown`，永远数不满：猜成 `modern` 在 legacy 行上就是半桥。形状值是
 `generateCompatShape` 的**输入**而不是只写在 `doLast` 里——否则 Gradle 会在下一行构建时判它
 up-to-date，jar 里留着上一行的形状（实测踩过）。
+
+## 外部系统与工具坑
+
+- **Modrinth**：项目 id 是 `cJqzw49d`。PAT 必须有 `VERSION_CREATE`、`PROJECT_READ`、`VERSION_READ`
+  三个 scope；对无权读的项目，API 用 404 而不是 403，和 id 写错在 HTTP 层面无法区分。项目页面
+  可见时，未认证的 `/v2/project/<id>/version` 也可能 404——发布是否成功以 `publish` job 日志里的
+  `published ...` 行为准，不要用匿名 GET 判断。`game_version` 用游戏自己的写法（`26.3`），
+  csv 第一列是 loader 行写法（`26.3.0`），发布与冒烟脚本都要做这个映射。创建版本时 `featured`
+  是服务端必填，虽然 OpenAPI 文档标它可选（`tools/publish-modrinth.sh` 已带）。
+- **NeoForge maven**：`maven-metadata.xml` 与目录列表会被 CDN 缓存，见过缓存住的 404 和落后
+  多个构建的列表。核版本用
+  `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?cb=<随机值>`；
+  `tools/neoforge-floor.sh` 已按这个端点实现。
+- **CI 用的 workflow 版本**：一次 run 用的是它那个 commit 上的 workflow 文件。失败的 run 在改了
+  workflow 之后 Re-run 不会生效——要么在新提交上重新打 tag，要么用 `workflow_dispatch`。
+- **C2ME 矩阵测试不在 CI 里**：CI 每个 job 跑的是 `:core:test`、Xaero/Voxy 的 common 测试和主模块
+  测试；`compat/c2me/*` 的 75 版本矩阵要本地跑 `:compat:c2me:fabric:test` 与
+  `:compat:c2me:neoforge:test`，发布前别省。
+- **产物选择**：Fabric dev 运行时用 `build/devlibs/*-dev.jar`（命名映射），发行 jar 在
+  `build/libs`（intermediary；26.x 不 remap）。`build/libs` 里也可能留着旧 `mod_version` 的同名
+  jar，认产物看版本号与时间。
