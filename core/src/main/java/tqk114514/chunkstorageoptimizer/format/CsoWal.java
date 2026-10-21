@@ -46,9 +46,17 @@ final class CsoWal {
 
     CsoWal(Path regionPath, int bucketCount, int chunksPerBucket) {
         this.regionPath = regionPath;
-        this.walPath = regionPath.resolveSibling(regionPath.getFileName() + ".wal");
+        this.walPath = walPathFor(regionPath);
         this.bucketCount = bucketCount;
         this.chunksPerBucket = chunksPerBucket;
+    }
+
+    /**
+     * The log's name for a region file. One definition, because the tooling that replaces a region
+     * file has to be able to find the log left beside it without repeating the convention.
+     */
+    static Path walPathFor(Path regionPath) {
+        return regionPath.resolveSibling(regionPath.getFileName() + ".wal");
     }
 
     /** Records a whole batch of bucket changes and forces it to disk, atomically. */

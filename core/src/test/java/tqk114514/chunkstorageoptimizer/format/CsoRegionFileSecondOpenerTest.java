@@ -127,6 +127,33 @@ class CsoRegionFileSecondOpenerTest {
     // ---------------------------------------------------------------- the read-only contract
 
     /**
+     * A log that outlives the file it described must not survive a replacement of that file.
+     * Replaying it recovers nothing — its batch was never durable anywhere the union could have
+     * read it — and would apply the older batch's deletions to newer chunks.
+     */
+    @Test
+    void aReplacedRegionDoesNotKeepThePreviousFilesLog(@TempDir Path dir) throws IOException {
+        Path region = dir.resolve("r.0.0.cso");
+        try (CsoRegionFile crashed = openWrite(region)) {
+            crashed.writeChunk(0, 0, data(1, 2000));
+            crashed.writeWal(batch(4, 0, data(2, 2000)));
+        }
+        assertTrue(Files.isRegularFile(walOf(region)), "the log names a batch that never landed");
+
+        // The shape a crash can leave behind: the region file gone, its log still there.
+        Files.delete(region);
+        assertTrue(Files.isRegularFile(walOf(region)), "the log outlived the file it described");
+        tqk114514.chunkstorageoptimizer.tools.Converter.writeCso(region,
+            java.util.List.of(new AnvilRegionFile.Chunk(0, data(3, 2000))), GRID, LEVEL);
+
+        assertFalse(Files.isRegularFile(walOf(region)),
+            "a replacement must not inherit a log describing the file it replaced");
+        try (CsoRegionFile reader = CsoRegionFile.openReadOnly(region, LEVEL, 4, true)) {
+            assertArrayEquals(data(3, 2000), reader.readChunk(0, 0), "and the new file reads back");
+        }
+    }
+
+    /**
      * A batch in flight is the writer's business. A reader refuses the file rather than showing the
      * state before it, and above all does not consume the log: the conversion callers of this path
      * write what they read back over the same file, so a stale view there is the batch — gone.

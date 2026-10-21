@@ -827,6 +827,9 @@ public final class Converter {
             }
         }
         FileMoves.settle(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        // Whatever log was left beside the file this replaced belonged to that file, not to this
+        // one; leaving it would have the game apply an older batch to freshly written content.
+        CsoRegionFile.clearOrphanedWal(target);
     }
 
     /**

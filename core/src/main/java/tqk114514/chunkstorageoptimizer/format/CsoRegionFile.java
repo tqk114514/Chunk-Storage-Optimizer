@@ -235,6 +235,24 @@ public final class CsoRegionFile implements Closeable {
         }
     }
 
+    /**
+     * Removes a write-ahead log left beside a region file that has just been replaced wholesale.
+     *
+     * <p>Such a log is the in-flight batch of a file that no longer exists: its bytes were never
+     * durable anywhere the replacement could have read them (the union a conversion builds comes
+     * from committed content, and a reader of a file whose batch is still live refuses that file —
+     * see {@link #openReadOnly}). Applying the old log to the new file therefore cannot recover
+     * anything; all it can do is re-apply an older batch's deletions, or its version of a chunk the
+     * union chose differently, to newer content. The log goes with the file it described.
+     *
+     * <p>Tolerant of the transient Windows delete denial for the same reason every other removal in
+     * this format is: a leftover log is not worth failing a conversion over, and the next open of
+     * this file sweeps it.
+     */
+    public static void clearOrphanedWal(Path region) throws IOException {
+        FileMoves.settleDelete(CsoWal.walPathFor(region));
+    }
+
     /** Refuses a mutation on a handle that opened to read, with the reason rather than an IO surprise. */
     private void requireWritable() {
         if (this.readOnly) {

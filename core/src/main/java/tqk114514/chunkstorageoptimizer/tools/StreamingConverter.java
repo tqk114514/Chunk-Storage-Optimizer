@@ -147,6 +147,10 @@ public final class StreamingConverter {
                 return new Outcome(0, sourceChunks, 0);
             }
             FileMoves.settle(temp, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            // The partner read above refuses a file whose batch is still in flight, so a log naming
+            // one at this point describes the file that was just replaced — and its deletions must
+            // not be applied to the union written here.
+            CsoRegionFile.clearOrphanedWal(out);
             return new Outcome(written, sourceChunks, 0);
         }
     }
