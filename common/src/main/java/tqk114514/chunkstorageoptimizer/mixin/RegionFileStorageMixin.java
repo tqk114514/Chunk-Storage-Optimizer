@@ -168,8 +168,17 @@ public class RegionFileStorageMixin {
         if (this.cso$conversionPaused) {
             // Empty, and gated BEFORE the storage check on purpose: a released folder is
             // served by vanilla, and a vanilla read would reopen the handle a conversion is
-            // trying to replace. The only callers that can arrive here mid-conversion are
-            // background ones — the game itself is the thread running the command.
+            // trying to replace.
+            //
+            // The name of the thread asking is logged because it is the question this answer
+            // cannot be made on: "chunk absent" tells the game to generate a chunk, and if the
+            // asker is the game's own chunk load — not a background tile builder — that chunk
+            // comes back saved over the file the conversion just wrote. Only a background
+            // thread can be here while the server thread runs the command, so the line is the
+            // witness, and a warning is the honest level for a read that may cost a chunk.
+            LOGGER.warn("Chunk Storage Optimizer: a read of {} arrived mid-conversion on thread"
+                    + " {}; answered absent",
+                pos, Thread.currentThread().getName());
             cir.setReturnValue(null);
             cir.cancel();
             return;

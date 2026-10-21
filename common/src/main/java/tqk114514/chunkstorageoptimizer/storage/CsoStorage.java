@@ -410,6 +410,14 @@ public final class CsoStorage implements AutoCloseable {
             // "chunk absent" already means to every caller, and the tile builders behind those
             // background reads treat it as "nothing to draw", not as damage.
             if (this.conversionPaused) {
+                // The name is logged because the answer given here is not neutral: "chunk absent"
+                // is what tells the game to generate one, and a generated chunk saved after the
+                // resume lands in the file the conversion just wrote. The mixin's own gate covers
+                // the vanilla side of the folder; this one covers the window where the folder is
+                // latched here and not yet there.
+                LOGGER.warn("Chunk Storage Optimizer: a read of {} arrived while {} is being"
+                    + " converted, on thread {}; answered absent", pos, this.folder,
+                    Thread.currentThread().getName());
                 return null;
             }
             byte[] staged = staged(pos);
