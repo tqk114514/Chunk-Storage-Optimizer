@@ -27,7 +27,19 @@ public final class CsoVoxyCompat implements ModInitializer {
         if (!FabricLoader.getInstance().isModLoaded("voxy")) {
             return;
         }
-        String reason = checkVoxyImporter();
+        // Nothing in here may reach the loader as a failure: the compat ships inside every
+        // player's jar, and an entrypoint that throws aborts the game start. Measured on a
+        // dedicated server with Voxy installed — this class used to die exactly that way, at the
+        // probe below, taking the server with it.
+        String reason;
+        try {
+            reason = checkVoxyImporter();
+        } catch (Throwable unexpected) {
+            LOGGER.warn("Voxy compat inactive: probing Voxy's importer raised {} ({})."
+                    + " The import runs without .cso support.",
+                unexpected.getClass().getName(), unexpected.getMessage());
+            return;
+        }
         if (reason == null) {
             LOGGER.info("Voxy compat active: /voxy import reads .cso region files");
         } else {
@@ -35,18 +47,42 @@ public final class CsoVoxyCompat implements ModInitializer {
         }
     }
 
-    /** Null when every mixin target is where the mixins expect it, otherwise what moved. */
+    /**
+     * Null when every mixin target is where the mixins expect it, otherwise what moved.
+     *
+     * <p>Probed with {@code initialize=false}, because these classes are not ours to run: Voxy's
+     * {@code WorldImporter} links commons-compress, which is not reachable in every environment
+     * (a dedicated server is the one that showed up in practice), and running a static initialiser
+     * here would raise a {@code NoClassDefFoundError} — an {@code Error}, which the reflective
+     * catch below does not cover, and which the loader turns into a failed game start.
+     * {@code CsoC2meCompatCore} already does this for exactly the same reason.
+     *
+     * <p>Method lookups are structural, so they need no initialisation either.
+     */
     private static String checkVoxyImporter() {
         try {
-            Class<?> importer = Class.forName("me.cortex.voxy.commonImpl.importers.WorldImporter");
+            Class<?> importer = probe("me.cortex.voxy.commonImpl.importers.WorldImporter");
+            Class<?> buffer = probe("me.cortex.voxy.common.util.MemoryBuffer");
+            if (importer == null || buffer == null) {
+                return "Voxy's importer classes are not reachable in this environment";
+            }
             importer.getDeclaredMethod("importRegionDirectoryAsync", File.class);
             importer.getDeclaredMethod("importRegionFile", File.class);
-            importer.getDeclaredMethod(
-                "importRegion",
-                Class.forName("me.cortex.voxy.common.util.MemoryBuffer"), int.class, int.class);
+            importer.getDeclaredMethod("importRegion", buffer, int.class, int.class);
             return null;
-        } catch (ReflectiveOperationException e) {
-            return "Voxy's WorldImporter does not match the expected shape (" + e + ")";
+        } catch (ReflectiveOperationException | LinkageError moved) {
+            return "Voxy's WorldImporter does not match the expected shape (" + moved + ")";
+        }
+    }
+
+    /** Loads the class for inspection without running its initialiser; null when unreachable. */
+    private static Class<?> probe(String name) {
+        try {
+            return Class.forName(name, false, CsoVoxyCompat.class.getClassLoader());
+        } catch (Throwable unreachable) {
+            // ClassNotFoundException is expected here, and so is a LinkageError from a class whose
+            // own dependencies are absent — both mean "stand aside", never "fail the launch".
+            return null;
         }
     }
 }
