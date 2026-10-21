@@ -249,11 +249,33 @@ jobs:
           path: ${{ matrix.loader }}/build/libs/*.jar
           if-no-files-found: error
 
+  # The language files a player receives inside the jar. Proofread here rather than only by hand:
+  # an invalid JSON is a file Minecraft cannot load at all, and the Crowdin PRs are opened with
+  # the built-in token, which does not trigger workflows — so a translations-only PR is not
+  # checked on its own and this job is the first thing that looks at it (on merge, and on every
+  # push). Ubuntu runners ship jq; the checker refuses to guess without it rather than reporting
+  # every file as broken, which is how it behaved before.
+  #
+  # Only a FAIL (invalid JSON) exits non-zero. Missing technical tokens are WARNs on purpose:
+  # a source string that just changed (1.1.11's cache wording) is absent from every translation
+  # until Crowdin syncs, and blocking releases on the translators' queue would be blocking the
+  # wrong thing.
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Proofread every shipped language file
+        run: bash tools/check-translations.sh
+
   # Publishing goes to Modrinth as one version per (loader, Minecraft) pair: a version's `loaders`
   # and `game_versions` are what the launcher matches on before taking that version's primary file,
   # so folding both loaders into a single version would hand a Fabric player the NeoForge jar.
   publish:
-    needs: [discover, build]
+    # pins is a gate, not a notice: its own job comment says a stale pin produces jars players
+    # cannot install, and until now a green matrix was enough to publish them anyway.
+    # translations is a gate for the same reason — a broken lang file ships inside the jar.
+    needs: [discover, build, pins, translations]
     if: needs.discover.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
