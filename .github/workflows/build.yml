@@ -97,7 +97,10 @@ jobs:
                 | sed -n -E 's/^[Ss][Cc][Oo][Pp][Ee]:[[:space:]]*//p')
             fi
           elif [ -n "${DISPATCH_SCOPE:-}" ]; then
-            scope=$(printf '%s' "$DISPATCH_SCOPE" | tr ';' '\n' | grep -v '^$')
+            # Same shape as the tag path above: nothing here may exit non-zero when there is
+            # nothing to find, because the assignment runs under pipefail and a grep that matches
+            # no line takes the whole job down (c9a2b89 fixed exactly this for the tag path).
+            scope=$(printf '%s' "$DISPATCH_SCOPE" | tr ';' '\n' | sed -n '/[^[:space:]]/p')
           fi
 
           if [ -n "$scope" ]; then
