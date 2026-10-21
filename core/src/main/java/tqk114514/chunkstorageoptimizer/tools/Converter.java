@@ -795,7 +795,6 @@ public final class Converter {
 
     // ------------------------------------------------------------------ io
 
-    /** Writes chunks into a fresh CSO file, one compress per bucket. */
     /**
      * Writes {@code chunks} out as a CSO file, replacing whatever is at {@code target}.
      *
