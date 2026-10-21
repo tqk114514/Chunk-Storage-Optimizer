@@ -91,6 +91,12 @@ def targetModsDir = layout.buildDirectory.dir('target-mods/voxy')
 def downloadTargetMods = tasks.register('downloadTargetMods') {
     description = 'Fetches every Modrinth release of Voxy for the csv Minecrafts.'
     outputs.dir(targetModsDir)
+    // Re-queried on every run, by design: a new Voxy release has to fail the build the day it
+    // appears, and the per-file skip inside the body makes a repeat run cheap. Gradle could not
+    // see that intent from the directory alone — a fetch that failed with no network left an empty
+    // cache remembered as success, and every later run reported UP-TO-DATE while the matrix test
+    // blamed Modrinth for a download that had never happened.
+    outputs.upToDateWhen { false }
     doLast {
         def dir = targetModsDir.get().asFile
         dir.mkdirs()

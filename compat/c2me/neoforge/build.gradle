@@ -235,6 +235,11 @@ def legacyRows = ['1.21', '1.21.1', '1.21.2', '1.21.3', '1.21.4', '1.21.5',
 def downloadTargetMods = tasks.register('downloadTargetMods') {
     description = 'Fetches C2ME releases for both class shapes and extracts each rewrite module.'
     outputs.dir(targetModsDir)
+    // Never up to date: the matrix is the reason this exists — a new C2ME release that moves the
+    // rewrite has to fail the build the day it appears — and the per-file skip in the body keeps a
+    // repeat run cheap. Declaring only the directory let Gradle remember a failed (offline) fetch
+    // as success and skip every later run with the cache empty.
+    outputs.upToDateWhen { false }
     doLast {
         def dir = targetModsDir.get().asFile
         dir.mkdirs()

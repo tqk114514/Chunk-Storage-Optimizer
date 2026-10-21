@@ -95,6 +95,13 @@ def targetModsDir = layout.buildDirectory.dir('target-mods/xaero-world-map')
 def downloadTargetMods = tasks.register('downloadTargetMods') {
     description = 'Fetches every Modrinth release of Xaero World Map for the csv Minecrafts.'
     outputs.dir(targetModsDir)
+    // Re-queried on every run, by design: the point of the matrix is that a new Xaero release
+    // fails the build the day it appears, and the per-file skip inside the body already makes a
+    // repeat run cheap. Gradle's own check cannot see that intent — it was given only the
+    // directory, so after a run whose fetch failed (no network) the empty cache was remembered as
+    // success: every later run printed UP-TO-DATE and the matrix test then blamed Modrinth for a
+    // download that had been skipped. Measured with the network back and the cache still empty.
+    outputs.upToDateWhen { false }
     doLast {
         def dir = targetModsDir.get().asFile
         dir.mkdirs()
