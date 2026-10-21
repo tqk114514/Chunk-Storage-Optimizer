@@ -21,7 +21,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import me.cortex.voxy.common.util.MemoryBuffer;
 import me.cortex.voxy.commonImpl.importers.WorldImporter;
 import tqk114514.chunkstorageoptimizer.compat.voxy.CsoAnvilRegionSynth;
-import tqk114514.chunkstorageoptimizer.format.CsoFormat;
 import tqk114514.chunkstorageoptimizer.format.CsoRegionFile;
 
 /**
@@ -84,6 +83,12 @@ public abstract class WorldImporterMixin {
      * The {@code .cso} branch of the per-file import: read every chunk through the main mod's
      * format layer, synthesise an Anvil region in memory, hand it to Voxy's own importer, free
      * the buffer — the same lifecycle the {@code .mca} path gives itself.
+     *
+     * <p>Read-only, and it has to be: {@code /voxy import current} runs against the world the
+     * server is saving right now. The writer's open would have replayed and dropped the log of a
+     * batch the storage layer still holds, and allocated blocks the storage layer had already
+     * committed. A region with a batch in flight is skipped for this import instead, and the log
+     * line below says why.
      */
     @Inject(method = "importRegionFile", at = @At("HEAD"), cancellable = true)
     private void cso$importCsoFile(File file, CallbackInfo ci) {
@@ -97,8 +102,7 @@ public abstract class WorldImporterMixin {
             CSO_LOGGER.warn("Skipping {}: not a region file name", name);
             return;
         }
-        try (CsoRegionFile region = CsoRegionFile.open(
-            file.toPath(), 16, CsoFormat.COMPRESSION_ZSTD, 3, 64, true, 4194304, 0.25)) {
+        try (CsoRegionFile region = CsoRegionFile.openReadOnly(file.toPath(), 3, 64, true)) {
             CsoAnvilRegionSynth.Synthesis synthesis = CsoAnvilRegionSynth.toAnvilRegion(region);
             if (synthesis.skipped() > 0) {
                 CSO_LOGGER.warn("{}: skipped {} chunk(s) too large for the Anvil format",

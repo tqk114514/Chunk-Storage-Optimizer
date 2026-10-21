@@ -16,6 +16,7 @@ import java.util.stream.Stream;
 
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
 import tqk114514.chunkstorageoptimizer.format.CsoFormat;
+import tqk114514.chunkstorageoptimizer.format.CsoPendingBatchException;
 import tqk114514.chunkstorageoptimizer.format.CsoRegionFile;
 import tqk114514.chunkstorageoptimizer.format.FileMoves;
 import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
@@ -32,7 +33,9 @@ import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
  *   convert &lt;regionDir&gt; --to mca                        // write .mca next to each .cso
  * </pre>
  *
- * {@code bench} converts into a temp directory and deletes it, so it is safe on a live world.
+ * {@code bench} reads its sources read-only and writes only inside a temp directory it deletes,
+ * so it is safe against a world that is running. A region whose writer still has a batch in
+ * flight is skipped and named rather than read as though it were current.
  */
 public final class Converter {
 
@@ -172,8 +175,15 @@ public final class Converter {
             if (byFile.size() >= maxFiles) {
                 break;
             }
-            List<AnvilRegionFile.Chunk> chunks = "cso".equals(kind)
-                ? readCso(source) : AnvilRegionFile.read(source);
+            List<AnvilRegionFile.Chunk> chunks;
+            try {
+                chunks = "cso".equals(kind) ? readCso(source) : AnvilRegionFile.read(source);
+            } catch (CsoPendingBatchException pending) {
+                // The samplers below take a handful of files to measure; dropping one that is
+                // mid-batch is noise unless it is said out loud.
+                System.out.println("(skipping " + source.getFileName() + ": a batch is in flight)");
+                continue;
+            }
             if (!chunks.isEmpty()) {
                 byFile.put(source, chunks);
                 onDisk += Files.size(source);
@@ -210,13 +220,21 @@ public final class Converter {
             long liveBytes = 0;
             long chunkCount = 0;
             int measured = 0;
+            int deferred = 0;
             long startedAt = System.nanoTime();
 
             // One file at a time, deliberately: bench reports the directory total, and a 1.2 GB
             // overworld does not fit in the heap once its chunks are decompressed.
             for (Path file : files) {
-                List<AnvilRegionFile.Chunk> chunks = anvil
-                    ? AnvilRegionFile.read(file) : readCso(file);
+                List<AnvilRegionFile.Chunk> chunks;
+                try {
+                    chunks = anvil ? AnvilRegionFile.read(file) : readCso(file);
+                } catch (CsoPendingBatchException pending) {
+                    // A live world has batches in flight constantly; measuring the rest of the
+                    // directory is still worth doing. Naming the file keeps the total honest.
+                    deferred++;
+                    continue;
+                }
                 if (chunks.isEmpty()) {
                     continue;
                 }
@@ -247,6 +265,12 @@ public final class Converter {
             double saved = 100.0 * (1.0 - (double) csoTotal / anvilTotal);
             System.out.printf("source       : .%s in %s (%d of %d files, %d chunks)%n",
                 kind, dir, measured, files.size(), chunkCount);
+            if (deferred > 0) {
+                // Without this the totals read as the whole directory, and the files missing from
+                // them are the ones being written right now — the busiest part of a live world.
+                System.out.printf("               %d file(s) left out: a batch is in flight in them,"
+                    + " so their writer has not finished saving%n", deferred);
+            }
             if (!anvil) {
                 System.out.printf("cso on disk  : %s (as written)%n", human(liveBytes));
             }
@@ -617,12 +641,22 @@ public final class Converter {
         if (!csoFiles.isEmpty()) {
             int chunks = 0;
             long bytes = 0;
+            int deferred = 0;
             for (Path file : csoFiles) {
-                chunks += readCso(file).size();
+                try {
+                    chunks += readCso(file).size();
+                } catch (CsoPendingBatchException pending) {
+                    deferred++;
+                    continue;
+                }
                 bytes += Files.size(file);
             }
             System.out.printf("cso   (.cso) : %d files, %d chunks, %s   avg %d B/chunk%n",
                 csoFiles.size(), chunks, human(bytes), chunks == 0 ? 0 : bytes / chunks);
+            if (deferred > 0) {
+                System.out.printf("               %d file(s) not counted: a batch is in flight in"
+                    + " them, so their writer has not finished saving%n", deferred);
+            }
         }
         if (mcaFiles.isEmpty() && csoFiles.isEmpty()) {
             System.out.println("No .mca or .cso files in " + dir);
@@ -819,12 +853,15 @@ public final class Converter {
     /**
      * Reads every chunk out of a CSO file, walking bucket by bucket so each payload is
      * decompressed once instead of once per chunk.
+     *
+     * <p>Read-only on purpose. This runs against folders a running game owns ({@code bench},
+     * {@code count}, {@code estimate}), and the writer's open would have made this reader a second
+     * writer of the same file: it recovers the other holder's staged batch, and allocates blocks
+     * that holder has already used. See {@link CsoRegionFile#openReadOnly}.
      */
     public static List<AnvilRegionFile.Chunk> readCso(Path source) throws IOException {
         List<AnvilRegionFile.Chunk> out = new ArrayList<>();
-        try (CsoRegionFile file = CsoRegionFile.open(
-            source, 8, CsoFormat.COMPRESSION_ZSTD, 3, 64, true, Long.MAX_VALUE, 10.0
-        )) {
+        try (CsoRegionFile file = CsoRegionFile.openReadOnly(source, 3, 64, true)) {
             int grid = file.grid();
             int span = CsoFormat.span(grid);
             for (int bucket = 0; bucket < CsoFormat.bucketCount(grid); bucket++) {

@@ -80,10 +80,10 @@ public final class StreamingConverter {
             Files.deleteIfExists(temp);
             // The union partner is read through a live handle with a one-bucket cache: the
             // walk touches one row of buckets at a time, so one slot of cache carries each
-            // payload once.
+            // payload once. Read-only, because this file is the game's own: the writer's open
+            // would recover its staged batch here and allocate over the blocks it committed.
             try (CsoRegionFile partner = Files.isRegularFile(out)
-                    ? CsoRegionFile.open(out, 8, CsoFormat.COMPRESSION_ZSTD, 3, 1, true,
-                        Long.MAX_VALUE, 10.0)
+                    ? CsoRegionFile.openReadOnly(out, 3, 1, true)
                     : null;
                  CsoRegionFile target = CsoRegionFile.open(
                      temp, grid, CsoFormat.COMPRESSION_ZSTD, level, 4, true, Long.MAX_VALUE, 10.0)) {
@@ -159,8 +159,11 @@ public final class StreamingConverter {
      *            winning per slot, and a slot of it that cannot be decoded refuses the file
      */
     public static Outcome csoToMca(Path cso, Path out) throws IOException {
-        try (CsoRegionFile source = CsoRegionFile.open(
-            cso, 8, CsoFormat.COMPRESSION_ZSTD, 3, 1, true, Long.MAX_VALUE, 10.0)) {
+        // Read-only: this source is the game's own file, and the writer's open would recover a
+        // batch its holder still has staged. A pending batch refuses the file outright — see
+        // CsoPendingBatchException — because converting from the pre-batch view and then pruning
+        // the source would drop exactly that batch.
+        try (CsoRegionFile source = CsoRegionFile.openReadOnly(cso, 3, 1, true)) {
             // Same early out as the other direction: a source with nothing to convert must
             // not rewrite the partner it would union with. The bucket table answers this
             // without decompressing anything.

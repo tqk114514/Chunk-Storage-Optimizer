@@ -58,6 +58,11 @@ public final class CsoRegionFile implements Closeable {
     private final boolean verifyCrc;
     private final long compactionMinWasted;
     private final double compactionWastedRatio;
+    /**
+     * True for a handle that may read and never write. Recovery belongs to the writer of the file,
+     * so such a handle does not replay the log — see {@link #openReadOnly}.
+     */
+    private final boolean readOnly;
 
     private final TableEntry[] entries;
     /** Which table copy currently holds the newest entry per bucket. Writes use the other copy. */
@@ -84,11 +89,13 @@ public final class CsoRegionFile implements Closeable {
         boolean verifyCrc,
         int maxCachedBuckets,
         long compactionMinWasted,
-        double compactionWastedRatio
+        double compactionWastedRatio,
+        boolean readOnly
     ) {
         this.path = path;
         this.channel = channel;
         this.grid = grid;
+        this.readOnly = readOnly;
         this.chunksPerBucket = CsoFormat.chunksPerBucket(grid);
         this.bucketCount = CsoFormat.bucketCount(grid);
         this.wal = new CsoWal(path, this.bucketCount, this.chunksPerBucket);
@@ -151,7 +158,7 @@ public final class CsoRegionFile implements Closeable {
                 : Compressor.create(compressionId, level);
             CsoRegionFile file = new CsoRegionFile(
                 path, channel, grid, compressor, verifyCrc,
-                maxCachedBuckets, compactionMinWasted, compactionWastedRatio
+                maxCachedBuckets, compactionMinWasted, compactionWastedRatio, false
             );
             if (exists) {
                 file.readMetadata(header);
@@ -170,6 +177,71 @@ public final class CsoRegionFile implements Closeable {
                 failure.addSuppressed(closeFailure);
             }
             throw failure;
+        }
+    }
+
+    /**
+     * Opens a region file to read it, and nothing else.
+     *
+     * <p>{@link #open} is the writer's entry point: it creates, it replays the write-ahead log, and
+     * it allocates from the file end it saw at open. A second party doing that to a file some
+     * storage layer is using is a second writer wearing a reader's clothes — it takes the recovery
+     * of a batch that other holder has staged but not yet applied out of that holder's hands, and it
+     * writes its own blocks over space the other holder has already committed. Both were measured,
+     * and both are in {@code CsoRegionFileSecondOpenerTest}.
+     *
+     * <p>This path cannot do either: the channel is opened {@code READ} with no {@code CREATE}, so a
+     * write is refused with the reason rather than an IO surprise, and a missing file is an absence
+     * rather than a new region. Recovery stays with the writer, which means a file whose writer still
+     * has a batch in flight is not readable at all — see {@link CsoPendingBatchException}.
+     *
+     * @param level compression level, for the codec the header names (the codec itself comes off disk)
+     */
+    public static CsoRegionFile openReadOnly(
+        Path path, int level, int maxCachedBuckets, boolean verifyCrc
+    ) throws IOException {
+        FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
+        try {
+            if (channel.size() < HEADER_SIZE) {
+                throw new CsoCorruptedException(
+                    "File too small to be a CSO region: " + channel.size() + " bytes at " + path);
+            }
+            byte[] header = new byte[HEADER_SIZE];
+            readFullyStatic(channel, ByteBuffer.wrap(header), 0L);
+            // Everything a reader needs comes off the disk: the grid, the codec, the tables.
+            CsoRegionFile file = new CsoRegionFile(
+                path, channel, parseGrid(path, header), compressorForFile(path, header, level),
+                verifyCrc, maxCachedBuckets, 0L, 1.0, true
+            );
+            // Checked through the log's own accessor rather than Files.exists, because this is the
+            // same question the recovery heuristic asks and both answers have to move together.
+            if (file.wal.exists()) {
+                throw new CsoPendingBatchException(
+                    path.getFileName() + " has a write-ahead log beside it, so its writer has a batch"
+                        + " that is not in the file yet. Let the game open it once to recover that"
+                        + " batch before reading or converting this file; reading it now would show"
+                        + " the state before the batch, and a conversion would write that back over"
+                        + " the file it came from.");
+            }
+            file.readMetadata(header);
+            return file;
+        } catch (IOException | RuntimeException | Error failure) {
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
+        }
+    }
+
+    /** Refuses a mutation on a handle that opened to read, with the reason rather than an IO surprise. */
+    private void requireWritable() {
+        if (this.readOnly) {
+            throw new IllegalStateException(
+                this.path.getFileName() + " is open for reading only; the storage layer that writes"
+                    + " this file opens it with open(), which also owns its recovery"
+            );
         }
     }
 
@@ -548,6 +620,7 @@ public final class CsoRegionFile implements Closeable {
      * compression and one write, not N. Slot values are the new chunk bytes; {@code null} deletes.
      */
     public synchronized void writeChunks(int bucket, Map<Integer, byte[]> changes) throws IOException {
+        requireWritable();
         if (changes.isEmpty()) {
             return;
         }
@@ -574,11 +647,13 @@ public final class CsoRegionFile implements Closeable {
     // storage layer and the tests call.
 
     public synchronized void writeWal(Map<Integer, Map<Integer, byte[]>> changes) throws IOException {
+        requireWritable();
         this.wal.write(changes);
     }
 
     /** Drops the WAL. Only safe once the batch it describes is already durable. */
     public synchronized void clearWal() throws IOException {
+        requireWritable();
         this.wal.clear();
     }
 
@@ -743,6 +818,7 @@ public final class CsoRegionFile implements Closeable {
      * stall costs nothing a player can feel.
      */
     public synchronized boolean compactIfWasted() throws IOException {
+        requireWritable();
         long wasted = wastedBytes();
         long used = this.fileEnd - wasted;
         if (wasted < this.compactionMinWasted || wasted < used * this.compactionWastedRatio) {
@@ -757,6 +833,7 @@ public final class CsoRegionFile implements Closeable {
      * compressed bytes — no recompression, so compaction stays cheap in CPU.
      */
     public synchronized void compact() throws IOException {
+        requireWritable();
         if (this.compacting) {
             return;
         }
