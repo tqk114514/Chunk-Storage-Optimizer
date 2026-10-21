@@ -16,7 +16,7 @@ package tqk114514.chunkstorageoptimizer.format;
  * payload is simply not cached — the same honest outcome a bucket bigger than the whole per-file
  * ceiling already gets — which costs a decompression on the next read, never correctness.
  */
-final class BucketBudget {
+public final class BucketBudget {
 
     /**
      * What every {@link BucketCache} in this JVM may hold together. A quarter of a gigabyte is
@@ -38,6 +38,20 @@ final class BucketBudget {
     /** The one every region file uses; the constructor exists so a test can set its own scale. */
     static BucketBudget shared() {
         return SHARED;
+    }
+
+    /**
+     * Bytes of decompressed buckets every region file in this process is holding right now. Public
+     * for {@code /cso stats}: a ceiling nobody can read is a claim, not a bound, and the count is
+     * also what tells an operator whether the cap is being reached in their instance.
+     */
+    public static long heldBytes() {
+        return SHARED.held();
+    }
+
+    /** The process-wide ceiling {@link #heldBytes()} is bounded by. */
+    public static long limitBytes() {
+        return MAX_BYTES;
     }
 
     /**

@@ -206,7 +206,7 @@ Two numbers in `/cso stats` directly reflect the mechanism:
 | `grid` | `16` | Bucket grid edge (1/2/4/8/16/32). See below |
 | `compression` | `zstd` | `zstd` or `none` |
 | `zstdLevel` | `3` | 1–22. Higher compresses better and writes slower |
-| `cachedBuckets` | `64` | Decompressed buckets kept in memory per region file, with an 8 MB per-file byte ceiling |
+| `cachedBuckets` | `64` | Decompressed buckets kept in memory per region file, bounded per file at 8 MB and across the process at 256 MB (`/cso stats` shows the heap in use) |
 | `verifyCrc` | `true` | Verify CRC32 on read. Turning it off removes corruption detection |
 | `fallbackToMca` | `true` | Read missing chunks from `.mca`. **Do not disable** |
 | `compactionMinBytes` | `4194304` | Minimum wasted bytes before reclaiming space |

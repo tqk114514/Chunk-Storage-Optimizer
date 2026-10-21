@@ -32,6 +32,7 @@ import tqk114514.chunkstorageoptimizer.CsoBossBars;
 import tqk114514.chunkstorageoptimizer.CsoPermissions;
 import tqk114514.chunkstorageoptimizer.CsoRuntime;
 import tqk114514.chunkstorageoptimizer.format.AnvilRegionFile;
+import tqk114514.chunkstorageoptimizer.format.BucketBudget;
 import tqk114514.chunkstorageoptimizer.metrics.CsoLatency;
 import tqk114514.chunkstorageoptimizer.metrics.CsoStats;
 import tqk114514.chunkstorageoptimizer.storage.CsoRegistry;
@@ -607,6 +608,11 @@ public final class CsoCommands {
             .append("  compress=").append(s.bucketCompressions()).append('\n')
             .append("  cache    hit=").append(percent(s.cacheHitRatio()))
             .append("  (").append(decimal(s.chunksPerDecompression())).append(" chunks per decompression)\n")
+            // The heap the bucket cache is holding, against the process-wide ceiling it is bounded
+            // by: the per-file limits in the config multiply out to a number nobody can see from
+            // the config, so it is reported rather than promised.
+            .append("  heap     buckets=").append(human(BucketBudget.heldBytes()))
+            .append(" of ").append(human(BucketBudget.limitBytes())).append('\n')
             .append("  bytes    rawIn=").append(human(s.rawBytesIn()))
             .append("  stored=").append(human(s.storedBytes()))
             .append("  ratio=").append(decimal(s.writeRatio())).append("x\n")

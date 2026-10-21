@@ -16,7 +16,7 @@
   "chunkstorageoptimizer.configuration.zstdLevel.tooltip": "zstd level for the hot write path. 3 is the default trade-off; higher levels compress better and write slower.",
 
   "chunkstorageoptimizer.configuration.cachedBuckets": "Cached Buckets",
-  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Decompressed buckets kept in memory per region file. Higher values reduce read amplification near the player, at the cost of heap. The cache is also bounded by an 8 MB per-file budget — at small grids a single bucket can hold a whole region's worth of chunks, and one larger than the budget is not cached at all. A bucket holds up to (32/grid)^2 chunks; at grid=8 that is 16 chunks.",
+  "chunkstorageoptimizer.configuration.cachedBuckets.tooltip": "Decompressed buckets kept in memory per region file. Higher values reduce read amplification near the player, at the cost of heap. The cache is also bounded by an 8 MB per-file budget — at small grids a single bucket can hold a whole region's worth of chunks, and one larger than the budget is not cached at all. Every open region file shares one 256 MB budget for the whole process on top of that, because per-file limits multiply: 256 open files per storage, three storages per dimension. /cso stats shows what the cache holds. A bucket holds up to (32/grid)^2 chunks; at grid=8 that is 16 chunks.",
 
   "chunkstorageoptimizer.configuration.verifyCrc": "Verify CRC",
   "chunkstorageoptimizer.configuration.verifyCrc.tooltip": "Verify bucket CRC32 on read. Detects corruption instead of silently returning garbage or empty chunks. Keep this on unless you are benchmarking.",
