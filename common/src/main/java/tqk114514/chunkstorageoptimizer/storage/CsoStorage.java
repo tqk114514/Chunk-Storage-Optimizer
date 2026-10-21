@@ -112,6 +112,11 @@ public final class CsoStorage implements AutoCloseable {
      * file, and the file's own lock is taken inside this one, so the ordering is always
      * storage-then-file. {@link #flush()} may block the IOWorker for the length of one forced write,
      * which is the same wait vanilla's own flush imposes.
+     *
+     * <p>Never take {@link CsoRegistry}'s monitor while holding this one except through
+     * {@link #ensureClaimed}, which asks for nothing else. That is what keeps a claim and a
+     * retirement from deadlocking two storages of one folder against each other, and it is why
+     * {@link #close()} leaves the registry before it takes the lock rather than inside it.
      */
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -126,6 +131,12 @@ public final class CsoStorage implements AutoCloseable {
     private long lastFlushMillis = System.currentTimeMillis();
     /** Set once by {@link #release()}; the mixin then stops routing this folder to us. */
     private volatile boolean released;
+    /**
+     * Whether this storage is on {@link CsoRegistry}'s list. An instance the registry left off is a
+     * throwaway another mod's discarded worker built — unless it starts serving, which is the only
+     * evidence that it is not, and then it claims its folder back ({@link #ensureClaimed}).
+     */
+    private volatile boolean registered;
     /** Cancels the periodic timeout flush once this storage is closed. */
     private ScheduledFuture<?> timerTask;
 
@@ -198,10 +209,65 @@ public final class CsoStorage implements AutoCloseable {
         this.settings = settings;
         this.vanillaHandles = vanillaHandles;
         this.label = labelOf(folder);
-        CsoRegistry.add(this);
+        this.registered = CsoRegistry.add(this);
+        if (this.registered) {
+            armTimer();
+        }
+    }
+
+    /**
+     * Arms the periodic flush, and only if it is not already running. Every path that stages data
+     * needs this bound, so it is armed both when the registry takes the storage on and when a
+     * storage that had been retired claims its folder back.
+     */
+    private void armTimer() {
+        if (this.timerTask != null) {
+            return;
+        }
         this.timerTask = TIMER.scheduleWithFixedDelay(
             this::flushIfOverdue, TIMER_PERIOD_MS, TIMER_PERIOD_MS, TimeUnit.MILLISECONDS
         );
+    }
+
+    /**
+     * Claims the folder back if {@link CsoRegistry#add} left this instance off the list.
+     *
+     * <p>Being used at all is the evidence that matters: whatever called the constructor, this is
+     * the storage the game is writing through now, and an unlisted one has no periodic flush and is
+     * invisible to {@code /cso compact} and to the pause a conversion relies on. Called at the head
+     * of every entry point, and cheap when already listed.
+     *
+     * <p>A released storage does not claim anything: the game stopped routing its folder to it on
+     * purpose, and it stays registered only so its own conversion can still reach it.
+     */
+    private void ensureClaimed() {
+        if (this.registered || this.released) {
+            return;
+        }
+        this.registered = true;
+        CsoRegistry.adopt(this);
+        armTimer();
+    }
+
+    /**
+     * Whether anything has ever passed through this storage — the registry's test for the instance
+     * the game is actually holding, as against the throwaway another mod's discarded worker left
+     * behind. Reads and writes are counted on arrival, so a storage mid-batch counts as serving even
+     * before its first chunk reaches the disk.
+     */
+    public boolean hasServedTraffic() {
+        if (this.chunksRead.sum() > 0 || this.chunksWritten.sum() > 0) {
+            // The counters are safe to read unlocked and are the answer almost always: under-
+            // reading traffic is the direction that would retire a live storage, so the rest of
+            // the state is checked under the lock that guards it.
+            return true;
+        }
+        this.lock.lock();
+        try {
+            return this.pendingCount > 0 || !this.regions.isEmpty();
+        } finally {
+            this.lock.unlock();
+        }
     }
 
     /**
@@ -322,6 +388,7 @@ public final class CsoStorage implements AutoCloseable {
     private Located locate(ChunkPos pos) throws IOException {
         this.lock.lock();
         try {
+            ensureClaimed();
             // The conversion pause answers empty: the file behind this region is being
             // rewritten, and the only callers that can arrive here mid-pause are background
             // ones — the game itself is the thread running the command. A null read is what
@@ -386,6 +453,7 @@ public final class CsoStorage implements AutoCloseable {
         byte[] bytes = value == null ? null : serialize(value);
         this.lock.lock();
         try {
+            ensureClaimed();
             this.chunksWritten.increment();
             stage(pos, bytes);
             if (this.pendingCount >= this.settings.batchMaxChunks()
@@ -411,6 +479,7 @@ public final class CsoStorage implements AutoCloseable {
     public void flush() throws IOException {
         this.lock.lock();
         try {
+            ensureClaimed();
             long startedAt = System.nanoTime();
             try {
                 flushPending();
@@ -466,6 +535,7 @@ public final class CsoStorage implements AutoCloseable {
     public int compactAll() throws IOException {
         this.lock.lock();
         try {
+            ensureClaimed();
             flushPending();
             int count = 0;
             IOException failure = null;
@@ -560,9 +630,14 @@ public final class CsoStorage implements AutoCloseable {
         // Cancel first, outside the lock: a periodic task that is already running must not be
         // allowed to re-enter flushPending after the handles below are closed.
         cancelTimer();
+        // Off the list here, and outside the lock, for the same reason: {@link #ensureClaimed}
+        // takes the registry's monitor while this storage's lock is held, so nothing that holds
+        // this lock may wait for that monitor from the other side. Retirement also has to land
+        // before the handles close, or a command could reach a storage that no longer can.
+        CsoRegistry.remove(this);
+        this.registered = false;
         this.lock.lock();
         try {
-            CsoRegistry.remove(this);
             IOException failure = null;
             try {
                 flushPending();

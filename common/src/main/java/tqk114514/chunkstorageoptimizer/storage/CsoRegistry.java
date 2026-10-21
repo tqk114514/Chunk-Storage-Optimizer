@@ -16,6 +16,11 @@ import com.mojang.logging.LogUtils;
  * <p>One instance exists per storage type (region / entities / poi) per level, created lazily when
  * the game first touches that storage. Everything a command may do to the files is scoped to one
  * world: a session can hold several worlds, and the other ones are none of its business.
+ *
+ * <p>Membership is what makes a storage reachable: the periodic flush that bounds a staged batch,
+ * {@code /cso compact}, and the pause every conversion depends on all go through this list. So the
+ * list must never lose the instance the game is actually writing through, and that is the rule
+ * {@link #add} enforces — traffic decides the owner, not construction order.
  */
 public final class CsoRegistry {
 
@@ -26,38 +31,61 @@ public final class CsoRegistry {
     private CsoRegistry() {
     }
 
-    public static void add(CsoStorage storage) {
-        abandonSuperseded(storage.folder());
-        STORAGES.add(storage);
-    }
-
     /**
-     * Enforces the invariant the registry is silently built on: at most one live storage per
-     * folder. Region, entity and POI stores sit in different folders, so in the game's own flow
-     * the second storage for one folder never happens while the first is live. The one flow that
-     * breaks it is another mod's throwaway worker: C2ME's chunk IO rewrite constructs worker
-     * objects it then discards (the C2ME compat swaps in the real one), and each throwaway builds
-     * a {@code RegionFileStorage} of its own — which initialises a storage of ours on the way
-     * through. Those orphans never serve a chunk, so nothing ever closes them: unreferenced
-     * wrappers mean no unload path, and a registered storage holds its timer and its registry
-     * entry forever — the zombie-storages shape the 1.1.5 crash came from. A superseded storage
-     * here is always such an orphan; closing one cancels its timer, removes it from the registry,
-     * and is otherwise a no-op — opens are lazy and nothing was ever staged through it.
+     * Registers a freshly built storage, unless the folder already has one that has served traffic.
+     *
+     * <p>The flow that produces two storages for one folder is another mod's throwaway worker:
+     * C2ME's chunk IO rewrite builds worker objects it then discards (the C2ME compat swaps in the
+     * real one), and each throwaway builds a {@code RegionFileStorage} of its own, which initialises
+     * a storage of ours on the way through. Which of the two is the throwaway is not knowable from
+     * the order they are constructed in — that was the old assumption, and when it was wrong the
+     * registry lost the instance the game still held: its batch sat in memory with no timer, and a
+     * conversion was told the folder was quiet while that storage went on writing into it.
+     *
+     * <p>Traffic answers it instead. A throwaway never serves a chunk, and the incumbent that has
+     * served is the one the game holds — so the incumbent keeps the folder and the newcomer is left
+     * unregistered rather than retiring it. An unregistered storage that does start serving claims
+     * itself back through {@link #adopt}, because being used is the only evidence that matters.
+     *
+     * @return true when this storage is on the list and owns its folder
      */
-    private static void abandonSuperseded(Path folder) {
-        Path normalized = folder.normalize();
+    public static boolean add(CsoStorage storage) {
+        Path folder = storage.folder().normalize();
         for (CsoStorage existing : all()) {
-            if (existing.isReleased() || !existing.folder().normalize().equals(normalized)) {
+            if (existing.isReleased() || !existing.folder().normalize().equals(folder)) {
                 // Released storages stay registered on purpose until their world unloads; the
                 // conversion that released them still needs to reach them.
                 continue;
             }
-            try {
-                existing.close();
-            } catch (IOException e) {
-                LOGGER.error("Chunk Storage Optimizer: could not retire a superseded storage for {}",
-                    folder, e);
+            if (existing.hasServedTraffic()) {
+                return false;
             }
+            // A registered storage that has served nothing is the throwaway: nothing else would
+            // ever close it, because its wrapper went with the worker it came from, and its timer
+            // and registry entry would survive forever — the zombie-storages shape the 1.1.5 crash
+            // came from. Closing it cancels the timer and drops the entry; it has no staged data
+            // and no open handle to lose.
+            retire(existing, folder);
+        }
+        STORAGES.add(storage);
+        return true;
+    }
+
+    /**
+     * Puts a storage back on the list because it is being used. Called by a storage that {@link #add}
+     * left unregistered, from its own entry points, so a folder's real writer always ends up
+     * reachable no matter which instance the game decided to hold on to.
+     */
+    static void adopt(CsoStorage storage) {
+        STORAGES.add(storage);
+    }
+
+    private static void retire(CsoStorage existing, Path folder) {
+        try {
+            existing.close();
+        } catch (IOException e) {
+            LOGGER.error("Chunk Storage Optimizer: could not retire a superseded storage for {}",
+                folder, e);
         }
     }
 
