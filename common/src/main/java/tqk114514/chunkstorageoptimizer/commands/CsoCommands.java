@@ -599,15 +599,21 @@ public final class CsoCommands {
         }
     }
 
-    private static String format(CsoStats.Snapshot s, String state) {
+    /**
+     * The report body. Package-private so the zero-sample behaviour below can be asserted
+     * directly, rather than by reading a live server and hoping the phase was right.
+     */
+    static String format(CsoStats.Snapshot s, String state) {
         StringBuilder report = new StringBuilder("CSO [" + state + "]\n")
             .append("  chunks   read=").append(s.chunksRead())
             .append("  written=").append(s.chunksWritten())
             .append("  deleted=").append(s.chunksDeleted()).append('\n')
             .append("  buckets  decompress=").append(s.bucketDecompressions())
             .append("  compress=").append(s.bucketCompressions()).append('\n')
-            .append("  cache    hit=").append(percent(s.cacheHitRatio()))
-            .append("  (").append(decimal(s.chunksPerDecompression())).append(" chunks per decompression)\n")
+            .append("  cache    hit=").append(orNoSample(percent(s.cacheHitRatio()),
+                s.cacheHits() + s.cacheMisses()))
+            .append("  (").append(orNoSample(decimal(s.chunksPerDecompression()),
+                s.bucketDecompressions())).append(" chunks per decompression)\n")
             // The heap the bucket cache is holding, against the process-wide ceiling it is bounded
             // by: the per-file limits in the config multiply out to a number nobody can see from
             // the config, so it is reported rather than promised.
@@ -615,7 +621,7 @@ public final class CsoCommands {
             .append(" of ").append(human(BucketBudget.limitBytes())).append('\n')
             .append("  bytes    rawIn=").append(human(s.rawBytesIn()))
             .append("  stored=").append(human(s.storedBytes()))
-            .append("  ratio=").append(decimal(s.writeRatio())).append("x\n")
+            .append("  ratio=").append(orNoSample(decimal(s.writeRatio()) + "x", s.storedBytes())).append('\n')
             .append("  io       read=").append(human(s.ioReadBytes()))
             .append("  write=").append(human(s.ioWriteBytes())).append('\n')
             .append("  time     compress=").append(millis(s.compressNanos()))
@@ -666,6 +672,20 @@ public final class CsoCommands {
 
     private static String decimal(double value) {
         return String.format("%.2f", value);
+    }
+
+    /**
+     * A ratio with no sample behind it is not zero.
+     *
+     * <p>Every derived number in the report answers "over what denominator", and the snapshot
+     * returns 0.0 when the denominator is empty — so a fresh world printed
+     * {@code hit=0.0% (0.00 chunks per decompression)} on the way out, which reads like the worst
+     * cache result available when the truth was the best one possible: nothing had to be
+     * decompressed at all (measured live — read=856, decompress=0). Printing it as a number is how
+     * a good session gets investigated.
+     */
+    private static String orNoSample(String formatted, long samples) {
+        return samples == 0 ? "n/a" : formatted;
     }
 
     private static String millis(long nanos) {
