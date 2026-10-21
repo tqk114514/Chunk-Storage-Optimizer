@@ -110,7 +110,7 @@ public final class CsoRegionFile implements Closeable {
             this.entries[i] = new TableEntry();
         }
         this.allocator = new BlockAllocator(this.dataStart, this.bucketCount);
-        this.bucketCache = new BucketCache(maxCachedBuckets);
+        this.bucketCache = new BucketCache(maxCachedBuckets, BucketBudget.shared());
     }
 
     /**
@@ -986,7 +986,14 @@ public final class CsoRegionFile implements Closeable {
         try {
             flush();
         } finally {
-            this.channel.close();
+            try {
+                this.channel.close();
+            } finally {
+                // The shared budget only goes down through the cache itself, so a closed file has
+                // to hand back what it still holds — the storage layer evicts region files while
+                // the session runs, and those bytes are otherwise counted as held forever.
+                this.bucketCache.clear();
+            }
         }
     }
 }
