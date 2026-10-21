@@ -29,9 +29,13 @@ NeoForge 用 `jarJar`），玩家只下载一个文件，Mod Menu 里附属显�
 modid 规则（不允许连字符），写作 `chunkstorageoptimizer_xaerocompat`。
 
 附属的测试不止覆盖各自钉住的版本：`compat/*/common` 的矩阵测试自动拉取目标 mod 在 csv 各
-Minecraft 上的每一个 Modrinth 发布（Xaero 世界地图 315 个、Voxy 25 个，下载进 build 目录并
-增量缓存），逐 jar 用字节码验证 mixin 声明的全部成员与它按字符串身份匹配的常量——目标 mod
-一发新版，契约破坏当天就出现在构建里。共享的校验逻辑在 `compat/testkit`（源码目录，随各
+Minecraft 上的每一个 Modrinth 发布（2026-10-22 实测：Xaero 世界地图 321 个、Voxy 25 个，数字
+随目标 mod 发版增长），逐 jar 用字节码验证 mixin 声明的全部成员与它按字符串身份匹配的常量——目标
+mod 一发新版，契约破坏当天就出现在构建里。抓取是增量的（已下的按大小跳过），但**列表每次运行都
+重新查询**：这些任务显式声明 `outputs.upToDateWhen { false }`。少了这句会中毒——一次无网络的失败
+运行留下空目录后，Gradle 把空缓存当作成功记住，之后每次 `UP-TO-DATE` 直接跳过下载，而矩阵测试报
+"manifest is empty — the download found nothing"，把矛头指向 API，实际是下载从没发生（实测两次）。
+共享的校验逻辑在 `compat/testkit`（源码目录，随各
 common 的测试编译，不是 Gradle 模块）。核心格式一侧另有系统性的破坏扫描
 （`CsoRegionFileAdversarialTest` 的故障注入与 `CsoRegionFileFuzzTest` 的截断/位翻转不变量）。
 
@@ -211,6 +215,24 @@ NeoForge：在仓库之外用 `neoforge-<版本>-installer.jar --installServer` 
 `DIM-1/`、`DIM1/`；26.1.2 与 26.2.0 为 `<世界>/dimensions/minecraft/<维度>/…`。`.cso` 写在游戏
 提供的目录中，两种布局的落盘位置均已实测。
 
+### 用开发服做无头冒烟
+
+`tools/smoke-lifecycle.sh` 与 `tools/c2me-smoke.sh` 都是走 `gradlew :fabric:runServer` + RCON，
+不是另装一个服务端。踩到的几件事（均实测）：
+
+- **`runServer` 一见 stdin 关闭就正常退出**。把它放后台时不要重定向 stdin（`< /dev/null` 会让它
+  在十几秒内 `BUILD SUCCESSFUL` 收摊，看起来像秒起秒停的怪故障）。
+- **没人连接的服务器 60 秒后暂停 tick**：`forceload add` 仍能触发**已生成区块的磁盘读**（实测读
+  计数 196→225、一次大范围 4321），但**不会继续生成**新区块。于是"造一个足够长的转换窗口 + 足够深
+  的在途读队列"在无头下做不到——想在暂停期抢到的只有零星几个请求。B3（暂停期回答"区块不存在"）
+  的现场复现因此没做成，代码里留了两条 WARN 把坐标与线程名打出来，线上一命中就有证据。
+- **dev run 目录里 `convtest/level.dat` 现在是空的**（`No key dimensions in MapLike[{}]` →
+  datapacks 加载失败 → 服务器拒绝启动）。冒烟请换一个新的 `level-name`，测完删世界目录并把
+  `server.properties` 还原；`mods/` 同理，跑前清空、跑后清空。
+- RCON 客户端不用另写：`tools/smoke-lifecycle.sh` 里那段 heredoc 就是（小端、按包长精确读），
+  `awk '/^cat > "\$WORK\/RconTool.java" <<.EOF.$/{f=1;next} f&&/^EOF$/{exit} f'` 抽出来 `javac`
+  即可复用；端口与密码从 `fabric/run/server.properties` 取。
+
 ### 两个加载器之间的差异
 
 按实际 import 关系，加载器需要各自实现的内容为四项：入口（`ChunkStorageOptimizer` /
@@ -292,9 +314,38 @@ up-to-date，jar 里留着上一行的形状（实测踩过）。
   `tools/neoforge-floor.sh` 已按这个端点实现。
 - **CI 用的 workflow 版本**：一次 run 用的是它那个 commit 上的 workflow 文件。失败的 run 在改了
   workflow 之后 Re-run 不会生效——要么在新提交上重新打 tag，要么用 `workflow_dispatch`。
-- **C2ME 矩阵测试不在 CI 里**：CI 每个 job 跑的是 `:core:test`、Xaero/Voxy 的 common 测试和主模块
-  测试；`compat/c2me/*` 的 75 版本矩阵要本地跑 `:compat:c2me:fabric:test` 与
-  `:compat:c2me:neoforge:test`，发布前别省。
+- **C2ME 的模块测试现在在 CI 里**：每个 job 的测试命令含 `:compat:c2me:<该行的 loader>:test`，
+  target-mods 也在缓存路径里（`compat/c2me/{fabric,neoforge}/build/target-mods`，与 Xaero/Voxy
+  共用一个按周翻新的 key）。此前它从来没进过 CI，因而一直没被看见：`C2meBridgeVanillaShapeTest`
+  把形状写死成 MODERN，十一条 1.21 legacy 行**每行必红**（实测 `expected <MODERN> but was
+  <LEGACY>` @1.21.1）。同一文件里两条构造断言用 `getDeclaredConstructor` 要精确元数，而 1.21.11
+  的 `RecreatingSimpleRegionStorage` 是 8 参（尾多一个 `Supplier<LegacyTagFixer>`）——桥其实没坏，
+  Mixin 绑 `<init>` 接受处理器参数是目标的**前缀**，红的是测试。现在这两处都按"本行成立"断言。
+- **只有读的形状：`.cso` 有两条开法，读者必须用 `openReadOnly`**。`CsoRegionFile.open()` 是写者的
+  门——`CREATE+WRITE`、开完立刻 `replayWal()`（重放 + flush + 删 WAL）、按 open 时看到的 fileEnd
+  分配。旁路读者走这扇门就成了第二个写者：它会接管别人尚未落盘批次的恢复（WAL 存在的那段窗口内），
+  会在名字列出但文件已不在时 `CREATE` 出一个空 region，会持着写句柄。`/voxy import`、离线工具的
+  `readCso`、`StreamingConverter` 的 partner/source 全部改到只读；只读句柄任何写操作直接
+  `IllegalStateException`，文件不存在就是不存在。带 WAL 在飞的文件**只读也拒绝打开**
+  （`CsoPendingBatchException`），这不是保守：转换类读者会把读到的内容写回同一个文件，按批次之前的
+  状态读一遍再覆盖，那一批就没了——让游戏先开一次世界恢复它才对。
+  - 严重程度按这个说法算，别夸大：曾有人（本仓库的审查记录里）把它写成"两个写者互相覆盖已提交块"
+    的现场危害。块覆盖在格式层成立（`CsoRegionFileSecondOpenerTest` 前两条刻画了机理），但**现存的
+    读者没有一个会写**，所以那条路径不可达。现场验证的是另一件事：服务器持着 4 个 `.cso` 时用离线
+    工具对同一目录跑 `count` 与 `bench`，事后 md5 逐字节一致、目录内容不变。
+- **Voxy 与 Xaero 的被钩路径是客户端的**。实测：Voxy 0.2.12-alpha 在专用服务器上连
+  `me.cortex.voxy.commonImpl.importers.WorldImporter` 都链接不上（`commons-compress` 不在服务端
+  classpath），所以 `/voxy import` 只可能在客户端/单机里发生；Xaero 的 Fabric jar 虽然写
+  `environment: *` 能装进服务端，被钩的地图存档扫描同样不在服务端跑。结论：**这两条附属的运行时
+  行为无法无头冒烟**，无头能验的只有"装得上、起得来、降级诚实"（见下条）。版本契约那一半由矩阵
+  测试按发布版逐个覆盖，不需要真环境。
+- **附属的自检探测一律 `Class.forName(name, false, loader)` + `catch (Throwable)`**。用默认的
+  `Class.forName(name)` 会**初始化**那个类；目标 mod 的类在当前环境链接不上依赖时抛的是
+  `NoClassDefFoundError`（`Error`），只捕 `ReflectiveOperationException` 接不住，异常逃出
+  `onInitialize` → Fabric 中止启动——这条是装了 Voxy 的专用服务器**起不来**的实测原因，而附属
+  自己的承诺恰恰是"绝不崩，只降级"。`CsoC2meCompatCore.resolve()` 早就用了正确写法，照它抄。
+  修后同一环境：`Done (2.693s)` + `Voxy compat inactive: … NoClassDefFoundError …ZipFile. The
+  import runs without .cso support.`
 - **产物选择**：Fabric dev 运行时用 `build/devlibs/*-dev.jar`（命名映射），发行 jar 在
   `build/libs`（intermediary；26.x 不 remap）。`build/libs` 里也可能留着旧 `mod_version` 的同名
   jar，认产物看版本号与时间。
