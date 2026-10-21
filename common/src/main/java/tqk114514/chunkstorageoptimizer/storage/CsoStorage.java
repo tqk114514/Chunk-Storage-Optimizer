@@ -169,14 +169,53 @@ public final class CsoStorage implements AutoCloseable {
      */
     private final VanillaHandles vanillaHandles;
     /**
-     * Latched while a conversion rewrites this folder. A latched read answers empty instead of
-     * reopening what is being replaced — the storage's lazy reopen is exactly what kept
-     * re-holding files a conversion had just paused closed (measured in-game: a map tile
-     * thread asking for chunks mid-conversion reopened the handles, and the run skipped those
-     * regions). Staged writes are kept for after the resume; the game itself cannot read
-     * mid-conversion, because the command holds the server thread.
+     * Latched while a conversion rewrites this folder. The latch exists because a lazy reopen is
+     * exactly what kept re-holding files a conversion had just paused closed (measured in-game: a
+     * map tile thread asking for chunks mid-conversion reopened the handles, and the run skipped
+     * those regions).
+     *
+     * <p>What a latched read must NOT do is answer "this chunk is not on disk". Absent is the
+     * game's instruction to generate a chunk, and a generated chunk written after the resume lands
+     * in the file the conversion just replaced — the one failure the whole storage layer exists to
+     * make impossible, and the reason the locked-{@code .mca} path refuses instead of answering
+     * absence. So a latched read waits for the latch to clear and then serves the truth
+     * ({@link #awaitConversionEnd}); only if the wait runs out does it fail, loudly.
+     *
+     * <p>Volatile because the wait reads it without holding {@link #lock} — waiting under the lock
+     * would deadlock against the resume, which takes the same lock.
      */
-    private boolean conversionPaused;
+    private volatile boolean conversionPaused;
+
+    /**
+     * How long a caller may wait for a conversion to release the folder before the wait is reported
+     * as a failure. Five seconds bounds what a stuck latch can do while covering every conversion
+     * that actually finishes — a whole-world conversion measured 285 ms on a dev server, and the
+     * command that latches the folder holds the server thread for its entire run, so waiting past
+     * that window means something is wrong rather than merely busy.
+     */
+    static final long CONVERSION_WAIT_MS = 5_000L;
+
+    /**
+     * Waits (without holding any lock) for a conversion to stop latching this folder.
+     *
+     * @return true when the folder is still latched after the wait, in which case the caller has to
+     *     refuse the operation rather than invent an answer for it
+     */
+    public static boolean awaitConversionEnd(java.util.function.BooleanSupplier latched) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(CONVERSION_WAIT_MS);
+        while (latched.getAsBoolean()) {
+            if (System.nanoTime() >= deadline) {
+                return true;
+            }
+            try {
+                Thread.sleep(20L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return true;
+            }
+        }
+        return false;
+    }
 
     /** The vanilla half of this folder's storage, reachable for commands. */
     public interface VanillaHandles {
@@ -401,24 +440,25 @@ public final class CsoStorage implements AutoCloseable {
      * authoritative empty slot, or no fallback copy.
      */
     private Located locate(ChunkPos pos) throws IOException {
+        // Waited for outside the lock on purpose: resuming takes that same lock, so a thread that
+        // held it while waiting could not be unblocked by the thing it waits for.
+        awaitConversionEnd(() -> this.conversionPaused);
         this.lock.lock();
         try {
             ensureClaimed();
-            // The conversion pause answers empty: the file behind this region is being
-            // rewritten, and the only callers that can arrive here mid-pause are background
-            // ones — the game itself is the thread running the command. A null read is what
-            // "chunk absent" already means to every caller, and the tile builders behind those
-            // background reads treat it as "nothing to draw", not as damage.
             if (this.conversionPaused) {
-                // The name is logged because the answer given here is not neutral: "chunk absent"
-                // is what tells the game to generate one, and a generated chunk saved after the
-                // resume lands in the file the conversion just wrote. The mixin's own gate covers
-                // the vanilla side of the folder; this one covers the window where the folder is
-                // latched here and not yet there.
-                LOGGER.warn("Chunk Storage Optimizer: a read of {} arrived while {} is being"
-                    + " converted, on thread {}; answered absent", pos, this.folder,
-                    Thread.currentThread().getName());
-                return null;
+                // The wait ran out, or the folder was latched again while this call waited.
+                // Refusing is the whole point: the answer this call must never give is "absent",
+                // because absent is what tells the game to generate a chunk — and a generated chunk
+                // saved after the resume lands in the file the conversion just wrote. The mixin's
+                // own gate covers the vanilla side of the folder; this covers the window where the
+                // folder is latched here and not yet there.
+                LOGGER.warn("Chunk Storage Optimizer: {} is still being converted after {} ms, so"
+                        + " the read of {} on thread {} is refused rather than answered absent",
+                    this.folder, CONVERSION_WAIT_MS, pos, Thread.currentThread().getName());
+                throw new IOException("Chunk Storage Optimizer: " + this.folder
+                    + " is being converted and had not finished within " + CONVERSION_WAIT_MS
+                    + " ms; refusing to answer this read as a missing chunk.");
             }
             byte[] staged = staged(pos);
             if (staged != null) {

@@ -165,23 +165,23 @@ public class RegionFileStorageMixin {
 
     @Inject(method = "read", at = @At("HEAD"), cancellable = true)
     private void cso$read(ChunkPos pos, CallbackInfoReturnable<CompoundTag> cir) throws IOException {
-        if (this.cso$conversionPaused) {
-            // Empty, and gated BEFORE the storage check on purpose: a released folder is
-            // served by vanilla, and a vanilla read would reopen the handle a conversion is
-            // trying to replace.
-            //
-            // The name of the thread asking is logged because it is the question this answer
-            // cannot be made on: "chunk absent" tells the game to generate a chunk, and if the
-            // asker is the game's own chunk load — not a background tile builder — that chunk
-            // comes back saved over the file the conversion just wrote. Only a background
-            // thread can be here while the server thread runs the command, so the line is the
-            // witness, and a warning is the honest level for a read that may cost a chunk.
-            LOGGER.warn("Chunk Storage Optimizer: a read of {} arrived mid-conversion on thread"
-                    + " {}; answered absent",
+        // Gated BEFORE the storage check on purpose: a released folder is served by vanilla, and a
+        // vanilla read would reopen the handle a conversion is trying to replace.
+        //
+        // What it must not do is answer "this chunk is not on disk". Absent is the game's
+        // instruction to generate a chunk, and a chunk generated during a pause gets saved after the
+        // resume, into the file the conversion had just written — which is the silent terrain loss
+        // this whole storage layer is built to make impossible. So a read that arrives here waits
+        // for the conversion to let go and then is served for real; only a pause that will not end
+        // is refused, and refused out loud.
+        if (this.cso$conversionPaused
+            && CsoStorage.awaitConversionEnd(() -> this.cso$conversionPaused)) {
+            LOGGER.warn("Chunk Storage Optimizer: a read of {} arrived at a folder still being"
+                    + " converted on thread {}; refused rather than answered absent",
                 pos, Thread.currentThread().getName());
-            cir.setReturnValue(null);
-            cir.cancel();
-            return;
+            throw new java.io.IOException("Chunk Storage Optimizer: this region folder is being"
+                + " converted and did not finish in time; refusing to answer " + pos
+                + " as a missing chunk.");
         }
         CsoStorage storage = cso$active();
         if (storage == null) {
@@ -203,11 +203,17 @@ public class RegionFileStorageMixin {
 
     @Inject(method = "scanChunk", at = @At("HEAD"), cancellable = true)
     private void cso$scanChunk(ChunkPos pos, StreamTagVisitor visitor, CallbackInfo ci) throws IOException {
-        if (this.cso$conversionPaused) {
-            // No chunk to walk: the visitor simply is not told about one, which is what an
-            // absent chunk already means here.
-            ci.cancel();
-            return;
+        // The same rule as the read: a scan told "there is no chunk here" is the same lie, and a
+        // caller that decides what to write from what it saw would act on it. Wait, then scan the
+        // real bytes; refuse only a pause that will not end.
+        if (this.cso$conversionPaused
+            && CsoStorage.awaitConversionEnd(() -> this.cso$conversionPaused)) {
+            LOGGER.warn("Chunk Storage Optimizer: a scan of {} arrived at a folder still being"
+                    + " converted on thread {}; refused rather than answered as no chunk",
+                pos, Thread.currentThread().getName());
+            throw new java.io.IOException("Chunk Storage Optimizer: this region folder is being"
+                + " converted and did not finish in time; refusing to scan " + pos
+                + " as if it held nothing.");
         }
         CsoStorage storage = cso$active();
         if (storage == null) {

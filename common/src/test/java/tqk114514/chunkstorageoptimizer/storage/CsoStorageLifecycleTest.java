@@ -16,7 +16,7 @@ import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -111,7 +111,7 @@ class CsoStorageLifecycleTest {
     }
 
     @Test
-    void aLatchedReadAnswersEmptyAndALatchedWriteLandsAfterTheResume(@TempDir Path world) throws IOException {
+    void aLatchedWriteStaysStagedAndLandsAfterTheResume(@TempDir Path world) throws IOException {
         attach(world);
         ChunkPos before = new ChunkPos(0, 0);
         ChunkPos during = new ChunkPos(1, 0);
@@ -120,7 +120,6 @@ class CsoStorageLifecycleTest {
 
         storage.pauseForConversion();
         assertEquals(1, handles.pauses);
-        assertNull(storage.read(before), "a latched read answers empty — the file behind it is being replaced");
         assertEquals(0, storage.pendingCount(), "the pause flushed what was staged before latching");
 
         storage.write(during, chunk("written during the pause"));
@@ -131,6 +130,72 @@ class CsoStorageLifecycleTest {
         assertEquals(0, storage.pendingCount(), "the resume lands what the pause kept");
         assertEquals(chunk("written during the pause"), storage.read(during));
         assertEquals(chunk("written before the pause"), storage.read(before), "the pre-pause chunk survived the cycle");
+    }
+
+    /**
+     * A latched read that is never un-latched must fail. It used to answer empty, and empty is not a
+     * neutral answer: "chunk absent" is what tells the game to generate a chunk, and the generated
+     * chunk is then saved into the file the conversion had just replaced. The wait costs
+     * {@code CONVERSION_WAIT_MS} here because nothing ever resumes the folder — which is the point
+     * of having a bound at all.
+     */
+    @Test
+    void aReadRefusesWhenTheConversionNeverLetsGo(@TempDir Path world) throws IOException {
+        attach(world);
+        ChunkPos pos = new ChunkPos(0, 0);
+        storage.write(pos, chunk("the one that must not read as absent"));
+        storage.flush();
+        storage.pauseForConversion();
+
+        long startedAt = System.nanoTime();
+        IOException refused = assertThrows(IOException.class, () -> storage.read(pos));
+        long waitedMs = (System.nanoTime() - startedAt) / 1_000_000;
+
+        assertTrue(refused.getMessage().contains("being converted"),
+            "the failure has to name its cause: " + refused.getMessage());
+        assertTrue(waitedMs >= CsoStorage.CONVERSION_WAIT_MS,
+            "it waited for the pause to clear before refusing; waited " + waitedMs + " ms");
+    }
+
+    /**
+     * The other half, and the reason this is a wait rather than a refusal: a conversion that
+     * finishes while a read is waiting gets served the real chunk, so the caller never sees a lie.
+     */
+    @Test
+    void aReadThatWaitsForTheConversionIsServedTheRealChunk(@TempDir Path world)
+        throws IOException, InterruptedException {
+        attach(world);
+        ChunkPos pos = new ChunkPos(0, 0);
+        storage.write(pos, chunk("served after the pause cleared"));
+        storage.flush();
+        storage.pauseForConversion();
+
+        Thread resumer = new Thread(() -> {
+            try {
+                Thread.sleep(300L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            try {
+                storage.resumeAfterConversion();
+            } catch (IOException ignored) {
+                // The assertion below is the place where this would surface.
+            }
+        }, "cso-test-resumer");
+        resumer.start();
+
+        long startedAt = System.nanoTime();
+        CompoundTag read = storage.read(pos);
+        long waitedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        resumer.join(5_000L);
+
+        assertEquals(chunk("served after the pause cleared"), read,
+            "a read that arrived mid-conversion is answered with the chunk, not with absence");
+        assertTrue(waitedMs < CsoStorage.CONVERSION_WAIT_MS,
+            "it returned as soon as the folder was released, after " + waitedMs + " ms");
+        assertTrue(waitedMs >= 150L,
+            "the read really waited for the conversion — it did not get lucky with the timing"
+                + " and read an un-latched folder; waited " + waitedMs + " ms");
     }
 
     private void attach(Path world) throws IOException {
