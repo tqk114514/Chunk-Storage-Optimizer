@@ -202,11 +202,14 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      # The compat version matrices download every release of Xaero's World Map and Voxy that
-      # exists for a csv Minecraft — several hundred jars between them. A weekly cache key keeps
-      # runs restoring those bytes instead of re-fetching them; new releases are still picked up
-      # because the key turns over weekly and the download task re-queries the list on every run
-      # and fetches only what the cache lacks.
+      # The compat version matrices download every release of Xaero's World Map, Voxy and C2ME
+      # that exists for a csv Minecraft — several hundred jars between them, and C2ME's own matrix
+      # nests module jars inside each release. A weekly cache key keeps runs restoring those bytes
+      # instead of re-fetching them; new releases are still picked up because the key turns over
+      # weekly and the download tasks are declared never-up-to-date, so every run re-queries the
+      # list and fetches only what the cache lacks. (That declaration is load-bearing: with only
+      # `outputs.dir` the tasks reported UP-TO-DATE over an empty cache left by an offline run, and
+      # the matrix tests then blamed the API for a download Gradle had skipped.)
       - name: Work out the target-mod matrix cache key
         id: targetmods
         run: echo "week=$(date +%G-W%V)" >> "$GITHUB_OUTPUT"
@@ -217,17 +220,24 @@ jobs:
           path: |
             compat/xaero/common/build/target-mods
             compat/voxy/common/build/target-mods
+            compat/c2me/fabric/build/target-mods
+            compat/c2me/neoforge/build/target-mods
           key: target-mods-${{ steps.targetmods.outputs.week }}
           restore-keys: target-mods-
 
       # The loader module named by the row is the one with a Minecraft dependency, so it is what
       # gets built. Tests run per row per loader: :core:test covers the format layer, the two
       # compat `common` modules' tests cover the compat halves against every published version
-      # of their target mod, and :${{ matrix.loader }}:test runs the shared storage-layer suite
-      # (common/src/test) against this row's own Minecraft — the per-row shape contract included.
+      # of their target mod, :compat:c2me:${loader}:test covers this row's own C2ME bridge (its
+      # shape resource against the game it compiled for, and the rewrite contract across every
+      # C2ME release — the module had never been run in CI, and its suite was red on the eleven
+      # 1.21 legacy rows because of a hardcoded shape), and :${{ matrix.loader }}:test runs the
+      # shared storage-layer suite (common/src/test) against this row's own Minecraft — the
+      # per-row shape contract included.
       - name: Test and build the mod
         run: >
           ./gradlew :core:test :compat:xaero:common:test :compat:voxy:common:test
+          :compat:c2me:${{ matrix.loader }}:test
           :${{ matrix.loader }}:test :${{ matrix.loader }}:build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           "-Porg.gradle.java.installations.paths=${{ steps.jdk25.outputs.path }},${{ steps.jdk21.outputs.path }}"
