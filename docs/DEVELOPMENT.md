@@ -224,8 +224,12 @@ NeoForge：在仓库之外用 `neoforge-<版本>-installer.jar --installServer` 
   在十几秒内 `BUILD SUCCESSFUL` 收摊，看起来像秒起秒停的怪故障）。
 - **没人连接的服务器 60 秒后暂停 tick**：`forceload add` 仍能触发**已生成区块的磁盘读**（实测读
   计数 196→225、一次大范围 4321），但**不会继续生成**新区块。于是"造一个足够长的转换窗口 + 足够深
-  的在途读队列"在无头下做不到——想在暂停期抢到的只有零星几个请求。B3（暂停期回答"区块不存在"）
-  的现场复现因此没做成，代码里留了两条 WARN 把坐标与线程名打出来，线上一命中就有证据。
+  的在途读队列"在无头下做不到——想在暂停期抢到的只有零星几个请求。
+- **暂停期的读不再回答"这块不存在"**（那正是让游戏去生成区块、并在 resume 后把生成结果写进刚转换
+  好的文件的指令）。现在的契约是：等 latch 松开（上限 5 s），松开就照实读；等不到就**明确失败**并
+  打一条带线程名的 WARN。`CsoStorageLifecycleTest` 三条用例钉住这三段：等到的那个确实等了 ≥150 ms
+  （不是撞运气）、never-release 的那个确实花满 5 s 才失败、以及暂停期的写入照常留到 resume 后落地。
+  无头复现"丢区块"仍然做不到——但那条路径现在**不可能**被回答了：absent 这个答案已经从代码里去掉。
 - **dev run 目录里 `convtest/level.dat` 现在是空的**（`No key dimensions in MapLike[{}]` →
   datapacks 加载失败 → 服务器拒绝启动）。冒烟请换一个新的 `level-name`，测完删世界目录并把
   `server.properties` 还原；`mods/` 同理，跑前清空、跑后清空。
@@ -334,12 +338,24 @@ up-to-date，jar 里留着上一行的形状（实测踩过）。
     读者没有一个会写**，所以那条路径不可达。现场验证的是另一件事：服务器持着 4 个 `.cso` 时用离线
     工具对同一目录跑 `count` 与 `bench`，事后 md5 逐字节一致、目录内容不变。
     提交 `663e631` 的标题按当初的说法写的，以这条为准——不改历史，只在这里更正。
-- **Voxy 与 Xaero 的被钩路径是客户端的**。实测：Voxy 0.2.12-alpha 在专用服务器上连
-  `me.cortex.voxy.commonImpl.importers.WorldImporter` 都链接不上（`commons-compress` 不在服务端
-  classpath），所以 `/voxy import` 只可能在客户端/单机里发生；Xaero 的 Fabric jar 虽然写
+- **Voxy 与 Xaero 的被钩路径是客户端的**，两条实测：Voxy 的 `/voxy` 命令在专用服务器上**根本没注册**
+  （`voxy` 与 `voxy help` 都回 `Unknown or incomplete command`）；Xaero 的 Fabric jar 虽然写
   `environment: *` 能装进服务端，被钩的地图存档扫描同样不在服务端跑。结论：**这两条附属的运行时
-  行为无法无头冒烟**，无头能验的只有"装得上、起得来、降级诚实"（见下条）。版本契约那一半由矩阵
-  测试按发布版逐个覆盖，不需要真环境。
+  行为无法无头冒烟**，无头能验的只有"装得上、起得来、降级诚实"。版本契约那一半由矩阵测试按发布版
+  逐个覆盖，不需要真环境。
+  - 别把这条的理由记成"Voxy 的类在服务端链接不上"。那是一次**假阴性**给的错觉：`getDeclaredMethods`
+    会解析每个方法签名里的类型，而 Voxy 的 importer 有个签名提到 `commons-compress`（Voxy 并没有打包
+    它），于是反射抛 `NoClassDefFoundError`——而彼时 mixin 绑定得好好的。
+- **附属的自检只问"绑定了没有"，不问"形状对不对"**。`require: 0` 意味着形状变了会被 Mixin 自己咽掉，
+  唯一诚实的证据是 apply 时插件有没有被调用过（`CsoVoxyMixinPlugin.appliedCount()`，Xaero 侧用
+  `cso$` 成员存在与否表达同一件事）。这同时堵住反方向：形状没变但 mixin 没绑上却照报 active。
+  探测本身一律 `Class.forName(name, false, loader)`：默认的 `Class.forName(name)` 会**初始化**目标类，
+  它链接不上依赖时抛的是 `Error`，只捕 `ReflectiveOperationException` 接不住——那条坑的真实代价是
+  **装了 Voxy 的专用服务器直接起不来**（`Could not execute entrypoint stage 'main' … provided by
+  'chunkstorageoptimizer_voxycompat'`），而附属自己的承诺恰恰是"绝不崩，只降级"。
+- **dev 运行目录里的产物按行覆盖**：`build/devlibs/*-dev.jar` 和 `build/libs` 一样会被别的行的构建
+  换掉。实测拿一个声明 `minecraft 1.21.1` 的 dev jar 去跑 1.21.11 的服，FabricLoader 直接
+  "Incompatible mods found"。冒烟前重建本行产物，别信目录里现成的那个。
 - **附属的自检探测一律 `Class.forName(name, false, loader)` + `catch (Throwable)`**。用默认的
   `Class.forName(name)` 会**初始化**那个类；目标 mod 的类在当前环境链接不上依赖时抛的是
   `NoClassDefFoundError`（`Error`），只捕 `ReflectiveOperationException` 接不住，异常逃出
