@@ -21,6 +21,28 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
  */
 public final class CsoVoxyMixinPlugin implements IMixinConfigPlugin {
 
+    /**
+     * The compat's mixins that have actually bound, by mixin class name. Distinct names, because
+     * Mixin may ask about the same class more than once and a repeat must not stand in for a
+     * missing application.
+     *
+     * <p>This is the evidence the compat's report is built on. The alternative — reflecting over
+     * the target class to see whether its methods still look right — cannot work here and was
+     * measured failing: {@code getDeclaredMethods} resolves the parameter and return types of
+     * <em>every</em> declared method, and Voxy's importer carries a signature naming
+     * {@code org.apache.commons.compress}, which Voxy does not ship. So the reflection answered
+     * {@code NoClassDefFoundError} about an unrelated method while these mixins were binding
+     * perfectly — a compat reporting itself inactive on a working install is worse than silent.
+     */
+    private static final Set<String> APPLIED = new java.util.HashSet<>();
+
+    /** How many of this compat's mixins have bound to their target so far. */
+    public static int appliedCount() {
+        synchronized (APPLIED) {
+            return APPLIED.size();
+        }
+    }
+
     @Override
     public void onLoad(String mixinPackage) {
     }
@@ -48,7 +70,15 @@ public final class CsoVoxyMixinPlugin implements IMixinConfigPlugin {
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
 
+    /**
+     * Records the binding. Mixin calls this after a mixin's members have gone into the target, so
+     * one call means this compat is live on the class it hooks — which is the only claim worth
+     * making at startup.
+     */
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
+        synchronized (APPLIED) {
+            APPLIED.add(mixinClassName);
+        }
     }
 }

@@ -1,7 +1,5 @@
 package tqk114514.chunkstorageoptimizer.compat.voxy;
 
-import java.io.File;
-
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -21,6 +19,9 @@ import org.slf4j.LoggerFactory;
 public final class CsoVoxyCompat implements ModInitializer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("CSO Voxy Compat");
+
+    /** The one class this compat mixes into, named in the same spelling the mixin config uses. */
+    private static final String TARGET_CLASS = "me.cortex.voxy.commonImpl.importers.WorldImporter";
 
     @Override
     public void onInitialize() {
@@ -48,41 +49,34 @@ public final class CsoVoxyCompat implements ModInitializer {
     }
 
     /**
-     * Null when every mixin target is where the mixins expect it, otherwise what moved.
+     * Null when the compat is live, otherwise what is wrong.
      *
-     * <p>Probed with {@code initialize=false}, because these classes are not ours to run: Voxy's
-     * {@code WorldImporter} links commons-compress, which is not reachable in every environment
-     * (a dedicated server is the one that showed up in practice), and running a static initialiser
-     * here would raise a {@code NoClassDefFoundError} — an {@code Error}, which the reflective
-     * catch below does not cover, and which the loader turns into a failed game start.
-     * {@code CsoC2meCompatCore} already does this for exactly the same reason.
+     * <p>The question worth answering is "did my mixins bind", and the only honest witness to that
+     * is the mixin plugin being told so at apply time ({@link CsoVoxyMixinPlugin#appliedCount()}).
+     * Getting there needs the target class to be transformed, which is what this call does — and
+     * it must be {@code initialize=false}: running Voxy's static initialiser here would link
+     * classes this environment may not have, and the resulting {@code NoClassDefFoundError} is an
+     * {@code Error}, which is exactly how this entrypoint once took a dedicated server down.
      *
-     * <p>Method lookups are structural, so they need no initialisation either.
+     * <p>It also must not reflect over the target's members. {@code getDeclaredMethods} resolves
+     * every signature type, and the importer carries a signature naming commons-compress, which
+     * Voxy does not ship — measured: that reflection reported the compat inactive while the
+     * mixins were binding fine. Checking the binding instead of the shape cannot produce that
+     * answer, and it also closes the other half: {@code require} 0 means a shape that moved is
+     * swallowed by Mixin, so only the apply-time witness says whether anything is in there.
      */
     private static String checkVoxyImporter() {
+        int boundBefore = CsoVoxyMixinPlugin.appliedCount();
+        Class<?> importer;
         try {
-            Class<?> importer = probe("me.cortex.voxy.commonImpl.importers.WorldImporter");
-            Class<?> buffer = probe("me.cortex.voxy.common.util.MemoryBuffer");
-            if (importer == null || buffer == null) {
-                return "Voxy's importer classes are not reachable in this environment";
-            }
-            importer.getDeclaredMethod("importRegionDirectoryAsync", File.class);
-            importer.getDeclaredMethod("importRegionFile", File.class);
-            importer.getDeclaredMethod("importRegion", buffer, int.class, int.class);
-            return null;
-        } catch (ReflectiveOperationException | LinkageError moved) {
-            return "Voxy's WorldImporter does not match the expected shape (" + moved + ")";
+            importer = Class.forName(TARGET_CLASS, false, CsoVoxyCompat.class.getClassLoader());
+        } catch (Throwable absent) {
+            return "Voxy's " + TARGET_CLASS + " is not present in this Voxy build (" + absent + ")";
         }
-    }
-
-    /** Loads the class for inspection without running its initialiser; null when unreachable. */
-    private static Class<?> probe(String name) {
-        try {
-            return Class.forName(name, false, CsoVoxyCompat.class.getClassLoader());
-        } catch (Throwable unreachable) {
-            // ClassNotFoundException is expected here, and so is a LinkageError from a class whose
-            // own dependencies are absent — both mean "stand aside", never "fail the launch".
-            return null;
+        if (CsoVoxyMixinPlugin.appliedCount() == boundBefore) {
+            return "the compat's mixins did not bind to " + TARGET_CLASS
+                + ", which loaded from " + importer.getClassLoader();
         }
+        return null;
     }
 }
