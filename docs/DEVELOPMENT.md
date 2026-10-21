@@ -333,6 +333,7 @@ up-to-date，jar 里留着上一行的形状（实测踩过）。
     的现场危害。块覆盖在格式层成立（`CsoRegionFileSecondOpenerTest` 前两条刻画了机理），但**现存的
     读者没有一个会写**，所以那条路径不可达。现场验证的是另一件事：服务器持着 4 个 `.cso` 时用离线
     工具对同一目录跑 `count` 与 `bench`，事后 md5 逐字节一致、目录内容不变。
+    提交 `663e631` 的标题按当初的说法写的，以这条为准——不改历史，只在这里更正。
 - **Voxy 与 Xaero 的被钩路径是客户端的**。实测：Voxy 0.2.12-alpha 在专用服务器上连
   `me.cortex.voxy.commonImpl.importers.WorldImporter` 都链接不上（`commons-compress` 不在服务端
   classpath），所以 `/voxy import` 只可能在客户端/单机里发生；Xaero 的 Fabric jar 虽然写
