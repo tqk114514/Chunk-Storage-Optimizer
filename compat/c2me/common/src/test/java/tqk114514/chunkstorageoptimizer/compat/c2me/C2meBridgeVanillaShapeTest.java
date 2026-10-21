@@ -1,5 +1,6 @@
 package tqk114514.chunkstorageoptimizer.compat.c2me;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
@@ -20,9 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The vanilla shapes the bridge's mixins claim, against the pinned 26.3 game this module
- * compiles with — the same level of contract the main mod keeps with its own mixins
- * (see VanillaRegionCacheShapeTest).
+ * The vanilla shapes the bridge's mixins claim, against the game this row compiled with — the
+ * same level of contract the main mod keeps with its own mixins (see
+ * {@code VanillaRegionCacheShapeTest}). One source tree serves every row, so what it asserts has
+ * to hold on the legacy rows as well as the modern ones.
  *
  * <p>The mixins apply with the default {@code require}: a Minecraft that moves any of these
  * breaks the bridge with a hard failure rather than a silent one — deliberately, because a
@@ -47,11 +49,11 @@ class C2meBridgeVanillaShapeTest {
     }
 
     @Test
-    void theConstructorTheReadHandlerSigns() throws NoSuchMethodException {
-        assertNotNull(SimpleRegionStorage.class.getDeclaredConstructor(
-            RegionStorageInfo.class, Path.class, DataFixer.class, boolean.class, DataFixTypes.class),
-            "the read-side handler receives the constructor's whole argument list; a change here"
-                + " is a require failure at apply time");
+    void theConstructorTheReadHandlerSigns() {
+        assertTrue(constructorTakesPrefix(SimpleRegionStorage.class,
+                RegionStorageInfo.class, Path.class, DataFixer.class, boolean.class, DataFixTypes.class),
+            "the read-side handler receives the constructor's argument list; a row where not even a"
+                + " prefix of it exists is a require failure at apply time");
     }
 
     @Test
@@ -65,11 +67,41 @@ class C2meBridgeVanillaShapeTest {
     }
 
     @Test
-    void theConstructorTheWriteHandlerSigns() throws NoSuchMethodException {
-        assertNotNull(RecreatingSimpleRegionStorage.class.getDeclaredConstructor(
-            RegionStorageInfo.class, Path.class, RegionStorageInfo.class, Path.class,
-            DataFixer.class, boolean.class, DataFixTypes.class),
+    void theConstructorTheWriteHandlerSigns() {
+        assertTrue(constructorTakesPrefix(RecreatingSimpleRegionStorage.class,
+                RegionStorageInfo.class, Path.class, RegionStorageInfo.class, Path.class,
+                DataFixer.class, boolean.class, DataFixTypes.class),
             "read pair, write pair, then the shared three — the order the bytecode feeds them in");
+    }
+
+    /**
+     * Whether some constructor of {@code type} takes exactly these arguments, possibly followed by
+     * more. Mixin binds an {@code @Inject} on {@code <init>} when the handler's list is a prefix of
+     * the target's, so this — not an exact arity — is the contract the bridge depends on.
+     *
+     * <p>Measured on the 1.21.11 row: the recreate constructor has eight parameters, the extra one a
+     * trailing {@code Supplier<LegacyTagFixer>}. The bridge binds fine there, and the exact-arity
+     * claim this test used to make went red on a row that ships working — which is also why the
+     * module cannot simply be switched into CI before this was settled.
+     */
+    private static boolean constructorTakesPrefix(Class<?> type, Class<?>... claimed) {
+        for (Constructor<?> ctor : type.getDeclaredConstructors()) {
+            Class<?>[] actual = ctor.getParameterTypes();
+            if (actual.length < claimed.length) {
+                continue;
+            }
+            boolean matches = true;
+            for (int i = 0; i < claimed.length; i++) {
+                if (!actual[i].equals(claimed[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Test
@@ -83,19 +115,32 @@ class C2meBridgeVanillaShapeTest {
     /**
      * The probe, against the real class files and the resource this build wrote.
      *
-     * <p>This is the half the decision-table test cannot reach: it proves the shape resource is
-     * on the classpath and says what this module was built for. The pinned row is the modern
-     * shape — 26.3 has no {@code ChunkStorage} — so the legacy mixins must stand down here.
+     * <p>This is the half the decision-table test cannot reach: it proves the shape resource is on
+     * the classpath and readable, and that it names a shape the bridge knows — an unreadable or
+     * unknown shape makes the plugin refuse to bridge at all, so a row that shipped one would ship
+     * a compat that does nothing.
+     *
+     * <p>It used to assert {@code MODERN} outright, which made the suite fail on every 1.21–1.21.10
+     * row (measured: {@code expected: <MODERN> but was: <LEGACY>} on 1.21.1) — invisible because no
+     * CI job runs this module's tests. Asserting the row's own shape instead would have been the
+     * one-line fix, and is wrong: with the shape read from the resource there is nothing left to
+     * check, and the failure worth catching is a jar that carries another row's shape (the
+     * up-to-date bug {@code writeShapeResource} exists to avoid). That needs the row identity
+     * passed in from the build, and the modern/legacy rule — which is currently written in three
+     * places (both loaders' build scripts and this module's matrix test) — narrowed to one. It is
+     * not done here, and this test no longer pretends otherwise.
      */
     @Test
-    void thePinnedRowIsTheModernShape() {
+    void theShapeResourceIsReadableAndNamesAKnownShape() {
         CsoC2meCompatCore.ClassPresence presence = CsoC2meCompatCore.probe();
 
-        assertEquals(CsoC2meCompatCore.Shape.MODERN, presence.shape(),
-            "the build writes the shape into the jar; this module compiles against 26.3, where"
-                + " ChunkStorage no longer exists");
+        assertFalse(presence.shape() == CsoC2meCompatCore.Shape.UNKNOWN,
+            "the build must write " + CsoC2meCompatCore.SHAPE_RESOURCE + " into this row's jar;"
+                + " an unknown shape makes the plugin refuse to bridge the row it was built for");
         assertFalse(presence.c2meWorker(), "C2ME is not on this test classpath");
-        assertFalse(CsoC2meCompatCore.splitsChunkPath(presence));
+        assertEquals(presence.shape() == CsoC2meCompatCore.Shape.LEGACY,
+            CsoC2meCompatCore.splitsChunkPath(presence),
+            "only the legacy shape bridges the chunk path through ChunkStorage");
     }
 
     /**
