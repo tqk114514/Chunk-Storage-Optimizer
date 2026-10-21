@@ -638,6 +638,37 @@ class CsoRegionFileTest {
         }
     }
 
+    /**
+     * Rewriting one bucket repeatedly must not cost the cache that bucket.
+     *
+     * <p>The byte budget is a statement about the arrays the cache holds, so a put that replaces
+     * an array has to release the length it superseded. Counting only arrivals charged every
+     * bucket write again — and a write does go through both {@code getPayload} and
+     * {@code storeBucket} — so a working world crossed the ceiling on bookkeeping alone. That
+     * debt outlives the entries that caused it (eviction subtracts the lengths still in the map),
+     * so once it is blown the cache is drained on every put, permanently. {@code grid 8} with 64
+     * buckets of headroom keeps the count limit out of the way; only the byte ceiling may bind.
+     */
+    @Test
+    void repeatedRewritesOfOneBucketKeepThatBucketCached(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("r.0.0.cso");
+        // A quarter of the eight MB ceiling, so the phantom charge passes it on the fourth
+        // rewrite of the same bucket while the real footprint never leaves one payload.
+        int payloadBytes = 2_000_000;
+        int rounds = 6;
+        try (CsoRegionFile file = CsoRegionFile.open(
+            path, GRID, COMPRESSION, LEVEL, 64, true, 4096, 0.25)) {
+            for (int round = 0; round < rounds; round++) {
+                file.writeChunk(0, 0, incompressible(round, payloadBytes));
+                assertEquals(1, file.cachedBucketCount(),
+                    "round " + round + " rewrote a bucket that was already cached, and must not"
+                        + " have lost it to the byte ceiling");
+            }
+            assertArrayEquals(incompressible(rounds - 1, payloadBytes), file.readChunk(0, 0),
+                "the surviving payload must be the last one written");
+        }
+    }
+
     @Test
     void readChunkSliceExposesTheSameBytesWithoutCopying(@TempDir Path dir) throws IOException {
         byte[] data = chunkData(77, 5000);

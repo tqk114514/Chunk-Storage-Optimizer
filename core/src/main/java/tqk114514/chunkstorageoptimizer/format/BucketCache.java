@@ -38,10 +38,19 @@ final class BucketCache {
      * hold. Runs after every put, so one huge bucket can evict even the entry just inserted —
      * a payload larger than the whole budget is simply not cacheable, which is the honest
      * answer at grid 1, where a bucket is an entire region.
+     *
+     * <p>Re-caching a bucket that is already here REPLACES its payload, so the budget has to
+     * release the length of the array being superseded, not just absorb the new one. Every
+     * bucket write goes through this twice — {@code getPayload} puts what it decompressed, then
+     * {@code storeBucket} puts what it rebuilt — so counting arrivals only made the ledger grow
+     * by a full payload per save while the cache itself held one copy. The drift could never be
+     * paid back either: eviction subtracts the lengths of the arrays still in the map, so the
+     * phantom surplus outlived every entry that caused it, and once it crossed the ceiling the
+     * loop below drained the cache on every put, permanently, for the rest of the session.
      */
     void put(int bucket, byte[] payload) {
-        payloads.put(bucket, payload);
-        bytes += payload.length;
+        byte[] superseded = payloads.put(bucket, payload);
+        bytes += payload.length - (superseded == null ? 0 : superseded.length);
         var it = payloads.entrySet().iterator();
         while (payloads.size() > maxBuckets || bytes > MAX_BYTES) {
             if (!it.hasNext()) {
