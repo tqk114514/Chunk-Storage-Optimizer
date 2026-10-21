@@ -816,8 +816,7 @@ public final class CsoStorage implements AutoCloseable {
         // One budget for the whole batch, not one per chunk: the point of waiting is to tell a
         // transient fault from a damaged chunk, and after a second of waiting that question has
         // been asked for every slot it can reasonably be asked for.
-        long waitDeadlineNanos = System.nanoTime()
-            + TimeUnit.MILLISECONDS.toNanos(LEGACY_SEED_WAIT_BUDGET_MS);
+        SeedWaitBudget waitBudget = new SeedWaitBudget(LEGACY_SEED_WAIT_BUDGET_MS);
         for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : byBucket.entrySet()) {
             if (file.hasBucketIndex(bucketEntry.getKey())) {
                 continue; // already written, so it is already authoritative for every slot
@@ -831,10 +830,9 @@ public final class CsoStorage implements AutoCloseable {
                 }
             }
             RegionFile source = legacy;
-            long deadline = waitDeadlineNanos;
             bucketEntry.setValue(BucketSeeder.seed(
                 bucketEntry.getValue(), bucketEntry.getKey(), grid,
-                (localX, localZ) -> legacyChunkBytes(source, sample, localX, localZ, deadline)
+                (localX, localZ) -> legacyChunkBytes(source, sample, localX, localZ, waitBudget)
             ));
         }
     }
@@ -862,7 +860,7 @@ public final class CsoStorage implements AutoCloseable {
      * rather than claiming the file is at fault, because that is not something this can know.
      */
     private static byte[] legacyChunkBytes(
-        RegionFile legacy, ChunkPos sample, int localX, int localZ, long waitDeadlineNanos
+        RegionFile legacy, ChunkPos sample, int localX, int localZ, SeedWaitBudget waitBudget
     ) {
         ChunkPos pos = new ChunkPos(
             sample.getRegionX() * CsoFormat.REGION_CHUNKS + localX,
@@ -878,16 +876,18 @@ public final class CsoStorage implements AutoCloseable {
                 if (attempt >= LEGACY_READ_ATTEMPTS) {
                     break;
                 }
-                long remainingNanos = waitDeadlineNanos - System.nanoTime();
-                if (remainingNanos <= 0) {
+                long grantedNanos = waitBudget.reserve(
+                    TimeUnit.MILLISECONDS.toNanos(LEGACY_READ_RETRY_DELAY_MS));
+                if (grantedNanos <= 0) {
                     // The batch has spent its waiting; this chunk joins the ones it gave up on
                     // rather than extending the stall every other world queues behind.
                     capped = true;
                     break;
                 }
                 try {
-                    Thread.sleep(Math.min(LEGACY_READ_RETRY_DELAY_MS,
-                        Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
+                    // Never below a millisecond: a zero-length sleep is a yield, and yielding
+                    // buys nothing against a device that needs time to recover.
+                    Thread.sleep(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(grantedNanos)));
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     break;

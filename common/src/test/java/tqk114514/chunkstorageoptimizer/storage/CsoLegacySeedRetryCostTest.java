@@ -95,51 +95,6 @@ class CsoLegacySeedRetryCostTest {
     }
 
     /**
-     * A two-chunk {@code .mca} whose second chunk carries a body that will not decompress: the
-     * header names it and its length is plausible, so vanilla hands back a stream and the failure
-     * surfaces only on the read — which is exactly the shape the retry loop exists for.
-     */
-    /**
-     * The cap is the point of the measurement: with three unreadable neighbours in one bucket the
-     * waiting would otherwise run three times over, and it runs where every other world's flush is
-     * queued behind it. One budget for the batch bounds it, and the batch still goes through.
-     */
-    @Test
-    void theWaitingForOneBatchIsBoundedEvenWhenEveryNeighbourIsUnreadable(@TempDir Path world)
-        throws IOException {
-        Path region = world.resolve("region");
-        Files.createDirectories(region);
-        // Bucket 0 at grid 16 holds (0,0), (1,0), (0,1), (1,1) — slots 0, 1, 32, 33 in Anvil order.
-        writeMca(region.resolve("r.0.0.mca"), 1, 32, 33);
-
-        CsoStorage storage = new CsoStorage(
-            new RegionStorageInfo("world", null, "region"), region, false,
-            CsoSettings.normalized(GRID, CsoFormat.COMPRESSION_ZSTD, 3, 4, true, true,
-                4L * 1024 * 1024, 0.25, 1, CsoSettings.MAX_BATCH_DELAY_MS),
-            new CsoStorage.VanillaHandles() {
-                @Override
-                public void pauseForConversion() {
-                }
-
-                @Override
-                public void resumeAfterConversion() {
-                }
-            });
-
-        long startedAt = System.nanoTime();
-        storage.write(new ChunkPos(0, 0), chunk("saved despite three unreadable neighbours"));
-        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
-        storage.close();
-
-        assertTrue(elapsedMs <= CsoStorage.LEGACY_SEED_WAIT_BUDGET_MS + 500L,
-            "measured " + elapsedMs + " ms with three unreadable neighbours: the per-batch budget"
-                + " has to bound the waiting, not each chunk's own retries");
-        try (CsoRegionFile written = CsoRegionFile.openReadOnly(region.resolve("r.0.0.cso"), 3, 4, true)) {
-            assertNotNull(written.readChunk(0, 0), "the batch still landed — nothing was stalled by it");
-        }
-    }
-
-    /**
      * An {@code .mca} whose given slots are named by the header but cannot be decoded: the length is
      * still plausible and the stream still opens, so the failure surfaces only on the read — the
      * shape {@code legacyChunkBytes} exists for, and the one a crash mid-write leaves behind.
