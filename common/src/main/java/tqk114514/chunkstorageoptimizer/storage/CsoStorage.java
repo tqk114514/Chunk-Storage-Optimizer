@@ -75,6 +75,21 @@ public final class CsoStorage implements AutoCloseable {
     private static final long LEGACY_READ_RETRY_DELAY_MS = 100L;
 
     /**
+     * How long one batch may spend waiting on unreadable legacy chunks in total.
+     *
+     * <p>Without a cap the waiting is not local to the chunk that caused it: it happens inside
+     * {@code flushPending}, inside the storage lock, and the lock is what every other world's
+     * periodic flush queues behind — one flush timer serves the whole process. Measured: a single
+     * undecodable neighbour costs one chunk save 544 ms, and a bucket is up to 1023 neighbours at
+     * grid 1, so a dying {@code .mca} could hold a server's saves for minutes over chunks that were
+     * already going to be given up on. The per-chunk retries stay (that patience is what tells a
+     * transient fault from a damaged chunk); what the cap removes is retrying it three thousand
+     * times in one batch.
+     */
+    // Package-private, not private: the bound is the contract a test has to be able to name.
+    static final long LEGACY_SEED_WAIT_BUDGET_MS = 1_000L;
+
+    /**
      * One daemon thread for every storage in the process, waking often enough that no store's
      * staged data can sit longer than its configured delay by much.
      *
@@ -790,6 +805,11 @@ public final class CsoStorage implements AutoCloseable {
         CsoRegionFile file, ChunkPos sample, int grid, Map<Integer, Map<Integer, byte[]>> byBucket
     ) throws IOException {
         RegionFile legacy = null;
+        // One budget for the whole batch, not one per chunk: the point of waiting is to tell a
+        // transient fault from a damaged chunk, and after a second of waiting that question has
+        // been asked for every slot it can reasonably be asked for.
+        long waitDeadlineNanos = System.nanoTime()
+            + TimeUnit.MILLISECONDS.toNanos(LEGACY_SEED_WAIT_BUDGET_MS);
         for (Map.Entry<Integer, Map<Integer, byte[]>> bucketEntry : byBucket.entrySet()) {
             if (file.hasBucketIndex(bucketEntry.getKey())) {
                 continue; // already written, so it is already authoritative for every slot
@@ -803,9 +823,10 @@ public final class CsoStorage implements AutoCloseable {
                 }
             }
             RegionFile source = legacy;
+            long deadline = waitDeadlineNanos;
             bucketEntry.setValue(BucketSeeder.seed(
                 bucketEntry.getValue(), bucketEntry.getKey(), grid,
-                (localX, localZ) -> legacyChunkBytes(source, sample, localX, localZ)
+                (localX, localZ) -> legacyChunkBytes(source, sample, localX, localZ, deadline)
             ));
         }
     }
@@ -832,32 +853,44 @@ public final class CsoStorage implements AutoCloseable {
      * are exhausted is the chunk given up on — and even then the message says what was observed
      * rather than claiming the file is at fault, because that is not something this can know.
      */
-    private static byte[] legacyChunkBytes(RegionFile legacy, ChunkPos sample, int localX, int localZ) {
+    private static byte[] legacyChunkBytes(
+        RegionFile legacy, ChunkPos sample, int localX, int localZ, long waitDeadlineNanos
+    ) {
         ChunkPos pos = new ChunkPos(
             sample.getRegionX() * CsoFormat.REGION_CHUNKS + localX,
             sample.getRegionZ() * CsoFormat.REGION_CHUNKS + localZ
         );
+        boolean capped = false;
         IOException lastFailure = null;
         for (int attempt = 1; attempt <= LEGACY_READ_ATTEMPTS; attempt++) {
             try (DataInputStream in = legacy.getChunkDataInputStream(pos)) {
                 return in == null ? null : in.readAllBytes();
             } catch (IOException e) {
                 lastFailure = e;
-                if (attempt < LEGACY_READ_ATTEMPTS) {
-                    try {
-                        Thread.sleep(LEGACY_READ_RETRY_DELAY_MS);
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
+                if (attempt >= LEGACY_READ_ATTEMPTS) {
+                    break;
+                }
+                long remainingNanos = waitDeadlineNanos - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    // The batch has spent its waiting; this chunk joins the ones it gave up on
+                    // rather than extending the stall every other world queues behind.
+                    capped = true;
+                    break;
+                }
+                try {
+                    Thread.sleep(Math.min(LEGACY_READ_RETRY_DELAY_MS,
+                        Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
         }
         LOGGER.warn(
-            "Could not read chunk {} from the legacy .mca in {} attempts, so it was left out of the"
-                + " seed to let the batch through. If the legacy file is sound, this chunk now reads"
-                + " as absent and the game will regenerate it — worth checking the .mca",
-            pos, LEGACY_READ_ATTEMPTS, lastFailure
+            "Could not read chunk {} from the legacy .mca in {} attempt(s){}, so it was left out of"
+                + " the seed to let the batch through. If the legacy file is sound, this chunk now"
+                + " reads as absent and the game will regenerate it — worth checking the .mca",
+            pos, LEGACY_READ_ATTEMPTS, capped ? " (the batch's waiting budget ran out)" : "", lastFailure
         );
         return null;
     }
